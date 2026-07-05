@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>미국 주식 목표가 트래커</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css" />
+</head>
+<body>
+  <div class="app">
+
+    {% if not has_key %}
+    <div class="api-banner" id="api-key-banner">
+      <div class="api-banner-inner">
+        <div>
+          <strong>Finnhub API 키 필요</strong>
+          <p><a href="https://finnhub.io/register" target="_blank" rel="noopener">finnhub.io</a>에서 무료 가입 후 API 키를 입력하세요 (무료, 분당 60회)</p>
+        </div>
+        <div class="api-key-row">
+          <input type="text" id="api-key-input" placeholder="API 키 붙여넣기" style="width:280px;" />
+          <button class="btn-primary" onclick="saveApiKey()">저장 및 확인</button>
+        </div>
+        <div id="key-error" class="key-error" style="display:none;"></div>
+      </div>
+    </div>
+    {% endif %}
+
+    <header class="header">
+      <i class="ti ti-chart-candle header-icon" aria-hidden="true"></i>
+      <div>
+        <h1 class="header-title">미국 주식 목표가 트래커</h1>
+        <p class="header-sub">Finnhub API · 애널리스트 컨센서스 목표가 조회 및 포트폴리오 관리</p>
+      </div>
+      <button class="settings-btn" onclick="showKeyBanner()" title="API 키 변경" aria-label="API 키 변경">
+        <i class="ti ti-settings" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" onclick="switchTab('search')" role="tab"><i class="ti ti-search" aria-hidden="true"></i> 종목 검색</button>
+      <button class="tab" onclick="switchTab('portfolio')" role="tab"><i class="ti ti-briefcase" aria-hidden="true"></i> 포트폴리오</button>
+      <button class="tab" onclick="switchTab('alerts')" role="tab"><i class="ti ti-bell" aria-hidden="true"></i> 알림 <span id="alert-badge" class="badge" style="display:none;">0</span></button>
+    </nav>
+
+    <main>
+      <!-- 종목 검색 -->
+      <section id="sec-search" class="section active">
+        <div class="search-row">
+          <input type="text" id="ticker-input" placeholder="티커 입력 (예: AAPL, TSLA, NVDA)" onkeydown="if(event.key==='Enter') searchStock()" />
+          <button class="btn-primary" onclick="searchStock()"><i class="ti ti-search" aria-hidden="true"></i> 조회</button>
+        </div>
+        <div class="quick-btns">
+          <span class="quick-label">빠른 조회:</span>
+          <button onclick="quickSearch('AAPL')">AAPL</button>
+          <button onclick="quickSearch('MSFT')">MSFT</button>
+          <button onclick="quickSearch('NVDA')">NVDA</button>
+          <button onclick="quickSearch('TSLA')">TSLA</button>
+          <button onclick="quickSearch('GOOGL')">GOOGL</button>
+          <button onclick="quickSearch('META')">META</button>
+          <button onclick="quickSearch('AMZN')">AMZN</button>
+          <button onclick="quickSearch('AMD')">AMD</button>
+        </div>
+        <div id="search-result"></div>
+      </section>
+
+      <!-- 포트폴리오 -->
+      <section id="sec-portfolio" class="section">
+        <div class="add-form">
+          <input type="text" id="pf-ticker" placeholder="티커 (AAPL)" style="width:110px;" onkeydown="if(event.key==='Enter') addPortfolioItem()" />
+          <input type="number" id="pf-qty" placeholder="수량" style="width:90px;" min="0" step="1" />
+          <input type="number" id="pf-price" placeholder="매입가 ($)" style="width:120px;" step="0.01" />
+          <button class="btn-primary" onclick="addPortfolioItem()"><i class="ti ti-plus" aria-hidden="true"></i> 추가</button>
+          <button class="btn-secondary" onclick="refreshPortfolio()"><i class="ti ti-refresh" aria-hidden="true"></i> 새로고침</button>
+        </div>
+        <div id="portfolio-content"></div>
+      </section>
+
+      <!-- 알림 -->
+      <section id="sec-alerts" class="section">
+        <div class="add-form">
+          <input type="text" id="al-ticker" placeholder="티커" style="width:100px;" />
+          <input type="number" id="al-price" placeholder="가격 기준 ($)" style="width:140px;" step="0.01" />
+          <select id="al-type">
+            <option value="above">이상 도달 시</option>
+            <option value="below">이하 하락 시</option>
+          </select>
+          <button class="btn-primary" onclick="addAlert()"><i class="ti ti-bell" aria-hidden="true"></i> 알림 추가</button>
+        </div>
+        <div id="alerts-content"></div>
+        <div class="info-box">
+          <i class="ti ti-info-circle" aria-hidden="true"></i>
+          알림 조건은 서버에서 30초마다 자동으로 확인합니다. 터미널에 달성 메시지가 출력됩니다.
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
