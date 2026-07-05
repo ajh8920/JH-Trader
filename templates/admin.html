@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>사용자 관리 · 미국 주식 목표가 트래커</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <i class="ti ti-users header-icon" aria-hidden="true"></i>
+      <div>
+        <h1 class="header-title">사용자 관리</h1>
+        <p class="header-sub">계정별 권한(admin / user) 관리</p>
+      </div>
+      <a href="/" class="settings-btn" title="트래커로 돌아가기" aria-label="트래커로 돌아가기">
+        <i class="ti ti-arrow-left" aria-hidden="true"></i>
+      </a>
+    </header>
+
+    <div id="admin-content"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>불러오는 중...</div></div>
+  </div>
+
+  <script>
+    async function api(method, path, body) {
+      const opts = { method, headers: { 'Content-Type': 'application/json' } };
+      if (body) opts.body = JSON.stringify(body);
+      const res = await fetch(path, opts);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `오류 (${res.status})`);
+      return data;
+    }
+
+    async function loadUsers() {
+      const el = document.getElementById('admin-content');
+      try {
+        const users = await api('GET', '/api/admin/users');
+        renderUsers(users);
+      } catch (e) {
+        el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+      }
+    }
+
+    function renderUsers(users) {
+      const el = document.getElementById('admin-content');
+      el.innerHTML = `
+        <div class="pf-table-wrap">
+          <table class="pf-table">
+            <thead><tr><th>아이디</th><th>권한</th><th>가입일</th><th></th></tr></thead>
+            <tbody>
+              ${users.map(u => `
+                <tr>
+                  <td style="font-weight:600;">${u.username}</td>
+                  <td>
+                    <select onchange="changeRole(${u.id}, this.value)" style="font-size:13px;">
+                      <option value="user" ${u.role === 'user' ? 'selected' : ''}>user</option>
+                      <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>admin</option>
+                    </select>
+                  </td>
+                  <td>${u.createdAt}</td>
+                  <td><button class="btn-icon" onclick="deleteUser(${u.id}, '${u.username}')" aria-label="${u.username} 삭제"><i class="ti ti-trash" aria-hidden="true"></i></button></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    async function changeRole(id, role) {
+      try {
+        await api('PATCH', `/api/admin/users/${id}/role`, { role });
+        loadUsers();
+      } catch (e) {
+        alert(e.message);
+        loadUsers();
+      }
+    }
+
+    async function deleteUser(id, username) {
+      if (!confirm(`${username} 계정을 삭제하시겠습니까? 포트폴리오와 알림도 함께 삭제됩니다.`)) return;
+      try {
+        await api('DELETE', `/api/admin/users/${id}`);
+        loadUsers();
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    loadUsers();
+  </script>
+</body>
+</html>

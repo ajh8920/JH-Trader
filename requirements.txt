@@ -1,2 +1,8 @@
 flask
 requests
+flask-sqlalchemy
+flask-login
+
+# PostgreSQL로 전환 시 아래 드라이버를 설치하고
+# DATABASE_URL 환경변수를 postgresql://user:pw@host/dbname 형태로 설정하세요.
+# psycopg2-binary

@@ -8,6 +8,10 @@ async function api(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(path, opts);
+  if (res.status === 401) {
+    window.location.href = '/login';
+    throw new Error('로그인이 필요합니다');
+  }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `오류 (${res.status})`);
   return data;
@@ -375,18 +379,18 @@ function renderAlerts(alerts) {
     return;
   }
 
-  el.innerHTML = `<div class="notif-list">${alerts.map((a, i) => `
+  el.innerHTML = `<div class="notif-list">${alerts.map(a => `
     <div class="notif-item">
       <div>
         <div class="notif-ticker">${a.ticker} <span class="${a.triggered ? 'badge-done' : 'badge-active'}">${a.triggered ? '달성됨' : '대기중'}</span></div>
         <div class="notif-info">$${a.price.toFixed(2)} ${a.type === 'above' ? '이상 도달' : '이하 하락'} 시 알림 · ${a.created}${a.triggeredAt ? ` · <span style="color:var(--green)">달성 ${a.triggeredAt}</span>` : ''}</div>
       </div>
-      <button class="btn-icon" onclick="removeAlert(${i})" aria-label="알림 삭제"><i class="ti ti-trash" aria-hidden="true"></i></button>
+      <button class="btn-icon" onclick="removeAlert(${a.id})" aria-label="알림 삭제"><i class="ti ti-trash" aria-hidden="true"></i></button>
     </div>`).join('')}</div>`;
 }
 
-async function removeAlert(idx) {
-  await api('DELETE', `/api/alerts/${idx}`);
+async function removeAlert(id) {
+  await api('DELETE', `/api/alerts/${id}`);
   loadAlerts();
 }
 

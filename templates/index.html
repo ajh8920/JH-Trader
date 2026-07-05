@@ -32,9 +32,22 @@
         <h1 class="header-title">미국 주식 목표가 트래커</h1>
         <p class="header-sub">Finnhub API · 애널리스트 컨센서스 목표가 조회 및 포트폴리오 관리</p>
       </div>
-      <button class="settings-btn" onclick="showKeyBanner()" title="API 키 변경" aria-label="API 키 변경">
-        <i class="ti ti-settings" aria-hidden="true"></i>
-      </button>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+        <span style="font-size:13px;color:var(--text-secondary);margin-right:6px;">
+          {{ current_user.username }}{% if current_user.is_admin %} <span class="pill pill-rec">admin</span>{% endif %}
+        </span>
+        {% if current_user.is_admin %}
+        <a href="/admin" class="settings-btn" title="사용자 관리" aria-label="사용자 관리">
+          <i class="ti ti-users" aria-hidden="true"></i>
+        </a>
+        {% endif %}
+        <button class="settings-btn" onclick="showKeyBanner()" title="API 키 변경" aria-label="API 키 변경">
+          <i class="ti ti-settings" aria-hidden="true"></i>
+        </button>
+        <a href="/logout" class="settings-btn" title="로그아웃" aria-label="로그아웃">
+          <i class="ti ti-logout" aria-hidden="true"></i>
+        </a>
+      </div>
     </header>
 
     <nav class="tabs" role="tablist">
