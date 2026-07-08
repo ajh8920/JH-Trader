@@ -2,6 +2,12 @@
 
 let priceChart = null;
 
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
 // ─── API 호출 (Python 백엔드 경유) ───────────────────────────────────────────
 
 async function api(method, path, body) {
@@ -111,9 +117,9 @@ function renderStockCard(d, el) {
     <div class="card">
       <div class="stock-header">
         <div>
-          <span class="ticker-badge">${d.ticker}</span>
-          <div class="stock-name">${d.name}</div>
-          ${d.industry ? `<div class="stock-industry">${d.industry}</div>` : ''}
+          <span class="ticker-badge">${escapeHtml(d.ticker)}</span>
+          <div class="stock-name">${escapeHtml(d.name)}</div>
+          ${d.industry ? `<div class="stock-industry">${escapeHtml(d.industry)}</div>` : ''}
         </div>
         <div>
           <div class="price-big">$${d.price.toFixed(2)}</div>
@@ -315,7 +321,7 @@ function renderPortfolio(portfolio) {
             const itemPnlPct = p.buyPrice ? (cur - p.buyPrice) / p.buyPrice * 100 : null;
             const cls = (p.changePct || 0) >= 0 ? 'positive' : 'negative';
             return `<tr>
-              <td><div style="font-weight:600;">${p.ticker}</div><div style="font-size:11px;color:var(--text-secondary);">${p.name || ''}</div></td>
+              <td><div style="font-weight:600;">${escapeHtml(p.ticker)}</div><div style="font-size:11px;color:var(--text-secondary);">${escapeHtml(p.name || '')}</div></td>
               <td><div>${cur ? '$' + cur.toFixed(2) : '-'}</div>${cur ? `<div class="${cls}" style="font-size:11px;">${(p.changePct||0)>=0?'+':''}${(p.changePct||0).toFixed(2)}%</div>` : ''}</td>
               <td>${tgt ? '$' + tgt.toFixed(2) : '<span style="color:var(--text-muted)">-</span>'}</td>
               <td>${upside !== null ? `<span style="color:${upside>=0?'var(--green)':'var(--red)'};font-weight:600;">${upside>=0?'+':''}${upside.toFixed(1)}%</span>` : '-'}</td>
@@ -382,7 +388,7 @@ function renderAlerts(alerts) {
   el.innerHTML = `<div class="notif-list">${alerts.map(a => `
     <div class="notif-item">
       <div>
-        <div class="notif-ticker">${a.ticker} <span class="${a.triggered ? 'badge-done' : 'badge-active'}">${a.triggered ? '달성됨' : '대기중'}</span></div>
+        <div class="notif-ticker">${escapeHtml(a.ticker)} <span class="${a.triggered ? 'badge-done' : 'badge-active'}">${a.triggered ? '달성됨' : '대기중'}</span></div>
         <div class="notif-info">$${a.price.toFixed(2)} ${a.type === 'above' ? '이상 도달' : '이하 하락'} 시 알림 · ${a.created}${a.triggeredAt ? ` · <span style="color:var(--green)">달성 ${a.triggeredAt}</span>` : ''}</div>
       </div>
       <button class="btn-icon" onclick="removeAlert(${a.id})" aria-label="알림 삭제"><i class="ti ti-trash" aria-hidden="true"></i></button>

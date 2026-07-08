@@ -1,5 +1,6 @@
-# API 키 등 사용자 데이터 (절대 커밋 금지)
+# API 키, SECRET_KEY 등 민감 정보 (절대 커밋 금지)
 data/
+.env
 
 # Python
 __pycache__/

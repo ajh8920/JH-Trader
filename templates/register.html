@@ -22,6 +22,7 @@
       <div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>{{ error }}</div>
       {% endif %}
       <form method="post" style="display:flex;flex-direction:column;gap:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
         <input type="text" name="username" placeholder="아이디 (3자 이상)" required autofocus />
         <input type="password" name="password" placeholder="비밀번호 (6자 이상)" required />
         <button type="submit" class="btn-primary" style="justify-content:center;">

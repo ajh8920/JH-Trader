@@ -1,11 +1,16 @@
 import os
+import re
+import secrets
 import time
 import threading
 from functools import wraps
 from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, redirect, url_for
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask_login import (
     LoginManager,
     current_user,
@@ -13,6 +18,7 @@ from flask_login import (
     login_user,
     logout_user,
 )
+from flask_wtf import CSRFProtect
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from models import Alert, PortfolioItem, User, db
@@ -21,8 +27,35 @@ BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
+ENV_FILE = BASE_DIR / ".env"
+load_dotenv(ENV_FILE)
+
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
+
+
+def _load_or_create_secret_key():
+    key = os.environ.get("SECRET_KEY")
+    if key:
+        return key
+
+    key = secrets.token_hex(32)
+    try:
+        if ENV_FILE.exists():
+            text = ENV_FILE.read_text(encoding="utf-8")
+            if "SECRET_KEY=" in text:
+                text = re.sub(r"^SECRET_KEY=.*$", f"SECRET_KEY={key}", text, flags=re.MULTILINE)
+            else:
+                text += f"\nSECRET_KEY={key}\n"
+            ENV_FILE.write_text(text, encoding="utf-8")
+        else:
+            ENV_FILE.write_text(f"SECRET_KEY={key}\n", encoding="utf-8")
+        print("[안내] SECRET_KEY를 새로 생성해 .env에 저장했습니다.")
+    except OSError as e:
+        print(f"[경고] SECRET_KEY를 .env에 저장하지 못했습니다 ({e}). 재시작 시 세션이 풀립니다.")
+    return key
+
+
+app.config["SECRET_KEY"] = _load_or_create_secret_key()
 
 # 개발 중엔 SQLite 파일을 사용하고, 운영 전환 시 DATABASE_URL 환경변수만 설정하면
 # (예: postgresql://user:pw@host/dbname) 코드 변경 없이 PostgreSQL로 옮길 수 있습니다.
@@ -31,10 +64,23 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
+
 db.init_app(app)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
+
+csrf = CSRFProtect(app)
+limiter = Limiter(get_remote_address, app=app, default_limits=["200 per hour"])
+
+# 개인 Finnhub 키를 등록하지 않은 계정을 위한 서버 공용 기본 키 (.env, git에 커밋되지 않음)
+DEFAULT_FINNHUB_KEY = os.environ.get("FINNHUB_API_KEY", "")
+
+USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,20}$")
+TICKER_RE = re.compile(r"^[A-Z0-9.\-]{1,10}$")
 
 FH_BASE = "https://finnhub.io/api/v1"
 
@@ -62,14 +108,27 @@ def admin_required(f):
     return wrapper
 
 
+def get_effective_api_key(user):
+    return user.api_key or DEFAULT_FINNHUB_KEY
+
+
+@app.after_request
+def set_security_headers(resp):
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["Referrer-Policy"] = "same-origin"
+    return resp
+
+
 # ─── Finnhub API 호출 ────────────────────────────────────────────────────────
 
-def fh_get(path, api_key):
+def fh_get(path, api_key, params=None):
     if not api_key:
         return None, "API 키가 설정되지 않았습니다"
     try:
         res = requests.get(
-            f"{FH_BASE}{path}&token={api_key}",
+            f"{FH_BASE}{path}",
+            params={**(params or {}), "token": api_key},
             timeout=10,
             headers={"User-Agent": "StockTracker/1.0"},
         )
@@ -87,6 +146,7 @@ def fh_get(path, api_key):
 # ─── 인증 ────────────────────────────────────────────────────────────────────
 
 @app.route("/register", methods=["GET", "POST"])
+@limiter.limit("10 per minute", methods=["POST"])
 def register():
     if current_user.is_authenticated:
         return redirect(url_for("index"))
@@ -96,10 +156,12 @@ def register():
 
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
-    if len(username) < 3 or len(password) < 6:
+    if not USERNAME_RE.match(username):
         return render_template(
-            "register.html", error="아이디는 3자 이상, 비밀번호는 6자 이상이어야 합니다"
+            "register.html", error="아이디는 영문/숫자/밑줄만 사용해 3~20자로 입력하세요"
         )
+    if len(password) < 6:
+        return render_template("register.html", error="비밀번호는 6자 이상이어야 합니다")
 
     if User.query.filter_by(username=username).first():
         return render_template("register.html", error="이미 사용 중인 아이디입니다")
@@ -119,6 +181,7 @@ def register():
 
 
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute", methods=["POST"])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for("index"))
@@ -149,7 +212,7 @@ def logout():
 @app.route("/")
 @login_required
 def index():
-    return render_template("index.html", has_key=bool(current_user.api_key))
+    return render_template("index.html", has_key=bool(get_effective_api_key(current_user)))
 
 
 @app.route("/admin")
@@ -170,7 +233,7 @@ def save_key():
     if not key:
         return jsonify({"error": "키를 입력하세요"}), 400
 
-    data, err = fh_get("/quote?symbol=AAPL", key)
+    data, err = fh_get("/quote", key, params={"symbol": "AAPL"})
     if err:
         return jsonify({"error": err}), 400
 
@@ -193,21 +256,26 @@ def delete_key():
 @login_required
 def get_stock(ticker):
     ticker = ticker.upper()
-    key = current_user.api_key
+    if not TICKER_RE.match(ticker):
+        return jsonify({"error": "티커 형식이 올바르지 않습니다"}), 400
+    key = get_effective_api_key(current_user)
     if not key:
         return jsonify({"error": "API 키가 설정되지 않았습니다"}), 401
 
     import concurrent.futures
     endpoints = {
-        "quote": f"/quote?symbol={ticker}",
-        "target": f"/stock/price-target?symbol={ticker}",
-        "rec": f"/stock/recommendation?symbol={ticker}",
-        "profile": f"/stock/profile2?symbol={ticker}",
+        "quote": "/quote",
+        "target": "/stock/price-target",
+        "rec": "/stock/recommendation",
+        "profile": "/stock/profile2",
     }
 
     results = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
-        futures = {ex.submit(fh_get, path, key): name for name, path in endpoints.items()}
+        futures = {
+            ex.submit(fh_get, path, key, {"symbol": ticker}): name
+            for name, path in endpoints.items()
+        }
         for fut in concurrent.futures.as_completed(futures):
             name = futures[fut]
             data, err = fut.result()
@@ -246,7 +314,9 @@ def get_stock(ticker):
 @login_required
 def get_quote(ticker):
     ticker = ticker.upper()
-    data, err = fh_get(f"/quote?symbol={ticker}", current_user.api_key)
+    if not TICKER_RE.match(ticker):
+        return jsonify({"error": "티커 형식이 올바르지 않습니다"}), 400
+    data, err = fh_get("/quote", get_effective_api_key(current_user), {"symbol": ticker})
     if err:
         return jsonify({"error": err}), 400
     return jsonify({"ticker": ticker, "price": data.get("c", 0), "changePct": data.get("dp", 0)})
@@ -268,6 +338,14 @@ def add_portfolio():
     ticker = body.get("ticker", "").strip().upper()
     if not ticker:
         return jsonify({"error": "티커를 입력하세요"}), 400
+    if not TICKER_RE.match(ticker):
+        return jsonify({"error": "티커 형식이 올바르지 않습니다"}), 400
+
+    try:
+        qty = float(body.get("qty", 0))
+        buy_price = float(body.get("buyPrice", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "수량과 매입가는 숫자여야 합니다"}), 400
 
     exists = PortfolioItem.query.filter_by(user_id=current_user.id, ticker=ticker).first()
     if exists:
@@ -276,8 +354,8 @@ def add_portfolio():
     item = PortfolioItem(
         user_id=current_user.id,
         ticker=ticker,
-        qty=float(body.get("qty", 0)),
-        buy_price=float(body.get("buyPrice", 0)),
+        qty=qty,
+        buy_price=buy_price,
         name=ticker,
     )
     db.session.add(item)
@@ -300,16 +378,17 @@ def refresh_portfolio():
     if not items:
         return jsonify([])
 
-    key = current_user.api_key
+    key = get_effective_api_key(current_user)
     if not key:
         return jsonify({"error": "API 키가 설정되지 않았습니다"}), 401
 
     import concurrent.futures
 
     def update_item(item):
-        q, _ = fh_get(f"/quote?symbol={item.ticker}", key)
-        t, _ = fh_get(f"/stock/price-target?symbol={item.ticker}", key)
-        p, _ = fh_get(f"/stock/profile2?symbol={item.ticker}", key)
+        params = {"symbol": item.ticker}
+        q, _ = fh_get("/quote", key, params)
+        t, _ = fh_get("/stock/price-target", key, params)
+        p, _ = fh_get("/stock/profile2", key, params)
         if q and q.get("c"):
             item.current_price = q["c"]
             item.change_pct = q.get("dp", 0)
@@ -345,11 +424,19 @@ def add_alert():
 
     if not ticker or price is None:
         return jsonify({"error": "티커와 가격을 입력하세요"}), 400
+    if not TICKER_RE.match(ticker):
+        return jsonify({"error": "티커 형식이 올바르지 않습니다"}), 400
+    if kind not in ("above", "below"):
+        return jsonify({"error": "type은 above 또는 below여야 합니다"}), 400
+    try:
+        price = float(price)
+    except (TypeError, ValueError):
+        return jsonify({"error": "가격은 숫자여야 합니다"}), 400
 
     alert = Alert(
         user_id=current_user.id,
         ticker=ticker,
-        price=float(price),
+        price=price,
         type=kind,
         created=time.strftime("%Y-%m-%d"),
     )
@@ -417,6 +504,17 @@ def delete_user(user_id):
     return jsonify({"ok": True})
 
 
+# JSON API는 CSRF 토큰 대신 로그인 세션 + JSON Content-Type(교차 출처 요청 시
+# 브라우저 프리플라이트로 차단됨) 조합으로 보호하므로 폼 기반 CSRF 검사에서 제외합니다.
+for _view in (
+    save_key, delete_key, get_stock, get_quote,
+    get_portfolio, add_portfolio, remove_portfolio, refresh_portfolio,
+    get_alerts, add_alert, remove_alert,
+    list_users, update_user_role, delete_user,
+):
+    csrf.exempt(_view)
+
+
 # ─── 백그라운드 알림 체크 ────────────────────────────────────────────────────
 
 def alert_checker():
@@ -428,9 +526,12 @@ def alert_checker():
                 changed = False
                 for a in pending:
                     user = db.session.get(User, a.user_id)
-                    if not user or not user.api_key:
+                    if not user:
                         continue
-                    data, _ = fh_get(f"/quote?symbol={a.ticker}", user.api_key)
+                    key = get_effective_api_key(user)
+                    if not key:
+                        continue
+                    data, _ = fh_get("/quote", key, {"symbol": a.ticker})
                     if not data:
                         continue
                     cur = data.get("c", 0)
