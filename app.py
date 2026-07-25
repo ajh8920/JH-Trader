@@ -3,6 +3,7 @@ import re
 import secrets
 import time
 import threading
+from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
@@ -21,7 +22,9 @@ from flask_login import (
 from flask_wtf import CSRFProtect
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from models import Alert, PortfolioItem, User, db
+from backtest import get_target_default, get_version_defaults, run_infinite_buying
+from live_tracker import compute_position_status
+from models import Alert, InfinitePosition, InfiniteTrade, PortfolioItem, User, db
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
@@ -453,6 +456,169 @@ def remove_alert(alert_id):
     return jsonify({"ok": True})
 
 
+# ─── 무한매수법 백테스트 API ─────────────────────────────────────────────────
+
+@app.route("/api/backtest/infinite-buying", methods=["POST"])
+@login_required
+@limiter.limit("20 per minute")
+def backtest_infinite_buying():
+    body = request.json or {}
+    ticker = body.get("ticker", "").strip().upper()
+    if not TICKER_RE.match(ticker):
+        return jsonify({"error": "티커 형식이 올바르지 않습니다"}), 400
+
+    version = body.get("version", "v2")
+    if version not in ("v2", "v3", "v4"):
+        return jsonify({"error": "버전은 v2, v3, v4 중 하나여야 합니다"}), 400
+    defaults = get_version_defaults(version)
+
+    start = body.get("start", "")
+    end = body.get("end", "")
+    try:
+        start_dt = datetime.strptime(start, "%Y-%m-%d")
+        end_dt = datetime.strptime(end, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"error": "날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)"}), 400
+    if start_dt >= end_dt:
+        return jsonify({"error": "종료일은 시작일보다 이후여야 합니다"}), 400
+
+    try:
+        seed = float(body.get("seed", 0))
+        splits = int(body.get("splits", defaults["splits"]))
+        target_return = float(body.get("targetReturn", get_target_default(ticker)))
+    except (TypeError, ValueError):
+        return jsonify({"error": "시드/분할수/목표수익률은 숫자여야 합니다"}), 400
+
+    if seed <= 0:
+        return jsonify({"error": "시드는 0보다 커야 합니다"}), 400
+    if not (2 <= splits <= 100):
+        return jsonify({"error": "분할수는 2~100 사이여야 합니다"}), 400
+    if not (0 < target_return <= 200):
+        return jsonify({"error": "목표수익률은 0~200 사이여야 합니다"}), 400
+
+    result = run_infinite_buying(ticker, start, end, seed, splits, target_return, version)
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+# ─── 무한매수법 실전 현황 API ─────────────────────────────────────────────────
+
+@app.route("/api/infinite/positions", methods=["GET"])
+@login_required
+def list_infinite_positions():
+    positions = InfinitePosition.query.filter_by(user_id=current_user.id).order_by(InfinitePosition.id).all()
+    key = get_effective_api_key(current_user)
+    results = []
+    for p in positions:
+        current_price = None
+        if key:
+            data, err = fh_get("/quote", key, {"symbol": p.ticker})
+            if data and data.get("c"):
+                current_price = data["c"]
+        results.append(compute_position_status(p, current_price))
+    return jsonify(results)
+
+
+@app.route("/api/infinite/positions", methods=["POST"])
+@login_required
+def add_infinite_position():
+    body = request.json or {}
+    ticker = body.get("ticker", "").strip().upper()
+    if not TICKER_RE.match(ticker):
+        return jsonify({"error": "티커 형식이 올바르지 않습니다"}), 400
+
+    version = body.get("version", "v2")
+    if version not in ("v2", "v3", "v4"):
+        return jsonify({"error": "버전은 v2, v3, v4 중 하나여야 합니다"}), 400
+
+    try:
+        seed = float(body.get("seed", 0))
+        splits = int(body.get("splits", 40))
+        target_return = float(body.get("targetReturn", get_target_default(ticker)))
+    except (TypeError, ValueError):
+        return jsonify({"error": "시드/분할수/목표수익률은 숫자여야 합니다"}), 400
+
+    if seed <= 0:
+        return jsonify({"error": "시드는 0보다 커야 합니다"}), 400
+    if not (2 <= splits <= 100):
+        return jsonify({"error": "분할수는 2~100 사이여야 합니다"}), 400
+    if not (0 < target_return <= 200):
+        return jsonify({"error": "목표수익률은 0~200 사이여야 합니다"}), 400
+
+    position = InfinitePosition(
+        user_id=current_user.id, ticker=ticker, version=version,
+        splits=splits, target_return_pct=target_return, seed=seed,
+    )
+    db.session.add(position)
+    db.session.commit()
+    return jsonify(compute_position_status(position))
+
+
+@app.route("/api/infinite/positions/<int:position_id>", methods=["DELETE"])
+@login_required
+def delete_infinite_position(position_id):
+    position = InfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+    db.session.delete(position)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/infinite/positions/<int:position_id>/trades", methods=["POST"])
+@login_required
+def add_infinite_trade(position_id):
+    position = InfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+
+    body = request.json or {}
+    trade_date = body.get("date", "").strip()
+    action = body.get("action", "").strip().lower()
+    if action not in ("buy", "sell"):
+        return jsonify({"error": "구분은 buy 또는 sell이어야 합니다"}), 400
+    try:
+        datetime.strptime(trade_date, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"error": "날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)"}), 400
+    try:
+        price = float(body.get("price", 0))
+        qty = int(body.get("qty", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "가격과 수량은 숫자여야 합니다"}), 400
+    if price <= 0 or qty <= 0:
+        return jsonify({"error": "가격과 수량은 0보다 커야 합니다"}), 400
+
+    trade = InfiniteTrade(
+        position_id=position.id, trade_date=trade_date, action=action,
+        price=price, qty=qty, note=(body.get("note", "") or "").strip()[:255],
+    )
+    db.session.add(trade)
+    db.session.commit()
+    return jsonify(compute_position_status(position))
+
+
+@app.route("/api/infinite/positions/<int:position_id>/trades/<int:trade_id>", methods=["DELETE"])
+@login_required
+def delete_infinite_trade(position_id, trade_id):
+    position = InfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+    InfiniteTrade.query.filter_by(id=trade_id, position_id=position.id).delete()
+    db.session.commit()
+    return jsonify(compute_position_status(position))
+
+
+@app.route("/api/infinite/positions/<int:position_id>/trades", methods=["GET"])
+@login_required
+def get_infinite_trades(position_id):
+    position = InfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+    return jsonify([t.to_dict() for t in position.trades])
+
+
 # ─── 관리자 API ──────────────────────────────────────────────────────────────
 
 @app.route("/api/admin/users", methods=["GET"])
@@ -510,6 +676,9 @@ for _view in (
     save_key, delete_key, get_stock, get_quote,
     get_portfolio, add_portfolio, remove_portfolio, refresh_portfolio,
     get_alerts, add_alert, remove_alert,
+    backtest_infinite_buying,
+    list_infinite_positions, add_infinite_position, delete_infinite_position,
+    add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_users, update_user_role, delete_user,
 ):
     csrf.exempt(_view)
@@ -558,6 +727,6 @@ if __name__ == "__main__":
 
     print("=" * 50)
     print("  미국 주식 목표가 트래커")
-    print("  http://localhost:5000 으로 접속하세요")
+    print("  http://localhost:3000 으로 접속하세요")
     print("=" * 50)
-    app.run(debug=False, port=5000)
+    app.run(debug=False, port=3000)

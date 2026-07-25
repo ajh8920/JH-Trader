@@ -54,6 +54,8 @@
       <button class="tab active" onclick="switchTab('search')" role="tab"><i class="ti ti-search" aria-hidden="true"></i> 종목 검색</button>
       <button class="tab" onclick="switchTab('portfolio')" role="tab"><i class="ti ti-briefcase" aria-hidden="true"></i> 포트폴리오</button>
       <button class="tab" onclick="switchTab('alerts')" role="tab"><i class="ti ti-bell" aria-hidden="true"></i> 알림 <span id="alert-badge" class="badge" style="display:none;">0</span></button>
+      <button class="tab" onclick="switchTab('backtest')" role="tab"><i class="ti ti-history" aria-hidden="true"></i> 백테스트</button>
+      <button class="tab" onclick="switchTab('live')" role="tab"><i class="ti ti-infinity" aria-hidden="true"></i> 실전 현황</button>
     </nav>
 
     <main>
@@ -105,6 +107,90 @@
           <i class="ti ti-info-circle" aria-hidden="true"></i>
           알림 조건은 서버에서 30초마다 자동으로 확인합니다. 터미널에 달성 메시지가 출력됩니다.
         </div>
+      </section>
+
+      <!-- 무한매수법 백테스트 -->
+      <section id="sec-backtest" class="section">
+        <div class="card">
+          <div class="bt-form-grid">
+            <div class="bt-field">
+              <label for="bt-version">버전</label>
+              <select id="bt-version" onchange="applyBacktestVersionDefaults()">
+                <option value="v2">v2.2 (40분할)</option>
+                <option value="v3">v3.0 (20분할·중간복리)</option>
+                <option value="v4">v4.0 (20/30/40분할 선택·중간복리)</option>
+              </select>
+            </div>
+            <div class="bt-field">
+              <label for="bt-ticker">티커</label>
+              <input type="text" id="bt-ticker" placeholder="SOXL" value="SOXL" onchange="applyTickerTargetDefault()" />
+            </div>
+            <div class="bt-field">
+              <label for="bt-start">시작일</label>
+              <input type="date" id="bt-start" />
+            </div>
+            <div class="bt-field">
+              <label for="bt-end">종료일</label>
+              <input type="date" id="bt-end" />
+            </div>
+            <div class="bt-field">
+              <label for="bt-seed">시드 ($)</label>
+              <input type="number" id="bt-seed" placeholder="10000" step="0.01" value="10000" />
+            </div>
+            <div class="bt-field">
+              <label for="bt-splits">분할수</label>
+              <input type="number" id="bt-splits" min="2" max="100" value="40" />
+            </div>
+            <div class="bt-field">
+              <label for="bt-target">목표수익률 (%)</label>
+              <input type="number" id="bt-target" step="0.1" value="12" />
+            </div>
+          </div>
+          <button class="btn-primary" style="margin-top:12px;" onclick="runBacktest()">
+            <i class="ti ti-player-play" aria-hidden="true"></i> 백테스트 실행
+          </button>
+          <div class="info-box" style="margin-top:12px;">
+            <i class="ti ti-info-circle" aria-hidden="true"></i>
+            라오어 무한매수법 SOXL V2.2 원문(네이버 카페) 기준으로 구현했습니다. 1일차 종가 매수 → 전반전(T&lt;N/2)은 평단가+임계값 LOC 절반씩, 후반전은 임계값 LOC 전액 매수 → 매도는 1/4 임계값 LOC + 3/4 목표수익률 지정가 → 분할 소진 시 쿼터손절모드(1/4 MOC 매도 후 10분할 재매수 반복)로 전환됩니다. 목표수익률은 SOXL 12%, KORU 20%, 그 외 종목 10%가 기본값이며 직접 수정할 수 있습니다. 손절모드 탈출 시 T 재계산 등 일부 세부 규칙은 근사치이니 실매매 전 반드시 검증하세요. 같은 종목을 첫날 매수 후 그대로 보유했을 경우(매수후보유)를 지수 삼아 MDD(최대낙폭)와 알파(초과수익)를 함께 비교해 보여줍니다. 시세는 Yahoo Finance 일봉 기준입니다.
+          </div>
+        </div>
+        <div id="backtest-result"></div>
+      </section>
+
+      <!-- 무한매수법 실전 현황 -->
+      <section id="sec-live" class="section">
+        <div class="card">
+          <div class="bt-form-grid">
+            <div class="bt-field">
+              <label for="live-ticker">티커</label>
+              <input type="text" id="live-ticker" placeholder="SOXL" onchange="applyLiveTickerTargetDefault()" />
+            </div>
+            <div class="bt-field">
+              <label for="live-version">버전</label>
+              <select id="live-version">
+                <option value="v2">v2.2 (40분할)</option>
+                <option value="v3">v3.0 (20분할)</option>
+                <option value="v4">v4.0 (20/30/40분할)</option>
+              </select>
+            </div>
+            <div class="bt-field">
+              <label for="live-splits">분할수</label>
+              <input type="number" id="live-splits" min="2" max="100" value="40" />
+            </div>
+            <div class="bt-field">
+              <label for="live-target">목표수익률 (%)</label>
+              <input type="number" id="live-target" step="0.1" value="10" />
+            </div>
+            <div class="bt-field">
+              <label for="live-seed">시드 ($)</label>
+              <input type="number" id="live-seed" placeholder="10000" step="0.01" value="10000" />
+            </div>
+          </div>
+          <button class="btn-primary" style="margin-top:12px;" onclick="addInfinitePosition()">
+            <i class="ti ti-plus" aria-hidden="true"></i> 새 포지션 시작
+          </button>
+        </div>
+        <div id="live-positions"></div>
       </section>
     </main>
   </div>

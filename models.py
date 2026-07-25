@@ -20,6 +20,9 @@ class User(db.Model, UserMixin):
         "PortfolioItem", backref="user", cascade="all, delete-orphan"
     )
     alerts = db.relationship("Alert", backref="user", cascade="all, delete-orphan")
+    infinite_positions = db.relationship(
+        "InfinitePosition", backref="user", cascade="all, delete-orphan"
+    )
 
     @property
     def is_admin(self):
@@ -73,4 +76,44 @@ class Alert(db.Model):
             "triggered": self.triggered,
             "triggeredAt": self.triggered_at,
             "created": self.created,
+        }
+
+
+class InfinitePosition(db.Model):
+    __tablename__ = "infinite_positions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    ticker = db.Column(db.String(16), nullable=False)
+    version = db.Column(db.String(10), default="v2")
+    splits = db.Column(db.Integer, nullable=False, default=40)
+    target_return_pct = db.Column(db.Float, nullable=False, default=10.0)
+    seed = db.Column(db.Float, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    trades = db.relationship(
+        "InfiniteTrade", backref="position", cascade="all, delete-orphan",
+        order_by="InfiniteTrade.trade_date, InfiniteTrade.id",
+    )
+
+
+class InfiniteTrade(db.Model):
+    __tablename__ = "infinite_trades"
+
+    id = db.Column(db.Integer, primary_key=True)
+    position_id = db.Column(db.Integer, db.ForeignKey("infinite_positions.id"), nullable=False)
+    trade_date = db.Column(db.String(20), nullable=False)
+    action = db.Column(db.String(4), nullable=False)  # "buy" | "sell"
+    price = db.Column(db.Float, nullable=False)
+    qty = db.Column(db.Integer, nullable=False)
+    note = db.Column(db.String(255), default="")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "date": self.trade_date,
+            "action": self.action,
+            "price": self.price,
+            "qty": self.qty,
+            "note": self.note or "",
         }

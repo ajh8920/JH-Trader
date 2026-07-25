@@ -73,13 +73,15 @@ async function saveApiKey() {
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((btn, i) => {
-    const active = ['search', 'portfolio', 'alerts'][i] === name;
+    const active = ['search', 'portfolio', 'alerts', 'backtest', 'live'][i] === name;
     btn.classList.toggle('active', active);
   });
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById('sec-' + name).classList.add('active');
   if (name === 'portfolio') loadPortfolio();
   if (name === 'alerts') loadAlerts();
+  if (name === 'backtest') initBacktestDates();
+  if (name === 'live') loadInfinitePositions();
 }
 
 // ─── 종목 검색 ───────────────────────────────────────────────────────────────
@@ -398,6 +400,350 @@ function renderAlerts(alerts) {
 async function removeAlert(id) {
   await api('DELETE', `/api/alerts/${id}`);
   loadAlerts();
+}
+
+// ─── 무한매수법 백테스트 ─────────────────────────────────────────────────────
+
+let equityChart = null;
+
+const BACKTEST_VERSION_DEFAULTS = {
+  v2: { splits: 40 },
+  v3: { splits: 20 },
+  v4: { splits: 20 },
+};
+
+const TICKER_TARGET_DEFAULTS = { SOXL: 12, KORU: 20 };
+
+function applyTickerTargetDefault() {
+  const ticker = document.getElementById('bt-ticker').value.trim().toUpperCase();
+  document.getElementById('bt-target').value = TICKER_TARGET_DEFAULTS[ticker] ?? 10;
+}
+
+function applyBacktestVersionDefaults() {
+  const version = document.getElementById('bt-version').value;
+  const d = BACKTEST_VERSION_DEFAULTS[version];
+  document.getElementById('bt-splits').value = d.splits;
+  applyTickerTargetDefault();
+}
+
+function initBacktestDates() {
+  const startEl = document.getElementById('bt-start');
+  const endEl = document.getElementById('bt-end');
+  if (endEl.value && startEl.value) return;
+  const today = new Date();
+  const past = new Date();
+  past.setMonth(past.getMonth() - 3);
+  const fmt = d => d.toISOString().slice(0, 10);
+  if (!endEl.value) endEl.value = fmt(today);
+  if (!startEl.value) startEl.value = fmt(past);
+}
+
+async function runBacktest() {
+  const version = document.getElementById('bt-version').value;
+  const ticker = document.getElementById('bt-ticker').value.trim().toUpperCase();
+  const start = document.getElementById('bt-start').value;
+  const end = document.getElementById('bt-end').value;
+  const seed = parseFloat(document.getElementById('bt-seed').value);
+  const splits = parseInt(document.getElementById('bt-splits').value, 10);
+  const targetReturn = parseFloat(document.getElementById('bt-target').value);
+  const el = document.getElementById('backtest-result');
+
+  if (!ticker) { alert('티커를 입력하세요'); return; }
+  if (!start || !end) { alert('시작일과 종료일을 입력하세요'); return; }
+  if (!seed || seed <= 0) { alert('시드를 입력하세요'); return; }
+  if (!splits || splits < 2) { alert('분할수를 확인하세요'); return; }
+  if (!targetReturn || targetReturn <= 0) { alert('목표수익률을 확인하세요'); return; }
+
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${ticker} 백테스트 진행 중...</div>`;
+
+  try {
+    const data = await api('POST', '/api/backtest/infinite-buying', { ticker, start, end, seed, splits, targetReturn, version });
+    renderBacktestResult(data);
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+  }
+}
+
+function renderBacktestResult(d) {
+  const el = document.getElementById('backtest-result');
+  const pnlCls = d.evalPnl >= 0 ? 'positive' : 'negative';
+  const holding = d.holding;
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="bt-summary-grid">
+        <div class="meta-item"><div class="meta-label">시드</div><div class="meta-value">$${d.seed.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">매입 금액</div><div class="meta-value">$${d.totalBuyAmount.toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
+        <div class="meta-item"><div class="meta-label">매도 금액</div><div class="meta-value">$${d.totalSellAmount.toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
+        <div class="meta-item"><div class="meta-label">평가 손익</div><div class="meta-value ${pnlCls}">${d.evalPnl>=0?'+':''}$${Math.abs(d.evalPnl).toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
+        <div class="meta-item"><div class="meta-label">수익률</div><div class="meta-value ${pnlCls}">${d.returnPct>=0?'+':''}${d.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">시드 대비 수익률</div><div class="meta-value ${pnlCls}">${d.seedReturnPct>=0?'+':''}${d.seedReturnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">목표 수익률</div><div class="meta-value">${d.targetReturnPct}%</div></div>
+        <div class="meta-item"><div class="meta-label">분할수</div><div class="meta-value">${d.splits}</div></div>
+        <div class="meta-item"><div class="meta-label">전략 MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)} 수익률</div><div class="meta-value ${d.benchmark.returnPct>=0?'positive':'negative'}">${d.benchmark.returnPct>=0?'+':''}${d.benchmark.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)} MDD</div><div class="meta-value negative">-${d.benchmark.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">알파(초과수익)</div><div class="meta-value ${d.alphaPct>=0?'positive':'negative'}">${d.alphaPct>=0?'+':''}${d.alphaPct.toFixed(1)}%p</div></div>
+      </div>
+
+      <div class="bt-holding-box">
+        <span class="cycle-pill">${d.version.toUpperCase()}</span>
+        <span class="cycle-pill">완료 사이클 ${d.completedCycles}회</span>
+        ${holding.lossCutMode ? `<span class="cycle-pill" style="background:var(--red-bg);color:var(--red);">쿼터손절모드</span>` : ''}
+        ${holding.qty > 0
+          ? ` · 현재 보유 중: ${holding.qty}주 @ 평단 $${holding.avgPrice.toFixed(2)} · 현재가 $${holding.currentPrice.toFixed(2)} · 평가금액 $${holding.value.toLocaleString('en-US',{maximumFractionDigits:2})} (T값 ${holding.tValue}/${d.splits})`
+          : ` · 백테스트 종료 시점 보유 없음 (전량 매도 완료)`}
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">기간: ${d.start} ~ ${d.end}</div>
+      </div>
+
+      <div class="chart-wrap">
+        <canvas id="equity-chart" role="img" aria-label="자산 가치 변화 차트"></canvas>
+      </div>
+    </div>
+
+    <div class="pf-table-wrap">
+      <table class="pf-table">
+        <thead><tr><th>회차</th><th>날짜</th><th>구분</th><th>가격</th><th>수량</th><th>메모</th></tr></thead>
+        <tbody>
+          ${d.trades.length ? d.trades.map(t => `
+            <tr>
+              <td>${t.cycle}</td>
+              <td>${t.date}</td>
+              <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? '매수' : '매도'}</span></td>
+              <td>$${t.price.toFixed(2)}</td>
+              <td>${t.qty}</td>
+              <td style="font-size:12px;color:var(--text-secondary);">${escapeHtml(t.note)}</td>
+            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">해당 기간 동안 체결된 거래가 없습니다</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  setTimeout(() => drawEquityChart(d.equityCurve, d.benchmark), 80);
+}
+
+function drawEquityChart(curve, benchmark) {
+  const canvas = document.getElementById('equity-chart');
+  if (!canvas) return;
+  if (equityChart) equityChart.destroy();
+  const datasets = [{
+    label: '무한매수법',
+    data: curve.map(p => p.value),
+    borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
+    fill: true, pointRadius: 0, borderWidth: 2, tension: 0.15,
+  }];
+  if (benchmark?.equityCurve?.length) {
+    datasets.push({
+      label: benchmark.label,
+      data: benchmark.equityCurve.map(p => p.value),
+      borderColor: '#97C459', backgroundColor: 'transparent',
+      fill: false, pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: 0.15,
+    });
+  }
+  equityChart = new Chart(canvas, {
+    type: 'line',
+    data: { labels: curve.map(p => p.date), datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: $` + ctx.parsed.y.toLocaleString('en-US', {maximumFractionDigits:0}) } },
+      },
+      scales: {
+        y: { ticks: { callback: v => '$' + v.toLocaleString('en-US', {maximumFractionDigits:0}) }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        x: { ticks: { maxTicksLimit: 8 }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+// ─── 무한매수법 실전 현황 ────────────────────────────────────────────────────
+
+function applyLiveTickerTargetDefault() {
+  const ticker = document.getElementById('live-ticker').value.trim().toUpperCase();
+  document.getElementById('live-target').value = TICKER_TARGET_DEFAULTS[ticker] ?? 10;
+}
+
+async function addInfinitePosition() {
+  const ticker = document.getElementById('live-ticker').value.trim().toUpperCase();
+  const version = document.getElementById('live-version').value;
+  const splits = parseInt(document.getElementById('live-splits').value, 10);
+  const targetReturn = parseFloat(document.getElementById('live-target').value);
+  const seed = parseFloat(document.getElementById('live-seed').value);
+
+  if (!ticker) { alert('티커를 입력하세요'); return; }
+  if (!seed || seed <= 0) { alert('시드를 입력하세요'); return; }
+  if (!splits || splits < 2) { alert('분할수를 확인하세요'); return; }
+  if (!targetReturn || targetReturn <= 0) { alert('목표수익률을 확인하세요'); return; }
+
+  try {
+    await api('POST', '/api/infinite/positions', { ticker, version, splits, targetReturn, seed });
+    document.getElementById('live-ticker').value = '';
+    loadInfinitePositions();
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteInfinitePosition(id) {
+  if (!confirm('이 포지션과 매매 기록을 모두 삭제하시겠습니까?')) return;
+  await api('DELETE', `/api/infinite/positions/${id}`);
+  loadInfinitePositions();
+}
+
+async function loadInfinitePositions() {
+  const el = document.getElementById('live-positions');
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>불러오는 중...</div>`;
+  try {
+    const positions = await api('GET', '/api/infinite/positions');
+    renderInfinitePositions(positions);
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+  }
+}
+
+function renderInfinitePositions(positions) {
+  const el = document.getElementById('live-positions');
+  if (!positions.length) {
+    el.innerHTML = `<div class="empty-state"><i class="ti ti-infinity" aria-hidden="true"></i><p>진행 중인 무한매수법 포지션이 없습니다</p><small>위에서 티커와 시드를 입력해 시작하세요</small></div>`;
+    return;
+  }
+
+  el.innerHTML = positions.map(p => {
+    const pnlCls = p.evalPnl >= 0 ? 'positive' : 'negative';
+    const rec = p.recommendation;
+    const recBoxCls = rec.type === 'loss_cut_moc_sell' ? 'live-rec-box live-rec-warn' : 'live-rec-box';
+    return `
+    <div class="card" id="live-card-${p.id}">
+      <div class="stock-header">
+        <div>
+          <span class="ticker-badge">${escapeHtml(p.ticker)}</span>
+          <span class="cycle-pill">${p.version.toUpperCase()}</span>
+          <span class="cycle-pill">사이클 ${p.cycle}</span>
+          ${p.lossCutMode ? `<span class="cycle-pill" style="background:var(--red-bg);color:var(--red);">분할소진</span>` : ''}
+        </div>
+        <button class="btn-icon" onclick="deleteInfinitePosition(${p.id})" aria-label="포지션 삭제"><i class="ti ti-trash" aria-hidden="true"></i></button>
+      </div>
+      <div class="live-section-label">기본 정보</div>
+      <div class="bt-summary-grid" style="grid-template-columns:repeat(3,1fr);">
+        <div class="meta-item"><div class="meta-label">시드</div><div class="meta-value">$${p.seed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">사용한 시드</div><div class="meta-value">$${p.usedSeed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">1회 투자금</div><div class="meta-value">$${p.splitAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+      </div>
+
+      <div class="live-section-label">매입 정보</div>
+      <div class="bt-summary-grid" style="grid-template-columns:repeat(3,1fr);">
+        <div class="meta-item"><div class="meta-label">평단가</div><div class="meta-value">${p.avgPrice ? '$' + p.avgPrice.toFixed(2) : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">보유 수량</div><div class="meta-value">${p.holdingQty}</div></div>
+        <div class="meta-item"><div class="meta-label">매입 금액</div><div class="meta-value">$${p.buyAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+      </div>
+
+      <div class="live-section-label">무한매수 공식</div>
+      <div class="bt-summary-grid" style="grid-template-columns:repeat(3,1fr);">
+        <div class="meta-item"><div class="meta-label">T</div><div class="meta-value">${p.tValue}</div></div>
+        <div class="meta-item"><div class="meta-label">목표 수익률</div><div class="meta-value">${p.targetReturnPct}%</div></div>
+        <div class="meta-item"><div class="meta-label">Star 값</div><div class="meta-value">${p.starPct !== null ? p.starPct.toFixed(2) + '%' : '-'}</div></div>
+      </div>
+
+      <div class="live-section-label">평가</div>
+      <div class="bt-summary-grid" style="grid-template-columns:repeat(3,1fr);">
+        <div class="meta-item"><div class="meta-label">현재가</div><div class="meta-value">${p.currentPrice ? '$' + p.currentPrice.toFixed(2) : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">평가손익</div><div class="meta-value ${pnlCls}">${p.evalPnl>=0?'+':''}$${Math.abs(p.evalPnl).toLocaleString('en-US',{maximumFractionDigits:2})}</div></div>
+        <div class="meta-item"><div class="meta-label">수익률</div><div class="meta-value ${pnlCls}">${p.returnPct>=0?'+':''}${p.returnPct.toFixed(1)}%</div></div>
+      </div>
+
+      <div class="${recBoxCls}">
+        <div class="live-rec-title"><i class="ti ti-bulb" aria-hidden="true"></i> 무한매수법 가이드 <span class="cycle-pill">${p.version.toUpperCase()}</span></div>
+        <div class="live-rec-pills">
+          <span class="pill ${rec.action === 'sell' ? 'pill-sell' : 'pill-buy'}">${rec.action === 'sell' ? '매도' : '매수'}</span>
+          <span class="pill pill-rec">${rec.orderType} ${rec.action === 'sell' ? '매도' : '매수'}</span>
+        </div>
+        ${rec.qty !== undefined ? `<div class="live-rec-big">${rec.qty}주</div>` : ''}
+        ${rec.buyPrice !== undefined ? `<div class="live-rec-big">$${rec.buyPrice.toFixed(2)}</div>` : ''}
+        ${rec.buyPriceA !== undefined ? `<div class="live-rec-big">$${rec.buyPriceA.toFixed(2)} / $${rec.buyPriceB.toFixed(2)}</div>` : ''}
+        <div class="live-rec-note">${escapeHtml(rec.note)}</div>
+        ${rec.quarterSellPrice !== undefined ? `<div class="live-rec-prices">참고 — 쿼터매도 $${rec.quarterSellPrice.toFixed(2)} · 목표매도 $${rec.targetSellPrice.toFixed(2)}</div>` : ''}
+        ${(rec.qty !== undefined && rec.buyPrice === undefined && rec.buyPriceA === undefined) ? `<div class="live-rec-prices">참고 — 목표매도 $${rec.targetSellPrice.toFixed(2)}</div>` : ''}
+      </div>
+
+      <div class="add-form">
+        <input type="date" id="live-trade-date-${p.id}" style="width:150px;" />
+        <select id="live-trade-action-${p.id}" style="width:90px;">
+          <option value="buy">매수</option>
+          <option value="sell">매도</option>
+        </select>
+        <input type="number" id="live-trade-price-${p.id}" placeholder="가격 ($)" style="width:110px;" step="0.01" />
+        <input type="number" id="live-trade-qty-${p.id}" placeholder="수량" style="width:90px;" step="1" min="1" />
+        <button class="btn-primary" onclick="addInfiniteTrade(${p.id})"><i class="ti ti-plus" aria-hidden="true"></i> 매매 추가</button>
+        <button class="btn-secondary" onclick="toggleLiveTrades(${p.id})"><i class="ti ti-list" aria-hidden="true"></i> 매매기록 (${p.tradeCount})</button>
+      </div>
+      <div id="live-trades-${p.id}" style="display:none;"></div>
+    </div>`;
+  }).join('');
+}
+
+async function addInfiniteTrade(positionId) {
+  const date = document.getElementById(`live-trade-date-${positionId}`).value;
+  const action = document.getElementById(`live-trade-action-${positionId}`).value;
+  const price = parseFloat(document.getElementById(`live-trade-price-${positionId}`).value);
+  const qty = parseInt(document.getElementById(`live-trade-qty-${positionId}`).value, 10);
+
+  if (!date) { alert('날짜를 입력하세요'); return; }
+  if (!price || price <= 0) { alert('가격을 입력하세요'); return; }
+  if (!qty || qty <= 0) { alert('수량을 입력하세요'); return; }
+
+  const wasOpen = document.getElementById(`live-trades-${positionId}`)?.style.display !== 'none';
+  try {
+    await api('POST', `/api/infinite/positions/${positionId}/trades`, { date, action, price, qty });
+    await loadInfinitePositions();
+    if (wasOpen) await showLiveTrades(positionId);
+  } catch (e) { alert(e.message); }
+}
+
+async function toggleLiveTrades(positionId) {
+  const tradesEl = document.getElementById(`live-trades-${positionId}`);
+  if (!tradesEl) return;
+  if (tradesEl.style.display === 'none') {
+    await showLiveTrades(positionId);
+  } else {
+    tradesEl.style.display = 'none';
+  }
+}
+
+async function showLiveTrades(positionId) {
+  const tradesEl = document.getElementById(`live-trades-${positionId}`);
+  tradesEl.style.display = 'block';
+  tradesEl.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>불러오는 중...</div>`;
+  try {
+    const trades = await api('GET', `/api/infinite/positions/${positionId}/trades`);
+    if (!trades.length) {
+      tradesEl.innerHTML = `<div class="empty-state"><p>매매 기록이 없습니다</p></div>`;
+      return;
+    }
+    tradesEl.innerHTML = `
+      <div class="pf-table-wrap">
+        <table class="pf-table">
+          <thead><tr><th>날짜</th><th>구분</th><th>가격</th><th>수량</th><th></th></tr></thead>
+          <tbody>
+            ${trades.slice().reverse().map(t => `
+              <tr>
+                <td>${t.date}</td>
+                <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? '매수' : '매도'}</span></td>
+                <td>$${t.price.toFixed(2)}</td>
+                <td>${t.qty}</td>
+                <td><button class="btn-icon" onclick="deleteInfiniteTrade(${positionId}, ${t.id})" aria-label="거래 삭제"><i class="ti ti-trash" aria-hidden="true"></i></button></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    tradesEl.innerHTML = `<div class="error-msg">${e.message}</div>`;
+  }
+}
+
+async function deleteInfiniteTrade(positionId, tradeId) {
+  if (!confirm('이 매매 기록을 삭제하시겠습니까?')) return;
+  await api('DELETE', `/api/infinite/positions/${positionId}/trades/${tradeId}`);
+  await loadInfinitePositions();
+  await showLiveTrades(positionId);
 }
 
 // ─── 유틸 ────────────────────────────────────────────────────────────────────
