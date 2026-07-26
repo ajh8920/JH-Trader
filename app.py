@@ -22,7 +22,8 @@ from flask_login import (
 from flask_wtf import CSRFProtect
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from backtest import get_target_default, get_version_defaults, run_infinite_buying
+from backtest import run_infinite_buying
+from infinite_buying import get_target_default, get_version_defaults
 from live_tracker import compute_position_status
 from models import Alert, InfinitePosition, InfiniteTrade, PortfolioItem, User, db
 

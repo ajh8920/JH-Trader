@@ -405,6 +405,7 @@ async function removeAlert(id) {
 // ─── 무한매수법 백테스트 ─────────────────────────────────────────────────────
 
 let equityChart = null;
+let priceChartBt = null;
 
 const BACKTEST_VERSION_DEFAULTS = {
   v2: { splits: 40 },
@@ -473,6 +474,10 @@ function renderBacktestResult(d) {
     <div class="card">
       <div class="bt-summary-grid">
         <div class="meta-item"><div class="meta-label">시드</div><div class="meta-value">$${d.seed.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">총 매수 수량</div><div class="meta-value">${d.totalBuyQty.toLocaleString('en-US')}주</div></div>
+        <div class="meta-item"><div class="meta-label">총 매도 수량</div><div class="meta-value">${d.totalSellQty.toLocaleString('en-US')}주</div></div>
+        <div class="meta-item"><div class="meta-label">보유 수량</div><div class="meta-value">${holding.qty.toLocaleString('en-US')}주</div></div>
+        <div class="meta-item"><div class="meta-label">평단가</div><div class="meta-value">${holding.qty > 0 ? '$' + holding.avgPrice.toFixed(2) : '-'}</div></div>
         <div class="meta-item"><div class="meta-label">매입 금액</div><div class="meta-value">$${d.totalBuyAmount.toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
         <div class="meta-item"><div class="meta-label">매도 금액</div><div class="meta-value">$${d.totalSellAmount.toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
         <div class="meta-item"><div class="meta-label">평가 손익</div><div class="meta-value ${pnlCls}">${d.evalPnl>=0?'+':''}$${Math.abs(d.evalPnl).toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
@@ -496,14 +501,22 @@ function renderBacktestResult(d) {
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">기간: ${d.start} ~ ${d.end}</div>
       </div>
 
+      <div style="font-size:13px;font-weight:600;margin:14px 0 8px;">수익률 비교 (전략 vs ${escapeHtml(d.benchmark.label)})</div>
       <div class="chart-wrap">
-        <canvas id="equity-chart" role="img" aria-label="자산 가치 변화 차트"></canvas>
+        <canvas id="return-chart" role="img" aria-label="수익률 비교 차트"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${escapeHtml(d.ticker)} 가격 차트 (매수·매도 시점 표시)</div>
+      <div class="chart-wrap">
+        <canvas id="price-chart" role="img" aria-label="${escapeHtml(d.ticker)} 가격 차트"></canvas>
       </div>
     </div>
 
     <div class="pf-table-wrap">
       <table class="pf-table">
-        <thead><tr><th>회차</th><th>날짜</th><th>구분</th><th>가격</th><th>수량</th><th>메모</th></tr></thead>
+        <thead><tr><th>회차</th><th>날짜</th><th>구분</th><th>가격</th><th>수량</th><th>누적수량</th><th>평단가</th><th>수익률</th><th>메모</th></tr></thead>
         <tbody>
           ${d.trades.length ? d.trades.map(t => `
             <tr>
@@ -512,30 +525,37 @@ function renderBacktestResult(d) {
               <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? '매수' : '매도'}</span></td>
               <td>$${t.price.toFixed(2)}</td>
               <td>${t.qty}</td>
+              <td>${t.qtyAfter}</td>
+              <td>${t.avgPriceAfter !== null ? '$' + t.avgPriceAfter.toFixed(2) : '-'}</td>
+              <td class="${t.returnPctAfter >= 0 ? 'positive' : 'negative'}">${t.returnPctAfter>=0?'+':''}${t.returnPctAfter.toFixed(1)}%</td>
               <td style="font-size:12px;color:var(--text-secondary);">${escapeHtml(t.note)}</td>
-            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">해당 기간 동안 체결된 거래가 없습니다</td></tr>`}
+            </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">해당 기간 동안 체결된 거래가 없습니다</td></tr>`}
         </tbody>
       </table>
     </div>
   `;
 
-  setTimeout(() => drawEquityChart(d.equityCurve, d.benchmark), 80);
+  setTimeout(() => {
+    drawReturnChart(d.equityCurve, d.benchmark, d.seed);
+    drawPriceChart(d.priceCurve, d.trades, d.ticker);
+  }, 80);
 }
 
-function drawEquityChart(curve, benchmark) {
-  const canvas = document.getElementById('equity-chart');
+function drawReturnChart(curve, benchmark, seed) {
+  const canvas = document.getElementById('return-chart');
   if (!canvas) return;
   if (equityChart) equityChart.destroy();
+  const toPct = v => (v - seed) / seed * 100;
   const datasets = [{
     label: '무한매수법',
-    data: curve.map(p => p.value),
+    data: curve.map(p => toPct(p.value)),
     borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
     fill: true, pointRadius: 0, borderWidth: 2, tension: 0.15,
   }];
   if (benchmark?.equityCurve?.length) {
     datasets.push({
       label: benchmark.label,
-      data: benchmark.equityCurve.map(p => p.value),
+      data: benchmark.equityCurve.map(p => toPct(p.value)),
       borderColor: '#97C459', backgroundColor: 'transparent',
       fill: false, pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: 0.15,
     });
@@ -547,10 +567,58 @@ function drawEquityChart(curve, benchmark) {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: $` + ctx.parsed.y.toLocaleString('en-US', {maximumFractionDigits:0}) } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y>=0?'+':''}` + ctx.parsed.y.toFixed(1) + '%' } },
       },
       scales: {
-        y: { ticks: { callback: v => '$' + v.toLocaleString('en-US', {maximumFractionDigits:0}) }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        y: { ticks: { callback: v => (v>=0?'+':'') + v.toFixed(0) + '%' }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        x: { ticks: { maxTicksLimit: 8 }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+function drawPriceChart(priceCurve, trades, ticker) {
+  const canvas = document.getElementById('price-chart');
+  if (!canvas) return;
+  if (priceChartBt) priceChartBt.destroy();
+
+  const validDates = new Set(priceCurve.map(p => p.date));
+  const buyPoints = [], sellPoints = [];
+  trades.forEach(t => {
+    if (!validDates.has(t.date)) return;
+    (t.action === 'buy' ? buyPoints : sellPoints).push({ x: t.date, y: t.price });
+  });
+
+  priceChartBt = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: priceCurve.map(p => p.date),
+      datasets: [
+        {
+          label: `${ticker} 종가`, data: priceCurve.map(p => p.close),
+          borderColor: '#888780', backgroundColor: 'transparent',
+          fill: false, pointRadius: 0, borderWidth: 1.5, tension: 0.1, order: 3,
+        },
+        {
+          label: '매수', data: buyPoints, type: 'scatter',
+          backgroundColor: '#E24B4A', borderColor: '#E24B4A',
+          pointRadius: 4, pointStyle: 'triangle', order: 1,
+        },
+        {
+          label: '매도', data: sellPoints, type: 'scatter',
+          backgroundColor: '#378ADD', borderColor: '#378ADD',
+          pointRadius: 4, pointStyle: 'rectRot', order: 2,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: $` + ctx.parsed.y.toFixed(2) } },
+      },
+      scales: {
+        y: { ticks: { callback: v => '$' + v.toFixed(0) }, grid: { color: 'rgba(128,128,128,0.1)' } },
         x: { ticks: { maxTicksLimit: 8 }, grid: { display: false } },
       },
     },
