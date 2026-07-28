@@ -294,19 +294,53 @@ def _fetch_macro_quote(ticker):
     return last, prev
 
 
+# CNN의 비공식(문서화되지 않은) 내부 API 엔드포인트입니다. 로그인/인증이 필요
+# 없고 널리 쓰이는 방식이지만, CNN이 예고 없이 바꾸거나 막을 수 있어 실패해도
+# 매크로 탭 전체가 죽지 않도록 예외를 잡아 None을 반환한다.
+def _fetch_fear_greed():
+    try:
+        res = requests.get(
+            "https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+                ),
+                "Accept": "application/json",
+                "Referer": "https://www.cnn.com/markets/fear-and-greed",
+            },
+            timeout=10,
+        )
+        if not res.ok:
+            return None
+        fg = res.json().get("fear_and_greed", {})
+        return {
+            "score": round(fg["score"], 1),
+            "rating": fg["rating"],
+            "previousClose": round(fg["previous_close"], 1),
+            "previousWeek": round(fg["previous_1_week"], 1),
+            "previousMonth": round(fg["previous_1_month"], 1),
+            "previousYear": round(fg["previous_1_year"], 1),
+        }
+    except Exception:
+        return None
+
+
 @app.route("/api/macro")
 @login_required
 def get_macro():
     import concurrent.futures
 
     results = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(MACRO_INSTRUMENTS)) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(MACRO_INSTRUMENTS) + 1) as ex:
         futures = {
             ex.submit(_fetch_macro_quote, item["ticker"]): item["ticker"]
             for item in MACRO_INSTRUMENTS
         }
+        fg_future = ex.submit(_fetch_fear_greed)
         for fut in concurrent.futures.as_completed(futures):
             results[futures[fut]] = fut.result()
+        fear_greed = fg_future.result()
 
     out = []
     for item in MACRO_INSTRUMENTS:
@@ -327,7 +361,7 @@ def get_macro():
             "change": round(last - prev, 4),
             "changePct": round((last - prev) / prev * 100, 2) if prev else 0.0,
         })
-    return jsonify(out)
+    return jsonify({"instruments": out, "fearGreed": fear_greed})
 
 
 # ─── 종목 데이터 API ─────────────────────────────────────────────────────────

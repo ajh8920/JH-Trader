@@ -8,8 +8,9 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css" />
   <script>
     // 저장된 테마를 body 렌더링 전에 즉시 적용해 화면 깜빡임을 방지합니다.
+    // 아직 선택한 적이 없으면 다크모드가 기본값입니다.
     (function () {
-      var t = localStorage.getItem('theme');
+      var t = localStorage.getItem('theme') || 'dark';
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     })();
   </script>

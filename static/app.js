@@ -34,7 +34,7 @@ function cycleTheme() {
   showToast(`테마: ${THEME_LABELS[next]}`);
 }
 
-document.addEventListener('DOMContentLoaded', () => applyTheme(localStorage.getItem('theme') || 'system'));
+document.addEventListener('DOMContentLoaded', () => applyTheme(localStorage.getItem('theme') || 'dark'));
 
 // ─── API 호출 (Python 백엔드 경유) ───────────────────────────────────────────
 
@@ -130,8 +130,9 @@ async function loadMacro() {
   }
 }
 
-function renderMacro(items) {
+function renderMacro(data) {
   const el = document.getElementById('macro-content');
+  const items = data.instruments || [];
   const groups = {};
   items.forEach(item => {
     (groups[item.group] ??= []).push(item);
@@ -141,6 +142,7 @@ function renderMacro(items) {
     <div class="add-form" style="justify-content:flex-end;">
       <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> 새로고침</button>
     </div>
+    ${data.fearGreed ? renderFearGreedCard(data.fearGreed) : ''}
     ${Object.entries(groups).map(([group, list]) => `
       <div class="card">
         <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.04em;">${escapeHtml(group)}</div>
@@ -166,6 +168,101 @@ function renderMacro(items) {
         </div>
       </div>`).join('')}
   `;
+}
+
+const FEAR_GREED_SEGMENTS = [
+  { from: 0, to: 20, color: '#c0392b' },
+  { from: 20, to: 40, color: '#e08a3c' },
+  { from: 40, to: 60, color: '#d9c23c' },
+  { from: 60, to: 80, color: '#8fbf4d' },
+  { from: 80, to: 100, color: '#2e9e4f' },
+];
+
+const FEAR_GREED_RATING_KO = {
+  'extreme fear': { label: '극단적 공포', color: '#c0392b' },
+  'fear': { label: '공포', color: '#e08a3c' },
+  'neutral': { label: '중립', color: '#d9c23c' },
+  'greed': { label: '탐욕', color: '#8fbf4d' },
+  'extreme greed': { label: '극단적 탐욕', color: '#2e9e4f' },
+};
+
+function fearGreedRatingInfo(rating) {
+  return FEAR_GREED_RATING_KO[(rating || '').toLowerCase()] || { label: rating || '-', color: 'var(--text-muted)' };
+}
+
+function buildFearGreedGaugeSvg(score) {
+  const cx = 110, cy = 112, rOuter = 100, rInner = 70;
+  const angleForScore = s => Math.PI - (s / 100) * Math.PI;
+  const pt = (r, s) => {
+    const a = angleForScore(s);
+    return [cx + r * Math.cos(a), cy - r * Math.sin(a)];
+  };
+  const arcPath = (from, to) => {
+    const [x1, y1] = pt(rOuter, from);
+    const [x2, y2] = pt(rOuter, to);
+    const [x3, y3] = pt(rInner, to);
+    const [x4, y4] = pt(rInner, from);
+    return `M ${x1} ${y1} A ${rOuter} ${rOuter} 0 0 1 ${x2} ${y2} L ${x3} ${y3} A ${rInner} ${rInner} 0 0 0 ${x4} ${y4} Z`;
+  };
+  const segments = FEAR_GREED_SEGMENTS.map(s => `<path d="${arcPath(s.from, s.to)}" fill="${s.color}" opacity="0.88"></path>`).join('');
+
+  const clampedScore = Math.max(0, Math.min(100, score));
+  const needleAngle = angleForScore(clampedScore);
+  const needleLen = rInner - 10;
+  const tipX = cx + needleLen * Math.cos(needleAngle);
+  const tipY = cy - needleLen * Math.sin(needleAngle);
+
+  return `
+    <svg viewBox="0 0 220 128" role="img" aria-label="공포탐욕지수 ${Math.round(clampedScore)}">
+      ${segments}
+      <line x1="${cx}" y1="${cy}" x2="${tipX.toFixed(1)}" y2="${tipY.toFixed(1)}" stroke="var(--text)" stroke-width="3" stroke-linecap="round"></line>
+      <circle cx="${cx}" cy="${cy}" r="6" fill="var(--text)"></circle>
+      <text x="${cx}" y="${cy + 26}" text-anchor="middle" font-size="26" font-weight="700" fill="var(--text)">${Math.round(clampedScore)}</text>
+    </svg>`;
+}
+
+function renderFearGreedCard(fg) {
+  const rating = fearGreedRatingInfo(fg.rating);
+  const history = [
+    { label: '전일 종가', value: fg.previousClose },
+    { label: '1주일 전', value: fg.previousWeek },
+    { label: '1개월 전', value: fg.previousMonth },
+    { label: '1년 전', value: fg.previousYear },
+  ];
+  return `
+    <div class="card fear-greed-card">
+      <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">공포 탐욕 지수 (CNN Fear &amp; Greed Index)</div>
+      <div class="fear-greed-body">
+        <div class="fear-greed-gauge">
+          ${buildFearGreedGaugeSvg(fg.score)}
+          <div class="fear-greed-rating" style="color:${rating.color};">${escapeHtml(rating.label)}</div>
+          <div class="fear-greed-legend">
+            ${Object.values(FEAR_GREED_RATING_KO).map(r => `<span class="fear-greed-legend-item"><span class="fear-greed-dot" style="background:${r.color};"></span>${escapeHtml(r.label)}</span>`).join('')}
+          </div>
+        </div>
+        <div class="fear-greed-history">
+          ${history.map(h => {
+            const r = fearGreedRatingInfo(fearGreedScoreToRating(h.value));
+            return `
+            <div class="fear-greed-history-row">
+              <div>
+                <div class="fear-greed-history-label">${h.label}</div>
+                <div class="fear-greed-history-rating" style="color:${r.color};">${escapeHtml(r.label)}</div>
+              </div>
+              <div class="fear-greed-badge" style="border-color:${r.color};color:${r.color};">${Math.round(h.value)}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+function fearGreedScoreToRating(score) {
+  if (score < 20) return 'extreme fear';
+  if (score < 40) return 'fear';
+  if (score < 60) return 'neutral';
+  if (score < 80) return 'greed';
+  return 'extreme greed';
 }
 
 function formatMacroPrice(price, unit) {
