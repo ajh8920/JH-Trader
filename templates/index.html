@@ -6,6 +6,13 @@
   <title>미국 주식 목표가 트래커</title>
   <link rel="stylesheet" href="/static/style.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css" />
+  <script>
+    // 저장된 테마를 body 렌더링 전에 즉시 적용해 화면 깜빡임을 방지합니다.
+    (function () {
+      var t = localStorage.getItem('theme');
+      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
 </head>
 <body>
   <div class="app">
@@ -41,6 +48,9 @@
           <i class="ti ti-users" aria-hidden="true"></i>
         </a>
         {% endif %}
+        <button class="settings-btn" id="theme-toggle-btn" onclick="cycleTheme()" title="테마 변경" aria-label="테마 변경">
+          <i class="ti ti-sun" id="theme-icon" aria-hidden="true"></i>
+        </button>
         <button class="settings-btn" onclick="showKeyBanner()" title="API 키 변경" aria-label="API 키 변경">
           <i class="ti ti-settings" aria-hidden="true"></i>
         </button>

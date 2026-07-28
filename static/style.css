@@ -45,6 +45,47 @@
   }
 }
 
+/* 설정에서 명시적으로 선택한 테마 (시스템 설정보다 우선) */
+:root[data-theme="dark"] {
+  --bg: #1c1c1a;
+  --bg-secondary: #262624;
+  --bg-tertiary: #2c2c2a;
+  --text: #f0efe8;
+  --text-secondary: #b4b2a9;
+  --text-muted: #888780;
+  --border: rgba(255,255,255,0.1);
+  --border-strong: rgba(255,255,255,0.18);
+  --green: #97c459;
+  --green-bg: rgba(23,52,4,0.35);
+  --red: #f09595;
+  --red-bg: rgba(80,19,19,0.35);
+  --amber: #fac775;
+  --amber-bg: rgba(65,36,2,0.35);
+  --blue: #85b7eb;
+  --blue-bg: rgba(4,44,83,0.35);
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --bg-secondary: #f5f5f4;
+  --bg-tertiary: #eeede8;
+  --text: #1a1a18;
+  --text-secondary: #5f5e5a;
+  --text-muted: #888780;
+  --border: rgba(0,0,0,0.12);
+  --border-strong: rgba(0,0,0,0.2);
+  --green: #3b6d11;
+  --green-bg: #eaf3de;
+  --red: #a32d2d;
+  --red-bg: #fcebeb;
+  --amber: #854f0b;
+  --amber-bg: #faeeda;
+  --blue: #185fa5;
+  --blue-bg: #e6f1fb;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: var(--bg-tertiary);
@@ -208,8 +249,8 @@ input::placeholder { color: var(--text-muted); }
 /* Portfolio */
 .add-form { display: flex; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
 .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 1rem; }
-.pf-table-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow); margin-bottom: 1rem; }
-.pf-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pf-table-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow-x: auto; box-shadow: var(--shadow); margin-bottom: 1rem; }
+.pf-table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 13px; }
 .pf-table th { font-weight: 600; font-size: 11px; color: var(--text-secondary); text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--bg-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
 .pf-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .pf-table tr:last-child td { border-bottom: none; }
@@ -262,11 +303,7 @@ input::placeholder { color: var(--text-muted); }
 .live-rec-order-row:last-child { border-bottom: none; }
 .live-rec-order-value { font-size: 18px; font-weight: 700; white-space: nowrap; }
 
-@media (max-width: 620px) {
-  .bt-form-grid { grid-template-columns: 1fr 1fr; }
-  .bt-summary-grid { grid-template-columns: 1fr 1fr; }
-  .macro-grid { grid-template-columns: 1fr 1fr; }
-}
+.live-info-grid { grid-template-columns: repeat(3, 1fr); }
 
 /* Toast */
 .toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 20px; border-radius: var(--radius-md); font-size: 14px; z-index: 9999; animation: fadeup 0.2s ease; }
@@ -274,8 +311,19 @@ input::placeholder { color: var(--text-muted); }
 
 @media (max-width: 620px) {
   .app { padding: 1rem; }
+  .header { flex-wrap: wrap; row-gap: 10px; }
+  .header > div:first-of-type { min-width: 0; }
+  .header-title { font-size: 17px; }
+  .header-sub { font-size: 12px; }
   .meta-grid { grid-template-columns: repeat(2, 1fr); }
   .ohlc-grid { grid-template-columns: repeat(2, 1fr); }
   .summary-grid { grid-template-columns: 1fr 1fr; }
   .pf-table th:nth-child(5), .pf-table td:nth-child(5) { display: none; }
+  .bt-form-grid { grid-template-columns: 1fr 1fr; }
+  .bt-summary-grid { grid-template-columns: 1fr 1fr; }
+  .live-info-grid { grid-template-columns: 1fr 1fr; }
+  .macro-grid { grid-template-columns: 1fr 1fr; }
+  .live-rec-order-row { flex-wrap: wrap; row-gap: 6px; }
+  .live-rec-order-value { font-size: 16px; }
+  .add-form input, .add-form select { flex: 1 1 120px; min-width: 0; }
 }

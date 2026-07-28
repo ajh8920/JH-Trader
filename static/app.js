@@ -8,6 +8,34 @@ function escapeHtml(str) {
   }[c]));
 }
 
+// ─── 테마(라이트/다크/시스템) ─────────────────────────────────────────────────
+
+const THEME_ICONS = { system: 'ti-device-desktop', light: 'ti-sun', dark: 'ti-moon' };
+const THEME_LABELS = { system: '시스템 기본', light: '라이트 모드', dark: '다크 모드' };
+
+function applyTheme(theme) {
+  if (theme === 'light' || theme === 'dark') {
+    document.documentElement.setAttribute('data-theme', theme);
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  const icon = document.getElementById('theme-icon');
+  const btn = document.getElementById('theme-toggle-btn');
+  if (icon) icon.className = 'ti ' + THEME_ICONS[theme];
+  if (btn) btn.title = `테마: ${THEME_LABELS[theme]} (클릭하여 변경)`;
+}
+
+function cycleTheme() {
+  const order = ['system', 'light', 'dark'];
+  const current = localStorage.getItem('theme') || 'system';
+  const next = order[(order.indexOf(current) + 1) % order.length];
+  localStorage.setItem('theme', next);
+  applyTheme(next);
+  showToast(`테마: ${THEME_LABELS[next]}`);
+}
+
+document.addEventListener('DOMContentLoaded', () => applyTheme(localStorage.getItem('theme') || 'system'));
+
 // ─── API 호출 (Python 백엔드 경유) ───────────────────────────────────────────
 
 async function api(method, path, body) {
@@ -118,17 +146,19 @@ function renderMacro(items) {
         <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.04em;">${escapeHtml(group)}</div>
         <div class="macro-grid">
           ${list.map(m => {
-            const isPos = m.changePct >= 0;
-            const hasPrice = !!m.price;
+            const hasPrice = m.price !== null && m.price !== undefined;
+            const isPos = hasPrice && m.change >= 0;
+            const priceText = hasPrice ? formatMacroPrice(m.price, m.unit) : null;
+            const changeText = hasPrice ? formatMacroChange(m.change, m.changePct, m.unit) : null;
             return `
             <div class="macro-item">
               <div class="macro-name">${escapeHtml(m.name)}</div>
               <div class="macro-ticker">${escapeHtml(m.ticker)}</div>
               ${hasPrice ? `
-                <div class="macro-price">$${m.price.toFixed(2)}</div>
+                <div class="macro-price">${priceText}</div>
                 <div class="macro-change ${isPos ? 'positive' : 'negative'}">
                   <i class="ti ti-trending-${isPos ? 'up' : 'down'}" aria-hidden="true"></i>
-                  ${isPos ? '+' : ''}${m.changePct.toFixed(2)}%
+                  ${changeText}
                 </div>
               ` : `<div class="macro-price" style="color:var(--text-muted);font-size:13px;">데이터 없음</div>`}
             </div>`;
@@ -136,6 +166,18 @@ function renderMacro(items) {
         </div>
       </div>`).join('')}
   `;
+}
+
+function formatMacroPrice(price, unit) {
+  if (unit === 'pct') return price.toFixed(2) + '%';
+  if (unit === 'usd') return '$' + price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatMacroChange(change, changePct, unit) {
+  const sign = change >= 0 ? '+' : '';
+  if (unit === 'pct') return `${sign}${change.toFixed(2)}%p`;
+  return `${sign}${changePct.toFixed(2)}%`;
 }
 
 async function refreshMacro() {
@@ -751,28 +793,28 @@ function renderInfinitePositions(positions) {
         <button class="btn-icon" onclick="deleteInfinitePosition(${p.id})" aria-label="포지션 삭제"><i class="ti ti-trash" aria-hidden="true"></i></button>
       </div>
       <div class="live-section-label">기본 정보</div>
-      <div class="bt-summary-grid" style="grid-template-columns:repeat(3,1fr);">
+      <div class="bt-summary-grid live-info-grid">
         <div class="meta-item"><div class="meta-label">시드</div><div class="meta-value">$${p.seed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
         <div class="meta-item"><div class="meta-label">사용한 시드</div><div class="meta-value">$${p.usedSeed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
         <div class="meta-item"><div class="meta-label">1회 투자금</div><div class="meta-value">$${p.splitAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
       </div>
 
       <div class="live-section-label">매입 정보</div>
-      <div class="bt-summary-grid" style="grid-template-columns:repeat(3,1fr);">
+      <div class="bt-summary-grid live-info-grid">
         <div class="meta-item"><div class="meta-label">평단가</div><div class="meta-value">${p.avgPrice ? '$' + p.avgPrice.toFixed(2) : '-'}</div></div>
         <div class="meta-item"><div class="meta-label">보유 수량</div><div class="meta-value">${p.holdingQty}</div></div>
         <div class="meta-item"><div class="meta-label">매입 금액</div><div class="meta-value">$${p.buyAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
       </div>
 
       <div class="live-section-label">무한매수 공식</div>
-      <div class="bt-summary-grid" style="grid-template-columns:repeat(3,1fr);">
+      <div class="bt-summary-grid live-info-grid">
         <div class="meta-item"><div class="meta-label">T</div><div class="meta-value">${p.tValue}</div></div>
         <div class="meta-item"><div class="meta-label">목표 수익률</div><div class="meta-value">${p.targetReturnPct}%</div></div>
         <div class="meta-item"><div class="meta-label">Star 값</div><div class="meta-value">${p.starPct !== null ? p.starPct.toFixed(2) + '%' : '-'}</div></div>
       </div>
 
       <div class="live-section-label">평가</div>
-      <div class="bt-summary-grid" style="grid-template-columns:repeat(3,1fr);">
+      <div class="bt-summary-grid live-info-grid">
         <div class="meta-item"><div class="meta-label">현재가</div><div class="meta-value">${p.currentPrice ? '$' + p.currentPrice.toFixed(2) : '-'}</div></div>
         <div class="meta-item"><div class="meta-label">평가손익</div><div class="meta-value ${pnlCls}">${p.evalPnl>=0?'+':''}$${Math.abs(p.evalPnl).toLocaleString('en-US',{maximumFractionDigits:2})}</div></div>
         <div class="meta-item"><div class="meta-label">수익률</div><div class="meta-value ${pnlCls}">${p.returnPct>=0?'+':''}${p.returnPct.toFixed(1)}%</div></div>

@@ -258,50 +258,74 @@ def delete_key():
 
 
 # ─── 매크로(주요 시황) API ────────────────────────────────────────────────────
+# Finnhub 무료 티어는 실제 지수(^GSPC 등) 조회를 지원하지 않아(구독 필요),
+# 백테스트와 동일하게 yfinance로 실제 지수 포인트/금리(%)를 가져온다. API 키가
+# 없어도 누구나 볼 수 있다.
 
 MACRO_INSTRUMENTS = [
-    {"ticker": "SPY", "name": "S&P 500", "group": "지수"},
-    {"ticker": "QQQ", "name": "나스닥 100", "group": "지수"},
-    {"ticker": "DIA", "name": "다우존스", "group": "지수"},
-    {"ticker": "IWM", "name": "러셀 2000", "group": "지수"},
-    {"ticker": "VIXY", "name": "변동성(VIX)", "group": "변동성"},
-    {"ticker": "TLT", "name": "20년+ 국채", "group": "채권"},
-    {"ticker": "UUP", "name": "달러 인덱스", "group": "환율"},
-    {"ticker": "GLD", "name": "금", "group": "원자재"},
-    {"ticker": "USO", "name": "WTI 원유", "group": "원자재"},
+    {"ticker": "^GSPC", "name": "S&P 500", "group": "지수", "unit": "pt"},
+    {"ticker": "^NDX", "name": "나스닥 100", "group": "지수", "unit": "pt"},
+    {"ticker": "^DJI", "name": "다우존스", "group": "지수", "unit": "pt"},
+    {"ticker": "^RUT", "name": "러셀 2000", "group": "지수", "unit": "pt"},
+    {"ticker": "^VIX", "name": "변동성지수(VIX)", "group": "변동성", "unit": "pt"},
+    {"ticker": "^TNX", "name": "美 10년물 국채금리", "group": "금리", "unit": "pct"},
+    {"ticker": "DX-Y.NYB", "name": "달러 인덱스", "group": "환율", "unit": "pt"},
+    {"ticker": "GC=F", "name": "금 선물", "group": "원자재", "unit": "usd"},
+    {"ticker": "CL=F", "name": "WTI 원유 선물", "group": "원자재", "unit": "usd"},
 ]
+
+
+def _fetch_macro_quote(ticker):
+    import yfinance as yf
+
+    try:
+        df = yf.download(ticker, period="5d", interval="1d", progress=False, auto_adjust=False)
+    except Exception:
+        return None
+    if df is None or df.empty:
+        return None
+    if hasattr(df.columns, "get_level_values") and df.columns.nlevels > 1:
+        df.columns = df.columns.get_level_values(0)
+    df = df.dropna(subset=["Close"])
+    if df.empty:
+        return None
+    last = float(df.iloc[-1]["Close"])
+    prev = float(df.iloc[-2]["Close"]) if len(df) > 1 else last
+    return last, prev
 
 
 @app.route("/api/macro")
 @login_required
 def get_macro():
-    key = get_effective_api_key(current_user)
-    if not key:
-        return jsonify({"error": "API 키가 설정되지 않았습니다"}), 401
-
     import concurrent.futures
 
     results = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(MACRO_INSTRUMENTS)) as ex:
         futures = {
-            ex.submit(fh_get, "/quote", key, {"symbol": item["ticker"]}): item["ticker"]
+            ex.submit(_fetch_macro_quote, item["ticker"]): item["ticker"]
             for item in MACRO_INSTRUMENTS
         }
         for fut in concurrent.futures.as_completed(futures):
-            ticker = futures[fut]
-            data, _ = fut.result()
-            results[ticker] = data if data is not None else {}
+            results[futures[fut]] = fut.result()
 
     out = []
     for item in MACRO_INSTRUMENTS:
-        q = results.get(item["ticker"], {})
+        q = results.get(item["ticker"])
+        if q is None:
+            out.append({
+                "ticker": item["ticker"], "name": item["name"], "group": item["group"],
+                "unit": item["unit"], "price": None, "change": None, "changePct": None,
+            })
+            continue
+        last, prev = q
         out.append({
             "ticker": item["ticker"],
             "name": item["name"],
             "group": item["group"],
-            "price": q.get("c", 0),
-            "change": q.get("d", 0),
-            "changePct": q.get("dp", 0),
+            "unit": item["unit"],
+            "price": round(last, 2),
+            "change": round(last - prev, 4),
+            "changePct": round((last - prev) / prev * 100, 2) if prev else 0.0,
         })
     return jsonify(out)
 
