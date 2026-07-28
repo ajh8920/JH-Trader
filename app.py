@@ -63,9 +63,12 @@ app.config["SECRET_KEY"] = _load_or_create_secret_key()
 
 # 개발 중엔 SQLite 파일을 사용하고, 운영 전환 시 DATABASE_URL 환경변수만 설정하면
 # (예: postgresql://user:pw@host/dbname) 코드 변경 없이 PostgreSQL로 옮길 수 있습니다.
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-    "DATABASE_URL", f"sqlite:///{DATA_DIR / 'app.db'}"
-)
+# Render 등 일부 호스팅은 예전 스킴인 postgres://로 URL을 주는데, SQLAlchemy 1.4+는
+# postgresql://만 인식하므로 여기서 보정한다.
+_database_url = os.environ.get("DATABASE_URL", f"sqlite:///{DATA_DIR / 'app.db'}")
+if _database_url.startswith("postgres://"):
+    _database_url = _database_url.replace("postgres://", "postgresql://", 1)
+app.config["SQLALCHEMY_DATABASE_URI"] = _database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -718,14 +721,19 @@ def alert_checker():
                 print(f"[알림 체크 오류] {e}")
 
 
-# ─── 실행 ────────────────────────────────────────────────────────────────────
+# ─── 초기화 ──────────────────────────────────────────────────────────────────
+# gunicorn 등 WSGI 서버로 구동해도(=__name__ != "__main__") DB 테이블 생성과 알림
+# 체크 스레드가 항상 시작되도록 모듈 임포트 시점에 실행한다.
+
+with app.app_context():
+    db.create_all()
+
+threading.Thread(target=alert_checker, daemon=True).start()
+
+
+# ─── 실행 (로컬 개발 서버) ───────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-
-    threading.Thread(target=alert_checker, daemon=True).start()
-
     print("=" * 50)
     print("  미국 주식 목표가 트래커")
     print("  http://localhost:3000 으로 접속하세요")

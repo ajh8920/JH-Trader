@@ -1,0 +1,24 @@
+databases:
+  - name: stock-tracker-db
+    plan: free
+    databaseName: stock_tracker
+    user: stock_tracker
+
+services:
+  - type: web
+    name: stock-tracker
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stock-tracker-db
+          property: connectionString
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: FINNHUB_API_KEY
+        sync: false
