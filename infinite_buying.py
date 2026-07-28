@@ -170,26 +170,34 @@ def build_guide(state):
     target_sell_price = round(avg_price * (1 + target / 100), 4)
     half_point = splits / 2
 
+    order_amt_half = min(state.split_amount / 2, state.cash)
+    order_amt_full = min(state.split_amount, state.cash)
+
     if t_value < half_point:
         buy_price_a = round(avg_price, 4)
         buy_price_b = round(avg_price * (1 + star / 100), 4)
+        qty_a = math.floor(order_amt_half / buy_price_a) if buy_price_a > 0 else 0
+        qty_b = math.floor(order_amt_half / buy_price_b) if buy_price_b > 0 else 0
         return {
             "type": "normal_buy_dual", "action": "buy", "orderType": "LOC",
             "buyPriceA": buy_price_a, "buyPriceB": buy_price_b,
+            "buyQtyA": qty_a, "buyQtyB": qty_b,
             "quarterSellPrice": quarter_sell_price, "targetSellPrice": target_sell_price,
             "note": (
-                f"전반전(T={t_value:.2f}/{splits}) — 1회 매수금의 절반은 평단가 ${buy_price_a} 이하, "
-                f"나머지 절반은 ${buy_price_b} 이하로 종가가 마감되면 매수(LOC)하세요"
+                f"전반전(T={t_value:.2f}/{splits}) — 1회 매수금의 절반(${order_amt_half:,.0f})은 "
+                f"평단가 ${buy_price_a} 이하면 최소 {qty_a}주, 나머지 절반은 ${buy_price_b} 이하면 "
+                f"최소 {qty_b}주 이상 종가에 매수(LOC)하세요 (종가가 낮을수록 수량은 늘어남)"
             ),
         }
 
     buy_price = round(avg_price * (1 + star / 100), 4)
+    buy_qty = math.floor(order_amt_full / buy_price) if buy_price > 0 else 0
     return {
         "type": "normal_buy_single", "action": "buy", "orderType": "LOC",
-        "buyPrice": buy_price,
+        "buyPrice": buy_price, "buyQty": buy_qty,
         "quarterSellPrice": quarter_sell_price, "targetSellPrice": target_sell_price,
         "note": (
-            f"후반전(T={t_value:.2f}/{splits}) — 1회 매수금 전액을 ${buy_price} 이하로 "
-            f"종가가 마감되면 매수(LOC)하세요"
+            f"후반전(T={t_value:.2f}/{splits}) — 1회 매수금 전액(${order_amt_full:,.0f})으로 "
+            f"${buy_price} 이하 종가에 최소 {buy_qty}주 이상 매수(LOC)하세요 (종가가 낮을수록 수량은 늘어남)"
         ),
     }

@@ -725,8 +725,8 @@ function renderInfinitePositions(positions) {
           <span class="pill pill-rec">${rec.orderType} ${rec.action === 'sell' ? '매도' : '매수'}</span>
         </div>
         ${rec.qty !== undefined ? `<div class="live-rec-big">${rec.qty}주</div>` : ''}
-        ${rec.buyPrice !== undefined ? `<div class="live-rec-big">$${rec.buyPrice.toFixed(2)}</div>` : ''}
-        ${rec.buyPriceA !== undefined ? `<div class="live-rec-big">$${rec.buyPriceA.toFixed(2)} / $${rec.buyPriceB.toFixed(2)}</div>` : ''}
+        ${rec.buyPrice !== undefined ? `<div class="live-rec-big">$${rec.buyPrice.toFixed(2)} · 최소 ${rec.buyQty}주</div>` : ''}
+        ${rec.buyPriceA !== undefined ? `<div class="live-rec-big">$${rec.buyPriceA.toFixed(2)}(최소 ${rec.buyQtyA}주) / $${rec.buyPriceB.toFixed(2)}(최소 ${rec.buyQtyB}주)</div>` : ''}
         <div class="live-rec-note">${escapeHtml(rec.note)}</div>
         ${rec.quarterSellPrice !== undefined ? `<div class="live-rec-prices">참고 — 쿼터매도 $${rec.quarterSellPrice.toFixed(2)} · 목표매도 $${rec.targetSellPrice.toFixed(2)}</div>` : ''}
         ${(rec.qty !== undefined && rec.buyPrice === undefined && rec.buyPriceA === undefined) ? `<div class="live-rec-prices">참고 — 목표매도 $${rec.targetSellPrice.toFixed(2)}</div>` : ''}
