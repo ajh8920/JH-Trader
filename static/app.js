@@ -191,7 +191,7 @@ function fearGreedRatingInfo(rating) {
 }
 
 function buildFearGreedGaugeSvg(score) {
-  const cx = 110, cy = 112, rOuter = 100, rInner = 70;
+  const cx = 110, cy = 100, rOuter = 88, rInner = 60;
   const angleForScore = s => Math.PI - (s / 100) * Math.PI;
   const pt = (r, s) => {
     const a = angleForScore(s);
@@ -213,11 +213,11 @@ function buildFearGreedGaugeSvg(score) {
   const tipY = cy - needleLen * Math.sin(needleAngle);
 
   return `
-    <svg viewBox="0 0 220 128" role="img" aria-label="공포탐욕지수 ${Math.round(clampedScore)}">
+    <svg viewBox="0 0 220 156" role="img" aria-label="공포탐욕지수 ${Math.round(clampedScore)}">
       ${segments}
       <line x1="${cx}" y1="${cy}" x2="${tipX.toFixed(1)}" y2="${tipY.toFixed(1)}" stroke="var(--text)" stroke-width="3" stroke-linecap="round"></line>
       <circle cx="${cx}" cy="${cy}" r="6" fill="var(--text)"></circle>
-      <text x="${cx}" y="${cy + 26}" text-anchor="middle" font-size="26" font-weight="700" fill="var(--text)">${Math.round(clampedScore)}</text>
+      <text x="${cx}" y="${cy + 40}" text-anchor="middle" font-size="24" font-weight="700" fill="var(--text)">${Math.round(clampedScore)}</text>
     </svg>`;
 }
 
