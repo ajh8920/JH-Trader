@@ -73,15 +73,75 @@ async function saveApiKey() {
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((btn, i) => {
-    const active = ['search', 'portfolio', 'alerts', 'backtest', 'live'][i] === name;
+    const active = ['macro', 'search', 'portfolio', 'alerts', 'backtest', 'live'][i] === name;
     btn.classList.toggle('active', active);
   });
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById('sec-' + name).classList.add('active');
+  if (name === 'macro') loadMacro();
   if (name === 'portfolio') loadPortfolio();
   if (name === 'alerts') loadAlerts();
   if (name === 'backtest') initBacktestDates();
   if (name === 'live') loadInfinitePositions();
+}
+
+document.addEventListener('DOMContentLoaded', () => loadMacro());
+
+// ─── 매크로(주요 시황) ────────────────────────────────────────────────────────
+
+async function loadMacro() {
+  const el = document.getElementById('macro-content');
+  if (!el || el.dataset.loaded === '1') return;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>주요 시황 불러오는 중...</div>`;
+  try {
+    const data = await api('GET', '/api/macro');
+    renderMacro(data);
+    el.dataset.loaded = '1';
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+  }
+}
+
+function renderMacro(items) {
+  const el = document.getElementById('macro-content');
+  const groups = {};
+  items.forEach(item => {
+    (groups[item.group] ??= []).push(item);
+  });
+
+  el.innerHTML = `
+    <div class="add-form" style="justify-content:flex-end;">
+      <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> 새로고침</button>
+    </div>
+    ${Object.entries(groups).map(([group, list]) => `
+      <div class="card">
+        <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.04em;">${escapeHtml(group)}</div>
+        <div class="macro-grid">
+          ${list.map(m => {
+            const isPos = m.changePct >= 0;
+            const hasPrice = !!m.price;
+            return `
+            <div class="macro-item">
+              <div class="macro-name">${escapeHtml(m.name)}</div>
+              <div class="macro-ticker">${escapeHtml(m.ticker)}</div>
+              ${hasPrice ? `
+                <div class="macro-price">$${m.price.toFixed(2)}</div>
+                <div class="macro-change ${isPos ? 'positive' : 'negative'}">
+                  <i class="ti ti-trending-${isPos ? 'up' : 'down'}" aria-hidden="true"></i>
+                  ${isPos ? '+' : ''}${m.changePct.toFixed(2)}%
+                </div>
+              ` : `<div class="macro-price" style="color:var(--text-muted);font-size:13px;">데이터 없음</div>`}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`).join('')}
+  `;
+}
+
+async function refreshMacro() {
+  const el = document.getElementById('macro-content');
+  if (el) el.dataset.loaded = '0';
+  await loadMacro();
 }
 
 // ─── 종목 검색 ───────────────────────────────────────────────────────────────

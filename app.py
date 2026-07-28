@@ -257,6 +257,55 @@ def delete_key():
     return jsonify({"ok": True})
 
 
+# ─── 매크로(주요 시황) API ────────────────────────────────────────────────────
+
+MACRO_INSTRUMENTS = [
+    {"ticker": "SPY", "name": "S&P 500", "group": "지수"},
+    {"ticker": "QQQ", "name": "나스닥 100", "group": "지수"},
+    {"ticker": "DIA", "name": "다우존스", "group": "지수"},
+    {"ticker": "IWM", "name": "러셀 2000", "group": "지수"},
+    {"ticker": "VIXY", "name": "변동성(VIX)", "group": "변동성"},
+    {"ticker": "TLT", "name": "20년+ 국채", "group": "채권"},
+    {"ticker": "UUP", "name": "달러 인덱스", "group": "환율"},
+    {"ticker": "GLD", "name": "금", "group": "원자재"},
+    {"ticker": "USO", "name": "WTI 원유", "group": "원자재"},
+]
+
+
+@app.route("/api/macro")
+@login_required
+def get_macro():
+    key = get_effective_api_key(current_user)
+    if not key:
+        return jsonify({"error": "API 키가 설정되지 않았습니다"}), 401
+
+    import concurrent.futures
+
+    results = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(MACRO_INSTRUMENTS)) as ex:
+        futures = {
+            ex.submit(fh_get, "/quote", key, {"symbol": item["ticker"]}): item["ticker"]
+            for item in MACRO_INSTRUMENTS
+        }
+        for fut in concurrent.futures.as_completed(futures):
+            ticker = futures[fut]
+            data, _ = fut.result()
+            results[ticker] = data if data is not None else {}
+
+    out = []
+    for item in MACRO_INSTRUMENTS:
+        q = results.get(item["ticker"], {})
+        out.append({
+            "ticker": item["ticker"],
+            "name": item["name"],
+            "group": item["group"],
+            "price": q.get("c", 0),
+            "change": q.get("d", 0),
+            "changePct": q.get("dp", 0),
+        })
+    return jsonify(out)
+
+
 # ─── 종목 데이터 API ─────────────────────────────────────────────────────────
 
 @app.route("/api/stock/<ticker>")
@@ -677,7 +726,7 @@ def delete_user(user_id):
 # JSON API는 CSRF 토큰 대신 로그인 세션 + JSON Content-Type(교차 출처 요청 시
 # 브라우저 프리플라이트로 차단됨) 조합으로 보호하므로 폼 기반 CSRF 검사에서 제외합니다.
 for _view in (
-    save_key, delete_key, get_stock, get_quote,
+    save_key, delete_key, get_stock, get_quote, get_macro,
     get_portfolio, add_portfolio, remove_portfolio, refresh_portfolio,
     get_alerts, add_alert, remove_alert,
     backtest_infinite_buying,
