@@ -140,7 +140,14 @@ class PositionState:
 
 
 def build_guide(state):
-    """현재 PositionState를 바탕으로 "오늘의 매매 가이드"(다음 주문가·수량)를 계산한다."""
+    """현재 PositionState를 바탕으로 "오늘의 매매 가이드"(그날 걸어둘 주문 목록)를 계산한다.
+
+    실전에서는 매수·매도 주문을 매일 동시에 미리 걸어두고(원문: "무한매수법은
+    매수매도를 매일 미리 거는 매매법") 그중 조건을 만족하는 주문만 체결되므로,
+    보유 중이고 손절모드가 아니면 매수 주문(전반전 1~2개)과 매도 주문(쿼터 LOC +
+    목표 지정가) 두 종류를 항상 함께 반환한다. 매수 지정가에는 매도가와 정확히
+    겹치지 않도록 원문의 -$0.01 보정을 적용한다.
+    """
     splits = state.splits
     target = state.target_return_pct
     avg_price = state.avg_price
@@ -149,55 +156,63 @@ def build_guide(state):
 
     if holding_qty == 0:
         return {
-            "type": "start", "action": "buy", "orderType": "MOC",
+            "holding": False, "lossCutMode": False,
+            "orders": [{"action": "buy", "orderType": "MOC", "label": "1일차 매수", "price": None, "qty": None}],
             "note": "보유 중인 수량이 없습니다 — 새 사이클 1일차(원금/분할수 만큼 종가 매수)를 시작하세요",
         }
 
     if state.loss_cut_mode:
         qty_moc = math.floor(holding_qty * 0.25)
         return {
-            "type": "loss_cut_moc_sell", "action": "sell", "orderType": "MOC",
-            "qty": qty_moc,
+            "holding": True, "lossCutMode": True,
+            "orders": [{"action": "sell", "orderType": "MOC", "label": "손절모드 강제매도(1/4)", "price": None, "qty": qty_moc}],
             "note": (
                 f"분할을 모두 소진했습니다(T={t_value:.2f}/{splits}) — "
                 f"보유수량의 1/4인 {qty_moc}주를 오늘 종가로 무조건(MOC) 매도하는 것을 검토하세요"
             ),
-            "targetSellPrice": round(avg_price * (1 + target / 100), 4),
         }
 
     star = threshold_pct(target, splits, t_value)
-    quarter_sell_price = round(avg_price * (1 + star / 100), 4)
-    target_sell_price = round(avg_price * (1 + target / 100), 4)
     half_point = splits / 2
-
     order_amt_half = min(state.split_amount / 2, state.cash)
     order_amt_full = min(state.split_amount, state.cash)
 
+    orders = []
     if t_value < half_point:
-        buy_price_a = round(avg_price, 4)
-        buy_price_b = round(avg_price * (1 + star / 100), 4)
-        qty_a = math.floor(order_amt_half / buy_price_a) if buy_price_a > 0 else 0
-        qty_b = math.floor(order_amt_half / buy_price_b) if buy_price_b > 0 else 0
-        return {
-            "type": "normal_buy_dual", "action": "buy", "orderType": "LOC",
-            "buyPriceA": buy_price_a, "buyPriceB": buy_price_b,
-            "buyQtyA": qty_a, "buyQtyB": qty_b,
-            "quarterSellPrice": quarter_sell_price, "targetSellPrice": target_sell_price,
-            "note": (
-                f"전반전(T={t_value:.2f}/{splits}) — 1회 매수금의 절반(${order_amt_half:,.0f})은 "
-                f"평단가 ${buy_price_a} 이하면 최소 {qty_a}주, 나머지 절반은 ${buy_price_b} 이하면 "
-                f"최소 {qty_b}주 이상 종가에 매수(LOC)하세요 (종가가 낮을수록 수량은 늘어남)"
-            ),
-        }
+        buy_price_a = round(avg_price - 0.01, 4)
+        buy_price_b = round(avg_price * (1 + star / 100) - 0.01, 4)
+        orders.append({
+            "action": "buy", "orderType": "LOC", "label": "매수(평단가)", "pct": 0.0,
+            "price": buy_price_a, "qty": math.floor(order_amt_half / buy_price_a) if buy_price_a > 0 else 0,
+        })
+        orders.append({
+            "action": "buy", "orderType": "LOC", "label": "매수(임계값)", "pct": round(star, 2),
+            "price": buy_price_b, "qty": math.floor(order_amt_half / buy_price_b) if buy_price_b > 0 else 0,
+        })
+    else:
+        buy_price = round(avg_price * (1 + star / 100) - 0.01, 4)
+        orders.append({
+            "action": "buy", "orderType": "LOC", "label": "매수(임계값)", "pct": round(star, 2),
+            "price": buy_price, "qty": math.floor(order_amt_full / buy_price) if buy_price > 0 else 0,
+        })
 
-    buy_price = round(avg_price * (1 + star / 100), 4)
-    buy_qty = math.floor(order_amt_full / buy_price) if buy_price > 0 else 0
+    qty_quarter = math.floor(holding_qty * 0.25)
+    qty_target = holding_qty - qty_quarter
+    orders.append({
+        "action": "sell", "orderType": "LOC", "label": "매도(쿼터 1/4)", "pct": round(star, 2),
+        "price": round(avg_price * (1 + star / 100), 4), "qty": qty_quarter,
+    })
+    orders.append({
+        "action": "sell", "orderType": "지정가", "label": "매도(목표 3/4)", "pct": target,
+        "price": round(avg_price * (1 + target / 100), 4), "qty": qty_target,
+    })
+
+    phase = "전반전" if t_value < half_point else "후반전"
     return {
-        "type": "normal_buy_single", "action": "buy", "orderType": "LOC",
-        "buyPrice": buy_price, "buyQty": buy_qty,
-        "quarterSellPrice": quarter_sell_price, "targetSellPrice": target_sell_price,
+        "holding": True, "lossCutMode": False,
+        "orders": orders,
         "note": (
-            f"후반전(T={t_value:.2f}/{splits}) — 1회 매수금 전액(${order_amt_full:,.0f})으로 "
-            f"${buy_price} 이하 종가에 최소 {buy_qty}주 이상 매수(LOC)하세요 (종가가 낮을수록 수량은 늘어남)"
+            f"{phase}(T={t_value:.2f}/{splits}, ☆%={star:.2f}%) — 매수·매도 주문을 표에 나온 가격으로 "
+            f"동시에 걸어두고, 그날 종가가 어느 조건을 만족하는지에 따라 체결됩니다"
         ),
     }

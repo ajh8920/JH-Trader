@@ -242,10 +242,17 @@ input::placeholder { color: var(--text-muted); }
 .live-rec-warn { background: var(--red-bg); }
 .live-rec-title { font-size: 12px; font-weight: 600; color: var(--blue); display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .live-rec-warn .live-rec-title { color: var(--red); }
-.live-rec-pills { display: flex; gap: 6px; margin-bottom: 6px; }
+.live-rec-pills { display: flex; align-items: center; gap: 6px; }
 .live-rec-big { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
-.live-rec-note { font-size: 13px; color: var(--text); }
+.live-rec-note { font-size: 12px; color: var(--text-secondary); margin-top: 8px; }
 .live-rec-prices { font-size: 12px; color: var(--text-secondary); margin-top: 8px; }
+.live-rec-orders { display: flex; flex-direction: column; gap: 4px; }
+.live-rec-order-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0; border-bottom: 1px solid rgba(128,128,128,0.15);
+}
+.live-rec-order-row:last-child { border-bottom: none; }
+.live-rec-order-value { font-size: 18px; font-weight: 700; white-space: nowrap; }
 
 @media (max-width: 620px) {
   .bt-form-grid { grid-template-columns: 1fr 1fr; }
