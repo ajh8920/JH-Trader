@@ -70,6 +70,7 @@
       <button class="tab" onclick="switchTab('alerts')" role="tab" style="display:none;"><i class="ti ti-bell" aria-hidden="true"></i> 알림 <span id="alert-badge" class="badge" style="display:none;">0</span></button>
       <button class="tab" onclick="switchTab('backtest')" role="tab"><i class="ti ti-history" aria-hidden="true"></i> 백테스트</button>
       <button class="tab" onclick="switchTab('live')" role="tab"><i class="ti ti-infinity" aria-hidden="true"></i> 실전 현황</button>
+      <button class="tab" onclick="switchTab('lab')" role="tab"><i class="ti ti-flask" aria-hidden="true"></i> 실험실</button>
     </nav>
 
     <main>
@@ -210,6 +211,36 @@
           </button>
         </div>
         <div id="live-positions"></div>
+      </section>
+
+      <!-- 실험실: 여러 종목/지수 비교 + 조건 구간 하이라이트 -->
+      <section id="sec-lab" class="section">
+        <div class="card">
+          <div class="add-form">
+            <input type="text" id="lab-ticker-input" placeholder="티커/지수 입력 (예: ^IXIC, SOXL, ^TNX)" style="width:220px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addLabTicker();}" />
+            <button class="btn-secondary" onclick="addLabTicker()"><i class="ti ti-plus" aria-hidden="true"></i> 추가</button>
+          </div>
+          <div id="lab-ticker-chips" class="lab-chips"></div>
+
+          <div class="bt-form-grid live-info-grid" style="margin-top:12px;">
+            <div class="bt-field">
+              <label for="lab-start">시작일</label>
+              <input type="date" id="lab-start" />
+            </div>
+            <div class="bt-field">
+              <label for="lab-end">종료일</label>
+              <input type="date" id="lab-end" />
+            </div>
+          </div>
+          <button class="btn-primary" style="margin-top:12px;" onclick="runLabCompare()">
+            <i class="ti ti-chart-line" aria-hidden="true"></i> 비교하기
+          </button>
+          <div class="info-box" style="margin-top:12px;">
+            <i class="ti ti-info-circle" aria-hidden="true"></i>
+            여러 종목/지수를 시작일 기준 100으로 정규화해 같은 축에서 비교합니다. 아래에서 조건(예: 나스닥 일간 -3% 이하, 국채금리 4.5% 이상)을 걸면 그 조건을 만족하는 구간이 차트에 음영으로 표시됩니다.
+          </div>
+        </div>
+        <div id="lab-result"></div>
       </section>
     </main>
   </div>

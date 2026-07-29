@@ -101,7 +101,7 @@ async function saveApiKey() {
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((btn, i) => {
-    const active = ['macro', 'search', 'portfolio', 'alerts', 'backtest', 'live'][i] === name;
+    const active = ['macro', 'search', 'portfolio', 'alerts', 'backtest', 'live', 'lab'][i] === name;
     btn.classList.toggle('active', active);
   });
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -111,6 +111,7 @@ function switchTab(name) {
   if (name === 'alerts') loadAlerts();
   if (name === 'backtest') initBacktestDates();
   if (name === 'live') loadInfinitePositions();
+  if (name === 'lab') initLabTab();
 }
 
 document.addEventListener('DOMContentLoaded', () => loadMacro());
@@ -1015,6 +1016,241 @@ async function deleteInfiniteTrade(positionId, tradeId) {
   await api('DELETE', `/api/infinite/positions/${positionId}/trades/${tradeId}`);
   await loadInfinitePositions();
   await showLiveTrades(positionId);
+}
+
+// ─── 실험실(종목/지수 비교) ───────────────────────────────────────────────────
+
+const LAB_COLORS = ['#378ADD', '#E24B4A', '#639922', '#EF9F27', '#8b5fbf', '#00a99d', '#d6606d', '#5c6bc0'];
+let labTickers = [];
+let labSeriesData = null;
+let labChart = null;
+
+const labRegionPlugin = {
+  id: 'labRegionPlugin',
+  beforeDatasetsDraw(chart) {
+    const regions = chart.__labRegions;
+    if (!regions || !regions.length) return;
+    const { ctx, chartArea, scales } = chart;
+    const xScale = scales.x;
+    ctx.save();
+    ctx.fillStyle = 'rgba(216,75,74,0.18)';
+    regions.forEach(r => {
+      const x1 = xScale.getPixelForValue(r.startDate);
+      const x2 = xScale.getPixelForValue(r.endDate);
+      const left = Math.min(x1, x2);
+      const width = Math.max(Math.abs(x2 - x1), 2);
+      ctx.fillRect(left, chartArea.top, width, chartArea.bottom - chartArea.top);
+    });
+    ctx.restore();
+  },
+};
+Chart.register(labRegionPlugin);
+
+function initLabTab() {
+  if (labTickers.length === 0) {
+    labTickers = ['^IXIC', 'SOXL', '^TNX'];
+    renderLabChips();
+  }
+  const startEl = document.getElementById('lab-start');
+  const endEl = document.getElementById('lab-end');
+  if (!startEl.value || !endEl.value) {
+    const today = new Date();
+    const past = new Date();
+    past.setMonth(past.getMonth() - 3);
+    const fmt = d => d.toISOString().slice(0, 10);
+    if (!endEl.value) endEl.value = fmt(today);
+    if (!startEl.value) startEl.value = fmt(past);
+  }
+}
+
+function addLabTicker() {
+  const input = document.getElementById('lab-ticker-input');
+  const ticker = input.value.trim().toUpperCase();
+  if (!ticker) return;
+  if (labTickers.includes(ticker)) { showToast(`${ticker}은(는) 이미 추가되어 있습니다`); return; }
+  if (labTickers.length >= 8) { showToast('최대 8개까지 비교할 수 있습니다'); return; }
+  labTickers.push(ticker);
+  input.value = '';
+  renderLabChips();
+}
+
+function removeLabTicker(ticker) {
+  labTickers = labTickers.filter(t => t !== ticker);
+  renderLabChips();
+}
+
+function renderLabChips() {
+  const el = document.getElementById('lab-ticker-chips');
+  el.innerHTML = labTickers.map((t, i) => `
+    <span class="lab-chip">
+      <span class="lab-chip-swatch" style="background:${LAB_COLORS[i % LAB_COLORS.length]};"></span>
+      ${escapeHtml(t)}
+      <button type="button" onclick="removeLabTicker('${t}')" aria-label="${t} 제거"><i class="ti ti-x" aria-hidden="true"></i></button>
+    </span>`).join('') || `<span style="font-size:12px;color:var(--text-muted);">비교할 티커/지수를 추가하세요</span>`;
+}
+
+async function runLabCompare() {
+  const start = document.getElementById('lab-start').value;
+  const end = document.getElementById('lab-end').value;
+  const el = document.getElementById('lab-result');
+
+  if (!labTickers.length) { alert('티커/지수를 1개 이상 추가하세요'); return; }
+  if (!start || !end) { alert('시작일과 종료일을 입력하세요'); return; }
+
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>시세 불러오는 중...</div>`;
+  try {
+    const data = await api('POST', '/api/lab/series', { tickers: labTickers, start, end });
+    labSeriesData = data;
+    renderLabResult(data);
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+  }
+}
+
+function renderLabResult(data) {
+  const el = document.getElementById('lab-result');
+  el.innerHTML = `
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">정규화 비교 (시작일 = 100)</div>
+      <div class="chart-wrap">
+        <canvas id="lab-chart" role="img" aria-label="종목/지수 정규화 비교 차트"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">조건 구간 찾기</div>
+      <div class="lab-cond-row">
+        <select id="lab-cond-ticker">
+          ${data.series.map(s => `<option value="${escapeHtml(s.ticker)}">${escapeHtml(s.ticker)}</option>`).join('')}
+        </select>
+        <select id="lab-cond-metric">
+          <option value="change">전일대비 변동률(%)</option>
+          <option value="close">값(종가)</option>
+        </select>
+        <select id="lab-cond-op">
+          <option value="lte">이하</option>
+          <option value="lt">미만</option>
+          <option value="gte">이상</option>
+          <option value="gt">초과</option>
+        </select>
+        <input type="number" id="lab-cond-threshold" placeholder="예: -3 또는 4.5" step="0.01" value="-3" />
+        <button class="btn-primary" onclick="applyLabCondition()"><i class="ti ti-highlight" aria-hidden="true"></i> 구간 표시</button>
+        <button class="btn-secondary" onclick="clearLabCondition()"><i class="ti ti-x" aria-hidden="true"></i> 초기화</button>
+      </div>
+      <div id="lab-regions"></div>
+    </div>
+  `;
+  setTimeout(() => drawLabChart(data, []), 80);
+}
+
+function normalizeLabSeries(closes) {
+  const base = closes.find(v => v !== null && v !== undefined && v !== 0);
+  if (base === undefined) return closes.map(() => null);
+  return closes.map(v => (v === null || v === undefined) ? null : (v / base) * 100);
+}
+
+function drawLabChart(data, regions) {
+  const canvas = document.getElementById('lab-chart');
+  if (!canvas) return;
+  if (labChart) labChart.destroy();
+
+  const datasets = data.series.map((s, i) => ({
+    label: s.ticker,
+    data: normalizeLabSeries(s.closes),
+    borderColor: LAB_COLORS[i % LAB_COLORS.length],
+    backgroundColor: 'transparent',
+    fill: false, pointRadius: 0, borderWidth: 2, tension: 0.1, spanGaps: true,
+  }));
+
+  labChart = new Chart(canvas, {
+    type: 'line',
+    data: { labels: data.dates, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y === null ? '-' : ctx.parsed.y.toFixed(1)}` } },
+      },
+      scales: {
+        y: { ticks: { callback: v => v.toFixed(0) }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        x: { ticks: { maxTicksLimit: 8 }, grid: { display: false } },
+      },
+    },
+  });
+  labChart.__labRegions = regions || [];
+  labChart.update();
+}
+
+function computeLabRegions(dates, closes, metric, op, threshold) {
+  const values = metric === 'change'
+    ? closes.map((v, i) => {
+        const prev = i > 0 ? closes[i - 1] : null;
+        if (v === null || v === undefined || prev === null || prev === undefined || prev === 0) return null;
+        return (v - prev) / prev * 100;
+      })
+    : closes;
+
+  const cmp = {
+    gte: (v, t) => v >= t, gt: (v, t) => v > t,
+    lte: (v, t) => v <= t, lt: (v, t) => v < t,
+  }[op];
+
+  const flags = values.map(v => (v === null || v === undefined) ? false : cmp(v, threshold));
+  const regions = [];
+  let startIdx = null;
+  for (let i = 0; i <= flags.length; i++) {
+    const on = i < flags.length && flags[i];
+    if (on && startIdx === null) startIdx = i;
+    if (!on && startIdx !== null) {
+      regions.push({ startDate: dates[startIdx], endDate: dates[i - 1], days: i - startIdx });
+      startIdx = null;
+    }
+  }
+  return regions;
+}
+
+function applyLabCondition() {
+  if (!labSeriesData) return;
+  const ticker = document.getElementById('lab-cond-ticker').value;
+  const metric = document.getElementById('lab-cond-metric').value;
+  const op = document.getElementById('lab-cond-op').value;
+  const threshold = parseFloat(document.getElementById('lab-cond-threshold').value);
+  if (isNaN(threshold)) { alert('기준값을 입력하세요'); return; }
+
+  const series = labSeriesData.series.find(s => s.ticker === ticker);
+  if (!series) return;
+
+  const regions = computeLabRegions(labSeriesData.dates, series.closes, metric, op, threshold);
+  drawLabChart(labSeriesData, regions);
+  renderLabRegions(regions, ticker, metric, op, threshold);
+}
+
+function clearLabCondition() {
+  if (!labSeriesData) return;
+  drawLabChart(labSeriesData, []);
+  document.getElementById('lab-regions').innerHTML = '';
+}
+
+function renderLabRegions(regions, ticker, metric, op, threshold) {
+  const el = document.getElementById('lab-regions');
+  const metricLabel = metric === 'change' ? '일간 변동률(%)' : '값';
+  const opLabel = { gte: '이상', gt: '초과', lte: '이하', lt: '미만' }[op];
+  const summary = `${escapeHtml(ticker)} ${metricLabel}이 ${threshold}${opLabel}인 구간: ${regions.length}개`;
+
+  if (!regions.length) {
+    el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>${summary}</p><small>조건을 만족하는 구간이 없습니다</small></div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--text-secondary);margin-top:14px;margin-bottom:6px;">${summary}</div>
+    <div class="lab-region-list">
+      ${regions.map(r => `
+        <div class="lab-region-item">
+          <span>${r.startDate}${r.startDate !== r.endDate ? ' ~ ' + r.endDate : ''}</span>
+          <span style="color:var(--text-secondary);">${r.days}일</span>
+        </div>`).join('')}
+    </div>`;
 }
 
 // ─── 유틸 ────────────────────────────────────────────────────────────────────

@@ -223,6 +223,27 @@ input::placeholder { color: var(--text-muted); }
 .macro-price { font-size: 17px; font-weight: 700; }
 .macro-change { font-size: 12px; margin-top: 2px; display: flex; align-items: center; gap: 3px; }
 
+/* Lab */
+.lab-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.lab-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--bg-secondary); border: 1px solid var(--border-strong);
+  border-radius: 20px; padding: 5px 8px 5px 12px; font-size: 13px; font-weight: 600;
+}
+.lab-chip-swatch { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.lab-chip button {
+  padding: 2px; border: none; background: none; color: var(--text-muted);
+  border-radius: 50%; font-size: 13px; line-height: 1;
+}
+.lab-chip button:hover { color: var(--red); background: var(--red-bg); }
+.lab-cond-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.lab-cond-row select, .lab-cond-row input { flex: 1 1 120px; min-width: 0; }
+.lab-region-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.lab-region-item {
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--bg-secondary); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 13px;
+}
+
 /* Fear & Greed */
 .fear-greed-body { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
 .fear-greed-gauge { flex: 1 1 220px; text-align: center; max-width: 260px; }

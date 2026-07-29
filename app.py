@@ -378,6 +378,60 @@ def get_macro():
     return jsonify(sanitize_json({"instruments": out, "fearGreed": fear_greed}))
 
 
+# ─── 실험실(종목/지수 비교) API ───────────────────────────────────────────────
+# 지수(^GSPC), 선물(GC=F), 배당조정 등 yfinance 표기를 그대로 받아야 해서
+# 일반 주식 티커보다 느슨한 정규식을 쓴다.
+LAB_TICKER_RE = re.compile(r"^[A-Za-z0-9^.=\-]{1,15}$")
+
+
+@app.route("/api/lab/series", methods=["POST"])
+@login_required
+def get_lab_series():
+    body = request.json or {}
+    tickers = body.get("tickers", [])
+    start = body.get("start", "")
+    end = body.get("end", "")
+
+    if not isinstance(tickers, list) or not (1 <= len(tickers) <= 8):
+        return jsonify({"error": "티커는 1~8개 사이로 입력하세요"}), 400
+    tickers = [t.strip().upper() for t in tickers if t and t.strip()]
+    for t in tickers:
+        if not LAB_TICKER_RE.match(t):
+            return jsonify({"error": f'"{t}" 티커 형식이 올바르지 않습니다'}), 400
+
+    try:
+        start_dt = datetime.strptime(start, "%Y-%m-%d")
+        end_dt = datetime.strptime(end, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"error": "날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)"}), 400
+    if start_dt >= end_dt:
+        return jsonify({"error": "종료일은 시작일보다 이후여야 합니다"}), 400
+
+    from backtest import fetch_daily_prices
+    import concurrent.futures
+
+    results = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(tickers)) as ex:
+        futures = {ex.submit(fetch_daily_prices, t, start, end): t for t in tickers}
+        for fut in concurrent.futures.as_completed(futures):
+            results[futures[fut]] = fut.result()
+
+    all_dates = sorted({bar["date"] for bars in results.values() for bar in bars})
+    if not all_dates:
+        return jsonify({"error": "해당 기간의 시세 데이터를 찾을 수 없습니다"}), 400
+
+    series = []
+    for t in tickers:
+        bars = results.get(t) or []
+        by_date = {bar["date"]: bar["close"] for bar in bars}
+        series.append({
+            "ticker": t,
+            "closes": [by_date.get(d) for d in all_dates],
+        })
+
+    return jsonify(sanitize_json({"dates": all_dates, "series": series}))
+
+
 # ─── 종목 데이터 API ─────────────────────────────────────────────────────────
 
 @app.route("/api/stock/<ticker>")
@@ -798,7 +852,7 @@ def delete_user(user_id):
 # JSON API는 CSRF 토큰 대신 로그인 세션 + JSON Content-Type(교차 출처 요청 시
 # 브라우저 프리플라이트로 차단됨) 조합으로 보호하므로 폼 기반 CSRF 검사에서 제외합니다.
 for _view in (
-    save_key, delete_key, get_stock, get_quote, get_macro,
+    save_key, delete_key, get_stock, get_quote, get_macro, get_lab_series,
     get_portfolio, add_portfolio, remove_portfolio, refresh_portfolio,
     get_alerts, add_alert, remove_alert,
     backtest_infinite_buying,
