@@ -87,11 +87,11 @@
 }
 
 html, body { overflow-x: hidden; }
-/* 결과가 로드되며 페이지 높이가 바뀔 때 세로 스크롤바가 나타났다 사라지며
-   전체 너비가 미세하게 흔들리는 것을 막기 위해 스크롤바 자리를 항상 예약한다.
-   overflow-y:scroll을 같이 쓰면 브라우저에 따라 네이티브 스크롤바와 예약된
-   거터가 겹쳐 그려져 스크롤바가 두 개처럼 보이는 문제가 있어 gutter만 사용한다. */
-html { scrollbar-gutter: stable; }
+/* 계산 중 로딩 화면 ↔ 결과 화면 전환 등으로 페이지 높이가 바뀔 때마다 세로
+   스크롤바가 나타났다 사라지길 반복하는 것을 막기 위해, 스크롤바를 항상 표시
+   상태로 고정한다. (scrollbar-gutter와 함께 쓰면 브라우저에 따라 두 개처럼
+   겹쳐 보이는 문제가 있어 이 방식 하나만 사용한다.) */
+html { overflow-y: scroll; }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
