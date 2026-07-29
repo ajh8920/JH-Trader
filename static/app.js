@@ -1065,6 +1065,9 @@ let labTickers = [];
 let labSeriesData = null;
 let labChart = null;
 let labPanCleanup = null;
+let labConditionRows = [];
+let labConditionRowSeq = 0;
+let labCombinator = 'AND';
 
 // 종목/지수마다 값의 단위가 다르므로(지수=포인트, 개별종목·ETF=달러, 금리=%),
 // 축을 단위별로 나눠 표시한다. ^TNX 등 금리류만 예외적으로 %이고, 나머지
@@ -1211,28 +1214,94 @@ function renderLabResult(data) {
 
     <div class="card">
       <div style="font-size:13px;font-weight:600;margin-bottom:10px;">조건 구간 찾기</div>
-      <div class="lab-cond-row">
-        <select id="lab-cond-ticker">
-          ${data.series.map(s => `<option value="${escapeHtml(s.ticker)}">${escapeHtml(s.ticker)}</option>`).join('')}
-        </select>
-        <select id="lab-cond-metric">
-          <option value="change">전(주/월/년)기 대비 변동률(%)</option>
-          <option value="close">값(종가)</option>
-        </select>
-        <select id="lab-cond-op">
-          <option value="lte">이하</option>
-          <option value="lt">미만</option>
-          <option value="gte">이상</option>
-          <option value="gt">초과</option>
-        </select>
-        <input type="number" id="lab-cond-threshold" placeholder="예: -3 또는 4.5" step="0.01" value="-3" />
+      <div id="lab-cond-rows" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px;">
+        <button class="btn-secondary" onclick="addLabConditionRow()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-plus" aria-hidden="true"></i> 조건 추가</button>
+        <div id="lab-cond-combinator-wrap" style="display:none;align-items:center;gap:10px;font-size:12px;color:var(--text-secondary);">
+          조건 결합:
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="radio" name="lab-cond-combinator" value="AND" onchange="setLabCombinator('AND')" /> AND(모두 만족)
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="radio" name="lab-cond-combinator" value="OR" onchange="setLabCombinator('OR')" /> OR(하나라도 만족)
+          </label>
+        </div>
         <button class="btn-primary" onclick="applyLabCondition()"><i class="ti ti-highlight" aria-hidden="true"></i> 구간 표시</button>
         <button class="btn-secondary" onclick="clearLabCondition()"><i class="ti ti-x" aria-hidden="true"></i> 초기화</button>
       </div>
       <div id="lab-regions"></div>
     </div>
   `;
+  labConditionRows = [{ id: labConditionRowSeq++, ticker: data.series[0] ? data.series[0].ticker : '', metric: 'change', op: 'lte', threshold: -3 }];
+  labCombinator = 'AND';
+  renderLabConditionRowsUi();
   setTimeout(() => drawLabChart(getLabDisplayData(), []), 80);
+}
+
+function renderLabConditionRowsUi() {
+  const wrap = document.getElementById('lab-cond-rows');
+  if (!wrap) return;
+  const data = getLabDisplayData();
+
+  wrap.innerHTML = labConditionRows.map((row, i) => `
+    <div class="lab-cond-row" data-row-id="${row.id}">
+      ${labConditionRows.length > 1 ? `<span style="font-size:11px;color:var(--text-secondary);flex:0 0 auto;">#${i + 1}</span>` : ''}
+      <select id="lab-cond-ticker-${row.id}">
+        ${data.series.map(s => `<option value="${escapeHtml(s.ticker)}" ${s.ticker === row.ticker ? 'selected' : ''}>${escapeHtml(s.ticker)}</option>`).join('')}
+      </select>
+      <select id="lab-cond-metric-${row.id}">
+        <option value="change" ${row.metric === 'change' ? 'selected' : ''}>전(주/월/년)기 대비 변동률(%)</option>
+        <option value="close" ${row.metric === 'close' ? 'selected' : ''}>값(종가)</option>
+      </select>
+      <select id="lab-cond-op-${row.id}">
+        <option value="lte" ${row.op === 'lte' ? 'selected' : ''}>이하</option>
+        <option value="lt" ${row.op === 'lt' ? 'selected' : ''}>미만</option>
+        <option value="gte" ${row.op === 'gte' ? 'selected' : ''}>이상</option>
+        <option value="gt" ${row.op === 'gt' ? 'selected' : ''}>초과</option>
+      </select>
+      <input type="number" id="lab-cond-threshold-${row.id}" placeholder="예: -3 또는 4.5" step="0.01" value="${row.threshold}" />
+      <button class="btn-secondary" onclick="removeLabConditionRow(${row.id})" ${labConditionRows.length <= 1 ? 'disabled' : ''} style="flex:0 0 auto;padding:4px 8px;" title="조건 삭제"><i class="ti ti-trash" aria-hidden="true"></i></button>
+    </div>
+  `).join('');
+
+  const comboWrap = document.getElementById('lab-cond-combinator-wrap');
+  if (comboWrap) {
+    comboWrap.style.display = labConditionRows.length > 1 ? 'flex' : 'none';
+    comboWrap.querySelectorAll('input[name="lab-cond-combinator"]').forEach(r => {
+      r.checked = r.value === labCombinator;
+    });
+  }
+}
+
+function syncLabConditionRowsFromDom() {
+  labConditionRows.forEach(row => {
+    const t = document.getElementById(`lab-cond-ticker-${row.id}`);
+    const m = document.getElementById(`lab-cond-metric-${row.id}`);
+    const o = document.getElementById(`lab-cond-op-${row.id}`);
+    const th = document.getElementById(`lab-cond-threshold-${row.id}`);
+    if (t) row.ticker = t.value;
+    if (m) row.metric = m.value;
+    if (o) row.op = o.value;
+    if (th) row.threshold = th.value;
+  });
+}
+
+function addLabConditionRow() {
+  syncLabConditionRowsFromDom();
+  const data = getLabDisplayData();
+  labConditionRows.push({ id: labConditionRowSeq++, ticker: data.series[0] ? data.series[0].ticker : '', metric: 'change', op: 'lte', threshold: -3 });
+  renderLabConditionRowsUi();
+}
+
+function removeLabConditionRow(id) {
+  syncLabConditionRowsFromDom();
+  if (labConditionRows.length <= 1) return;
+  labConditionRows = labConditionRows.filter(r => r.id !== id);
+  renderLabConditionRowsUi();
+}
+
+function setLabCombinator(v) {
+  labCombinator = v;
 }
 
 function labBucketKey(dateStr, interval) {
@@ -1392,7 +1461,7 @@ function attachLabPan(chart, canvas) {
   };
 }
 
-function computeLabRegions(dates, closes, metric, op, threshold) {
+function computeLabFlags(closes, metric, op, threshold) {
   const values = metric === 'change'
     ? closes.map((v, i) => {
         const prev = i > 0 ? closes[i - 1] : null;
@@ -1406,7 +1475,10 @@ function computeLabRegions(dates, closes, metric, op, threshold) {
     lte: (v, t) => v <= t, lt: (v, t) => v < t,
   }[op];
 
-  const flags = values.map(v => (v === null || v === undefined) ? false : cmp(v, threshold));
+  return values.map(v => (v === null || v === undefined) ? false : cmp(v, threshold));
+}
+
+function flagsToRegions(dates, flags) {
   const regions = [];
   let startIdx = null;
   for (let i = 0; i <= flags.length; i++) {
@@ -1422,19 +1494,35 @@ function computeLabRegions(dates, closes, metric, op, threshold) {
 
 function applyLabCondition() {
   if (!labSeriesData) return;
-  const ticker = document.getElementById('lab-cond-ticker').value;
-  const metric = document.getElementById('lab-cond-metric').value;
-  const op = document.getElementById('lab-cond-op').value;
-  const threshold = parseFloat(document.getElementById('lab-cond-threshold').value);
-  if (isNaN(threshold)) { alert('기준값을 입력하세요'); return; }
+  syncLabConditionRowsFromDom();
 
   const displayData = getLabDisplayData();
-  const series = displayData.series.find(s => s.ticker === ticker);
-  if (!series) return;
+  const combinator = labConditionRows.length > 1 ? labCombinator : 'AND';
 
-  const regions = computeLabRegions(displayData.dates, series.closes, metric, op, threshold);
+  const perConditionFlags = [];
+  const summaries = [];
+  for (const row of labConditionRows) {
+    const threshold = parseFloat(row.threshold);
+    if (isNaN(threshold)) { alert('모든 조건에 기준값을 입력하세요'); return; }
+    const series = displayData.series.find(s => s.ticker === row.ticker);
+    if (!series) continue;
+
+    perConditionFlags.push(computeLabFlags(series.closes, row.metric, row.op, threshold));
+    const metricLabel = row.metric === 'change' ? '전기 대비 변동률(%)' : '값';
+    const opLabel = { gte: '이상', gt: '초과', lte: '이하', lt: '미만' }[row.op];
+    summaries.push(`${row.ticker} ${metricLabel} ${threshold}${opLabel}`);
+  }
+  if (!perConditionFlags.length) return;
+
+  const combined = displayData.dates.map((_, i) =>
+    combinator === 'OR'
+      ? perConditionFlags.some(flags => flags[i])
+      : perConditionFlags.every(flags => flags[i])
+  );
+
+  const regions = flagsToRegions(displayData.dates, combined);
   drawLabChart(displayData, regions);
-  renderLabRegions(regions, ticker, metric, op, threshold);
+  renderLabRegions(regions, summaries, combinator);
 }
 
 function clearLabCondition() {
@@ -1443,11 +1531,10 @@ function clearLabCondition() {
   document.getElementById('lab-regions').innerHTML = '';
 }
 
-function renderLabRegions(regions, ticker, metric, op, threshold) {
+function renderLabRegions(regions, summaries, combinator) {
   const el = document.getElementById('lab-regions');
-  const metricLabel = metric === 'change' ? '전기 대비 변동률(%)' : '값';
-  const opLabel = { gte: '이상', gt: '초과', lte: '이하', lt: '미만' }[op];
-  const summary = `${escapeHtml(ticker)} ${metricLabel}이 ${threshold}${opLabel}인 구간: ${regions.length}개`;
+  const joiner = combinator === 'OR' ? ' 또는 ' : ' 그리고 ';
+  const summary = `${summaries.map(escapeHtml).join(joiner)} 인 구간: ${regions.length}개`;
 
   if (!regions.length) {
     el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>${summary}</p><small>조건을 만족하는 구간이 없습니다</small></div>`;
