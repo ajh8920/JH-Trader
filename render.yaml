@@ -10,7 +10,7 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn app:app --workers 2 --timeout 30 --graceful-timeout 20
     envVars:
       - key: SECRET_KEY
         generateValue: true

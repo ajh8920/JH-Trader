@@ -279,7 +279,7 @@ def _fetch_macro_quote(ticker):
     import yfinance as yf
 
     try:
-        df = yf.download(ticker, period="5d", interval="1d", progress=False, auto_adjust=False)
+        df = yf.download(ticker, period="5d", interval="1d", progress=False, auto_adjust=False, timeout=8)
     except Exception:
         return None
     if df is None or df.empty:

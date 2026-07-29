@@ -37,7 +37,7 @@ def fetch_daily_prices(ticker, start, end):
     import yfinance as yf
 
     end_inclusive = (datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-    df = yf.download(ticker, start=start, end=end_inclusive, progress=False, auto_adjust=False)
+    df = yf.download(ticker, start=start, end=end_inclusive, progress=False, auto_adjust=False, timeout=8)
     if df is None or df.empty:
         return []
 
