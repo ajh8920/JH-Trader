@@ -421,15 +421,18 @@ def get_lab_series():
         return jsonify({"error": "해당 기간의 시세 데이터를 찾을 수 없습니다"}), 400
 
     series = []
+    invalid_tickers = []
     for t in tickers:
         bars = results.get(t) or []
+        if not bars:
+            invalid_tickers.append(t)
         by_date = {bar["date"]: bar["close"] for bar in bars}
         series.append({
             "ticker": t,
             "closes": [by_date.get(d) for d in all_dates],
         })
 
-    return jsonify(sanitize_json({"dates": all_dates, "series": series}))
+    return jsonify(sanitize_json({"dates": all_dates, "series": series, "invalidTickers": invalid_tickers}))
 
 
 # ─── 종목 데이터 API ─────────────────────────────────────────────────────────

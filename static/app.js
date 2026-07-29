@@ -1089,6 +1089,9 @@ function renderLabChips() {
     </span>`).join('') || `<span style="font-size:12px;color:var(--text-muted);">비교할 티커/지수를 추가하세요</span>`;
 }
 
+let labInterval = 'daily';
+let labLogScale = false;
+
 async function runLabCompare() {
   const start = document.getElementById('lab-start').value;
   const end = document.getElementById('lab-end').value;
@@ -1107,14 +1110,42 @@ async function runLabCompare() {
   }
 }
 
+const LAB_INTERVALS = [
+  { key: 'daily', label: '일봉' },
+  { key: 'weekly', label: '주봉' },
+  { key: 'monthly', label: '월봉' },
+  { key: 'yearly', label: '년봉' },
+];
+
 function renderLabResult(data) {
   const el = document.getElementById('lab-result');
+  const invalid = data.invalidTickers || [];
+
   el.innerHTML = `
+    ${invalid.length ? `
+      <div class="error-msg">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        다음 티커는 데이터를 찾을 수 없습니다: ${invalid.map(escapeHtml).join(', ')} —
+        실제 존재하는 심볼인지 확인하세요 (지수는 ^ 접두사가 필요합니다. 예: 나스닥종합 ^IXIC, S&amp;P500 ^GSPC, 10년물 국채금리 ^TNX)
+      </div>` : ''}
+
     <div class="card">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">정규화 비교 (시작일 = 100)</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:600;">정규화 비교 (구간 시작 = 100)</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div class="lab-interval-group">
+            ${LAB_INTERVALS.map(iv => `<button type="button" class="lab-interval-btn ${iv.key === labInterval ? 'active' : ''}" data-interval="${iv.key}" onclick="setLabInterval('${iv.key}')">${iv.label}</button>`).join('')}
+          </div>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);cursor:pointer;">
+            <input type="checkbox" id="lab-log-scale" ${labLogScale ? 'checked' : ''} onchange="toggleLabLogScale()" /> 로그 스케일
+          </label>
+          <button class="btn-secondary" onclick="resetLabZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> 줌 초기화</button>
+        </div>
+      </div>
       <div class="chart-wrap">
         <canvas id="lab-chart" role="img" aria-label="종목/지수 정규화 비교 차트"></canvas>
       </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">마우스 휠로 확대/축소, 드래그로 이동할 수 있습니다</div>
     </div>
 
     <div class="card">
@@ -1124,7 +1155,7 @@ function renderLabResult(data) {
           ${data.series.map(s => `<option value="${escapeHtml(s.ticker)}">${escapeHtml(s.ticker)}</option>`).join('')}
         </select>
         <select id="lab-cond-metric">
-          <option value="change">전일대비 변동률(%)</option>
+          <option value="change">전(주/월/년)기 대비 변동률(%)</option>
           <option value="close">값(종가)</option>
         </select>
         <select id="lab-cond-op">
@@ -1140,7 +1171,54 @@ function renderLabResult(data) {
       <div id="lab-regions"></div>
     </div>
   `;
-  setTimeout(() => drawLabChart(data, []), 80);
+  setTimeout(() => drawLabChart(getLabDisplayData(), []), 80);
+}
+
+function labBucketKey(dateStr, interval) {
+  if (interval === 'monthly') return dateStr.slice(0, 7);
+  if (interval === 'yearly') return dateStr.slice(0, 4);
+  if (interval === 'weekly') {
+    const d = new Date(dateStr + 'T00:00:00Z');
+    const day = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+  }
+  return dateStr;
+}
+
+function getLabDisplayData() {
+  if (!labSeriesData) return { dates: [], series: [] };
+  if (labInterval === 'daily') return labSeriesData;
+
+  const lastIdxByBucket = new Map();
+  labSeriesData.dates.forEach((d, i) => { lastIdxByBucket.set(labBucketKey(d, labInterval), i); });
+  const idxList = Array.from(lastIdxByBucket.values()).sort((a, b) => a - b);
+
+  return {
+    dates: idxList.map(i => labSeriesData.dates[i]),
+    series: labSeriesData.series.map(s => ({ ticker: s.ticker, closes: idxList.map(i => s.closes[i]) })),
+  };
+}
+
+function setLabInterval(interval) {
+  labInterval = interval;
+  document.querySelectorAll('.lab-interval-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.interval === interval);
+  });
+  const regionsEl = document.getElementById('lab-regions');
+  if (regionsEl) regionsEl.innerHTML = '';
+  drawLabChart(getLabDisplayData(), []);
+}
+
+function toggleLabLogScale() {
+  labLogScale = document.getElementById('lab-log-scale').checked;
+  drawLabChart(getLabDisplayData(), labChart ? labChart.__labRegions : []);
+}
+
+function resetLabZoom() {
+  if (labChart) labChart.resetZoom();
 }
 
 function normalizeLabSeries(closes) {
@@ -1170,9 +1248,18 @@ function drawLabChart(data, regions) {
       plugins: {
         legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
         tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y === null ? '-' : ctx.parsed.y.toFixed(1)}` } },
+        zoom: {
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+          pan: { enabled: true, mode: 'x' },
+          limits: { x: { minRange: 5 } },
+        },
       },
       scales: {
-        y: { ticks: { callback: v => v.toFixed(0) }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        y: {
+          type: labLogScale ? 'logarithmic' : 'linear',
+          ticks: { callback: v => Number(v).toFixed(0) },
+          grid: { color: 'rgba(128,128,128,0.1)' },
+        },
         x: { ticks: { maxTicksLimit: 8 }, grid: { display: false } },
       },
     },
@@ -1217,23 +1304,24 @@ function applyLabCondition() {
   const threshold = parseFloat(document.getElementById('lab-cond-threshold').value);
   if (isNaN(threshold)) { alert('기준값을 입력하세요'); return; }
 
-  const series = labSeriesData.series.find(s => s.ticker === ticker);
+  const displayData = getLabDisplayData();
+  const series = displayData.series.find(s => s.ticker === ticker);
   if (!series) return;
 
-  const regions = computeLabRegions(labSeriesData.dates, series.closes, metric, op, threshold);
-  drawLabChart(labSeriesData, regions);
+  const regions = computeLabRegions(displayData.dates, series.closes, metric, op, threshold);
+  drawLabChart(displayData, regions);
   renderLabRegions(regions, ticker, metric, op, threshold);
 }
 
 function clearLabCondition() {
   if (!labSeriesData) return;
-  drawLabChart(labSeriesData, []);
+  drawLabChart(getLabDisplayData(), []);
   document.getElementById('lab-regions').innerHTML = '';
 }
 
 function renderLabRegions(regions, ticker, metric, op, threshold) {
   const el = document.getElementById('lab-regions');
-  const metricLabel = metric === 'change' ? '일간 변동률(%)' : '값';
+  const metricLabel = metric === 'change' ? '전기 대비 변동률(%)' : '값';
   const opLabel = { gte: '이상', gt: '초과', lte: '이하', lt: '미만' }[op];
   const summary = `${escapeHtml(ticker)} ${metricLabel}이 ${threshold}${opLabel}인 구간: ${regions.length}개`;
 
