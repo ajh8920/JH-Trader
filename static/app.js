@@ -142,14 +142,32 @@ async function loadMacro() {
   const el = document.getElementById('macro-content');
   if (!el || el.dataset.loaded === '1') return;
   el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>주요 시황 불러오는 중...</div>`;
-  try {
-    const data = await api('GET', '/api/macro');
-    renderMacro(data);
+
+  const maxAttempts = 3;
+  let lastData = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const data = await api('GET', '/api/macro');
+      lastData = data;
+      const allOk = (data.instruments || []).every(i => i.price !== null && i.price !== undefined) && !!data.fearGreed;
+      if (allOk || attempt === maxAttempts) {
+        renderMacro(data);
+        el.dataset.loaded = '1';
+        return;
+      }
+    } catch (e) {
+      if (attempt === maxAttempts) {
+        el.innerHTML = `
+          <div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>
+          <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> 다시 시도</button>`;
+        return;
+      }
+    }
+    await new Promise(r => setTimeout(r, 700));
+  }
+  if (lastData) {
+    renderMacro(lastData);
     el.dataset.loaded = '1';
-  } catch (e) {
-    el.innerHTML = `
-      <div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>
-      <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> 다시 시도</button>`;
   }
 }
 
@@ -1087,6 +1105,12 @@ const labRegionPlugin = {
   },
 };
 Chart.register(labRegionPlugin);
+// CDN의 UMD 빌드는 보통 Chart 전역을 감지해 자동 등록되지만, 로드 순서 등의
+// 이유로 자동 등록되지 않는 경우를 대비해 명시적으로 한 번 더 등록한다.
+// (이미 등록돼 있으면 Chart.js가 무시하므로 안전하다.)
+if (typeof window.ChartZoom !== 'undefined') {
+  Chart.register(window.ChartZoom);
+}
 
 function initLabTab() {
   if (labTickers.length === 0) {
@@ -1311,7 +1335,7 @@ function drawLabChart(data, regions) {
         },
         zoom: {
           zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
-          pan: { enabled: true, mode: 'x' },
+          pan: { enabled: true, mode: 'x', modifierKey: null, threshold: 5 },
           limits: { x: { min: 0, max: Math.max(dates.length - 1, 0), minRange: 5 } },
         },
       },

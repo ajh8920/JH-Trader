@@ -51,6 +51,20 @@ load_dotenv(ENV_FILE)
 app = Flask(__name__)
 
 
+def _asset_version(filename):
+    try:
+        return int(os.path.getmtime(BASE_DIR / "static" / filename))
+    except OSError:
+        return 1
+
+
+@app.context_processor
+def inject_asset_version():
+    # 정적 파일 URL에 수정 시각을 쿼리 파라미터로 붙여, 배포 후 브라우저가
+    # 이전 버전의 app.js/style.css를 캐시에서 그대로 쓰는 문제를 방지한다.
+    return {"asset_version": _asset_version}
+
+
 def _load_or_create_secret_key():
     key = os.environ.get("SECRET_KEY")
     if key:
@@ -309,55 +323,60 @@ MACRO_INSTRUMENTS = [
 ]
 
 
-def _fetch_macro_quote(ticker):
+def _fetch_macro_quote(ticker, attempts=3):
     import yfinance as yf
 
-    try:
-        df = yf.download(ticker, period="5d", interval="1d", progress=False, auto_adjust=False, timeout=8)
-    except Exception:
-        return None
-    if df is None or df.empty:
-        return None
-    if hasattr(df.columns, "get_level_values") and df.columns.nlevels > 1:
-        df.columns = df.columns.get_level_values(0)
-    df = df.dropna(subset=["Close"])
-    if df.empty:
-        return None
-    last = float(df.iloc[-1]["Close"])
-    prev = float(df.iloc[-2]["Close"]) if len(df) > 1 else last
-    return last, prev
+    for attempt in range(attempts):
+        try:
+            df = yf.download(ticker, period="5d", interval="1d", progress=False, auto_adjust=False, timeout=8)
+        except Exception:
+            df = None
+        if df is not None and not df.empty:
+            if hasattr(df.columns, "get_level_values") and df.columns.nlevels > 1:
+                df.columns = df.columns.get_level_values(0)
+            df = df.dropna(subset=["Close"])
+            if not df.empty:
+                last = float(df.iloc[-1]["Close"])
+                prev = float(df.iloc[-2]["Close"]) if len(df) > 1 else last
+                return last, prev
+        if attempt < attempts - 1:
+            time.sleep(0.5)
+    return None
 
 
 # CNN의 비공식(문서화되지 않은) 내부 API 엔드포인트입니다. 로그인/인증이 필요
 # 없고 널리 쓰이는 방식이지만, CNN이 예고 없이 바꾸거나 막을 수 있어 실패해도
 # 매크로 탭 전체가 죽지 않도록 예외를 잡아 None을 반환한다.
-def _fetch_fear_greed():
-    try:
-        res = requests.get(
-            "https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-                ),
-                "Accept": "application/json",
-                "Referer": "https://www.cnn.com/markets/fear-and-greed",
-            },
-            timeout=10,
-        )
-        if not res.ok:
-            return None
-        fg = res.json().get("fear_and_greed", {})
-        return {
-            "score": round(fg["score"], 1),
-            "rating": fg["rating"],
-            "previousClose": round(fg["previous_close"], 1),
-            "previousWeek": round(fg["previous_1_week"], 1),
-            "previousMonth": round(fg["previous_1_month"], 1),
-            "previousYear": round(fg["previous_1_year"], 1),
-        }
-    except Exception:
-        return None
+def _fetch_fear_greed(attempts=3):
+    for attempt in range(attempts):
+        try:
+            res = requests.get(
+                "https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+                    ),
+                    "Accept": "application/json",
+                    "Referer": "https://www.cnn.com/markets/fear-and-greed",
+                },
+                timeout=10,
+            )
+            if res.ok:
+                fg = res.json().get("fear_and_greed", {})
+                return {
+                    "score": round(fg["score"], 1),
+                    "rating": fg["rating"],
+                    "previousClose": round(fg["previous_close"], 1),
+                    "previousWeek": round(fg["previous_1_week"], 1),
+                    "previousMonth": round(fg["previous_1_month"], 1),
+                    "previousYear": round(fg["previous_1_year"], 1),
+                }
+        except Exception:
+            pass
+        if attempt < attempts - 1:
+            time.sleep(0.5)
+    return None
 
 
 # 지수/금리/공포탐욕지수는 초 단위로 바뀔 필요가 없는 값이라, 외부 API를 매번
@@ -407,8 +426,17 @@ def get_macro():
         })
 
     result = sanitize_json({"instruments": out, "fearGreed": fear_greed})
-    _macro_cache["data"] = result
-    _macro_cache["at"] = now
+
+    # 일부 항목이 실패한 결과를 캐시해버리면 그 실패가 최대 90초 동안 그대로
+    # 재노출된다. 전체가 성공했을 때만 캐시하고, 일부 실패 시에는 다음 요청이
+    # 바로 재시도할 수 있도록 캐시를 비워둔다.
+    all_ok = fear_greed is not None and all(item["price"] is not None for item in out)
+    if all_ok:
+        _macro_cache["data"] = result
+        _macro_cache["at"] = now
+    else:
+        _macro_cache["data"] = None
+        _macro_cache["at"] = 0.0
     return jsonify(result)
 
 
