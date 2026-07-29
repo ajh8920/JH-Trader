@@ -340,9 +340,19 @@ def _fetch_fear_greed():
         return None
 
 
+# 지수/금리/공포탐욕지수는 초 단위로 바뀔 필요가 없는 값이라, 외부 API를 매번
+# 다시 호출하지 않도록 짧게 캐시해 체감 속도를 크게 올린다(워커 프로세스별 캐시).
+_macro_cache = {"data": None, "at": 0.0}
+MACRO_CACHE_TTL_SECONDS = 90
+
+
 @app.route("/api/macro")
 @login_required
 def get_macro():
+    now = time.time()
+    if _macro_cache["data"] is not None and (now - _macro_cache["at"]) < MACRO_CACHE_TTL_SECONDS:
+        return jsonify(_macro_cache["data"])
+
     import concurrent.futures
 
     results = {}
@@ -375,7 +385,11 @@ def get_macro():
             "change": round(last - prev, 4),
             "changePct": round((last - prev) / prev * 100, 2) if prev else 0.0,
         })
-    return jsonify(sanitize_json({"instruments": out, "fearGreed": fear_greed}))
+
+    result = sanitize_json({"instruments": out, "fearGreed": fear_greed})
+    _macro_cache["data"] = result
+    _macro_cache["at"] = now
+    return jsonify(result)
 
 
 # ─── 실험실(종목/지수 비교) API ───────────────────────────────────────────────

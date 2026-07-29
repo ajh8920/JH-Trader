@@ -1073,14 +1073,8 @@ function initLabTab() {
   }
   const startEl = document.getElementById('lab-start');
   const endEl = document.getElementById('lab-end');
-  if (!startEl.value || !endEl.value) {
-    const today = new Date();
-    const past = new Date();
-    past.setMonth(past.getMonth() - 3);
-    const fmt = d => d.toISOString().slice(0, 10);
-    if (!endEl.value) endEl.value = fmt(today);
-    if (!startEl.value) startEl.value = fmt(past);
-  }
+  if (!endEl.value) endEl.value = new Date().toISOString().slice(0, 10);
+  if (!startEl.value) startEl.value = '2010-01-01';
 }
 
 function addLabTicker() {
