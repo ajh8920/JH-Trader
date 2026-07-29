@@ -1025,6 +1025,26 @@ let labTickers = [];
 let labSeriesData = null;
 let labChart = null;
 
+// 종목/지수마다 값의 단위가 다르므로(지수=포인트, 개별종목·ETF=달러, 금리=%),
+// 축을 단위별로 나눠 표시한다. ^TNX 등 금리류만 예외적으로 %이고, 나머지
+// ^ 접두사는 지수(포인트)로 취급한다.
+const LAB_RATE_TICKERS = new Set(['^TNX', '^IRX', '^FVX', '^TYX']);
+const LAB_UNIT_ORDER = ['pt', 'pct', 'usd'];
+const LAB_UNIT_LABEL = { pt: '포인트', usd: '달러($)', pct: '금리(%)' };
+
+function getLabUnit(ticker) {
+  if (LAB_RATE_TICKERS.has(ticker)) return 'pct';
+  if (ticker.startsWith('^')) return 'pt';
+  return 'usd';
+}
+
+function formatLabValue(v, unit) {
+  if (v === null || v === undefined) return '-';
+  if (unit === 'pct') return v.toFixed(2) + '%';
+  if (unit === 'usd') return '$' + v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  return v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
 const labRegionPlugin = {
   id: 'labRegionPlugin',
   beforeDatasetsDraw(chart) {
@@ -1035,8 +1055,8 @@ const labRegionPlugin = {
     ctx.save();
     ctx.fillStyle = 'rgba(216,75,74,0.18)';
     regions.forEach(r => {
-      const x1 = xScale.getPixelForValue(r.startDate);
-      const x2 = xScale.getPixelForValue(r.endDate);
+      const x1 = xScale.getPixelForValue(r.startIdx);
+      const x2 = xScale.getPixelForValue(r.endIdx);
       const left = Math.min(x1, x2);
       const width = Math.max(Math.abs(x2 - x1), 2);
       ctx.fillRect(left, chartArea.top, width, chartArea.bottom - chartArea.top);
@@ -1048,7 +1068,7 @@ Chart.register(labRegionPlugin);
 
 function initLabTab() {
   if (labTickers.length === 0) {
-    labTickers = ['^IXIC', 'SOXL', '^TNX'];
+    labTickers = ['^IXIC', '^TNX'];
     renderLabChips();
   }
   const startEl = document.getElementById('lab-start');
@@ -1131,7 +1151,7 @@ function renderLabResult(data) {
 
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-        <div style="font-size:13px;font-weight:600;">정규화 비교 (구간 시작 = 100)</div>
+        <div style="font-size:13px;font-weight:600;">종목/지수 비교 (단위별 축 분리)</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <div class="lab-interval-group">
             ${LAB_INTERVALS.map(iv => `<button type="button" class="lab-interval-btn ${iv.key === labInterval ? 'active' : ''}" data-interval="${iv.key}" onclick="setLabInterval('${iv.key}')">${iv.label}</button>`).join('')}
@@ -1143,7 +1163,7 @@ function renderLabResult(data) {
         </div>
       </div>
       <div class="chart-wrap">
-        <canvas id="lab-chart" role="img" aria-label="종목/지수 정규화 비교 차트"></canvas>
+        <canvas id="lab-chart" role="img" aria-label="종목/지수 비교 차트"></canvas>
       </div>
       <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">마우스 휠로 확대/축소, 드래그로 이동할 수 있습니다</div>
     </div>
@@ -1221,47 +1241,65 @@ function resetLabZoom() {
   if (labChart) labChart.resetZoom();
 }
 
-function normalizeLabSeries(closes) {
-  const base = closes.find(v => v !== null && v !== undefined && v !== 0);
-  if (base === undefined) return closes.map(() => null);
-  return closes.map(v => (v === null || v === undefined) ? null : (v / base) * 100);
-}
-
 function drawLabChart(data, regions) {
   const canvas = document.getElementById('lab-chart');
   if (!canvas) return;
   if (labChart) labChart.destroy();
 
-  const datasets = data.series.map((s, i) => ({
-    label: s.ticker,
-    data: normalizeLabSeries(s.closes),
-    borderColor: LAB_COLORS[i % LAB_COLORS.length],
-    backgroundColor: 'transparent',
-    fill: false, pointRadius: 0, borderWidth: 2, tension: 0.1, spanGaps: true,
-  }));
+  const dates = data.dates;
+  const unitsPresent = LAB_UNIT_ORDER.filter(u => data.series.some(s => getLabUnit(s.ticker) === u));
+
+  const datasets = data.series.map((s, i) => {
+    const unit = getLabUnit(s.ticker);
+    return {
+      label: s.ticker,
+      data: s.closes.map((v, idx) => ({ x: idx, y: v })),
+      yAxisID: `y-${unit}`,
+      borderColor: LAB_COLORS[i % LAB_COLORS.length],
+      backgroundColor: 'transparent',
+      fill: false, pointRadius: 0, borderWidth: 2, tension: 0.1, spanGaps: true,
+    };
+  });
+
+  const scales = {
+    x: {
+      type: 'linear',
+      min: 0, max: Math.max(dates.length - 1, 0),
+      ticks: { maxTicksLimit: 8, callback: v => dates[Math.round(v)] ?? '' },
+      grid: { display: false },
+    },
+  };
+  unitsPresent.forEach((unit, i) => {
+    scales[`y-${unit}`] = {
+      type: labLogScale ? 'logarithmic' : 'linear',
+      position: i === 0 ? 'left' : 'right',
+      grid: { drawOnChartArea: i === 0, color: 'rgba(128,128,128,0.1)' },
+      ticks: { callback: v => formatLabValue(Number(v), unit) },
+      title: { display: true, text: LAB_UNIT_LABEL[unit], font: { size: 11 } },
+    };
+  });
 
   labChart = new Chart(canvas, {
     type: 'line',
-    data: { labels: data.dates, datasets },
+    data: { datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y === null ? '-' : ctx.parsed.y.toFixed(1)}` } },
+        tooltip: {
+          callbacks: {
+            title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
+            label: ctx => ` ${ctx.dataset.label}: ${formatLabValue(ctx.parsed.y, getLabUnit(ctx.dataset.label))}`,
+          },
+        },
         zoom: {
           zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
           pan: { enabled: true, mode: 'x' },
-          limits: { x: { minRange: 5 } },
+          limits: { x: { min: 0, max: Math.max(dates.length - 1, 0), minRange: 5 } },
         },
       },
-      scales: {
-        y: {
-          type: labLogScale ? 'logarithmic' : 'linear',
-          ticks: { callback: v => Number(v).toFixed(0) },
-          grid: { color: 'rgba(128,128,128,0.1)' },
-        },
-        x: { ticks: { maxTicksLimit: 8 }, grid: { display: false } },
-      },
+      scales,
     },
   });
   labChart.__labRegions = regions || [];
@@ -1289,7 +1327,7 @@ function computeLabRegions(dates, closes, metric, op, threshold) {
     const on = i < flags.length && flags[i];
     if (on && startIdx === null) startIdx = i;
     if (!on && startIdx !== null) {
-      regions.push({ startDate: dates[startIdx], endDate: dates[i - 1], days: i - startIdx });
+      regions.push({ startIdx, endIdx: i - 1, startDate: dates[startIdx], endDate: dates[i - 1], days: i - startIdx });
       startIdx = null;
     }
   }
