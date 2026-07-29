@@ -141,6 +141,26 @@ def set_security_headers(resp):
     return resp
 
 
+# /api/ 요청은 항상 JSON으로 응답해야 프런트의 res.json()이 깨지지 않는다.
+# 처리되지 않은 예외가 나면 Flask/Werkzeug가 기본 HTML 에러 페이지를 돌려주는데,
+# 그러면 브라우저가 "Unexpected token '<'"로 파싱에 실패하므로 여기서 가로챈다.
+@app.errorhandler(Exception)
+def handle_uncaught_exception(e):
+    from werkzeug.exceptions import HTTPException
+
+    if not request.path.startswith("/api/"):
+        # 페이지 경로는 Flask/Werkzeug 기본 처리에 맡긴다.
+        if isinstance(e, HTTPException):
+            return e
+        app.logger.exception("처리 중 예외 발생: %s", request.path)
+        return "Internal Server Error", 500
+
+    if isinstance(e, HTTPException):
+        return jsonify({"error": e.description or "요청을 처리할 수 없습니다"}), e.code or 500
+    app.logger.exception("API 처리 중 예외 발생: %s", request.path)
+    return jsonify({"error": "서버에서 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요."}), 500
+
+
 # ─── Finnhub API 호출 ────────────────────────────────────────────────────────
 
 def fh_get(path, api_key, params=None):

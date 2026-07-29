@@ -41,12 +41,32 @@ document.addEventListener('DOMContentLoaded', () => applyTheme(localStorage.getI
 async function api(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(path, opts);
+
+  let res;
+  try {
+    res = await fetch(path, opts);
+  } catch (e) {
+    throw new Error('서버에 연결할 수 없습니다. 네트워크 상태를 확인하고 다시 시도해주세요.');
+  }
+
   if (res.status === 401) {
     window.location.href = '/login';
     throw new Error('로그인이 필요합니다');
   }
-  const data = await res.json();
+
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    // 서버가 JSON이 아닌 응답(HTML 에러 페이지 등)을 준 경우 — 배포 플랫폼이 깨어나는 중이거나
+    // 일시적인 오류일 수 있으므로 원문 파싱 에러 대신 사람이 읽을 수 있는 메시지로 바꾼다.
+    throw new Error(
+      res.status >= 500
+        ? '서버가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해주세요.'
+        : `예상치 못한 응답을 받았습니다 (${res.status}). 다시 시도해주세요.`
+    );
+  }
+
   if (!res.ok) throw new Error(data.error || `오류 (${res.status})`);
   return data;
 }
@@ -127,7 +147,9 @@ async function loadMacro() {
     renderMacro(data);
     el.dataset.loaded = '1';
   } catch (e) {
-    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+    el.innerHTML = `
+      <div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>
+      <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> 다시 시도</button>`;
   }
 }
 
