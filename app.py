@@ -27,6 +27,20 @@ from infinite_buying import get_target_default, get_version_defaults
 from live_tracker import compute_position_status
 from models import Alert, InfinitePosition, InfiniteTrade, PortfolioItem, User, db
 
+def sanitize_json(value):
+    """NaN/Infinity는 표준 JSON에 없는 값이라 브라우저의 JSON.parse가 깨진다.
+    jsonify로 내보내기 전에 재귀적으로 None으로 바꿔 방어한다."""
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):  # value != value → NaN
+            return None
+        return value
+    if isinstance(value, dict):
+        return {k: sanitize_json(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [sanitize_json(v) for v in value]
+    return value
+
+
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
@@ -361,7 +375,7 @@ def get_macro():
             "change": round(last - prev, 4),
             "changePct": round((last - prev) / prev * 100, 2) if prev else 0.0,
         })
-    return jsonify({"instruments": out, "fearGreed": fear_greed})
+    return jsonify(sanitize_json({"instruments": out, "fearGreed": fear_greed}))
 
 
 # ─── 종목 데이터 API ─────────────────────────────────────────────────────────
@@ -610,7 +624,7 @@ def backtest_infinite_buying():
     result = run_infinite_buying(ticker, start, end, seed, splits, target_return, version)
     if "error" in result:
         return jsonify(result), 400
-    return jsonify(result)
+    return jsonify(sanitize_json(result))
 
 
 # ─── 무한매수법 실전 현황 API ─────────────────────────────────────────────────
@@ -628,7 +642,7 @@ def list_infinite_positions():
             if data and data.get("c"):
                 current_price = data["c"]
         results.append(compute_position_status(p, current_price))
-    return jsonify(results)
+    return jsonify(sanitize_json(results))
 
 
 @app.route("/api/infinite/positions", methods=["POST"])
@@ -663,7 +677,7 @@ def add_infinite_position():
     )
     db.session.add(position)
     db.session.commit()
-    return jsonify(compute_position_status(position))
+    return jsonify(sanitize_json(compute_position_status(position)))
 
 
 @app.route("/api/infinite/positions/<int:position_id>", methods=["DELETE"])
@@ -707,7 +721,7 @@ def add_infinite_trade(position_id):
     )
     db.session.add(trade)
     db.session.commit()
-    return jsonify(compute_position_status(position))
+    return jsonify(sanitize_json(compute_position_status(position)))
 
 
 @app.route("/api/infinite/positions/<int:position_id>/trades/<int:trade_id>", methods=["DELETE"])
@@ -718,7 +732,7 @@ def delete_infinite_trade(position_id, trade_id):
         return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
     InfiniteTrade.query.filter_by(id=trade_id, position_id=position.id).delete()
     db.session.commit()
-    return jsonify(compute_position_status(position))
+    return jsonify(sanitize_json(compute_position_status(position)))
 
 
 @app.route("/api/infinite/positions/<int:position_id>/trades", methods=["GET"])

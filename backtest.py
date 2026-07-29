@@ -50,6 +50,9 @@ def fetch_daily_prices(ticker, start, end):
             o, c, h = float(row["Open"]), float(row["Close"]), float(row["High"])
         except (TypeError, ValueError):
             continue
+        # NaN과의 <= 비교는 항상 False라서 그냥 두면 결측치 행이 필터를 통과해버린다.
+        if math.isnan(o) or math.isnan(c) or math.isnan(h):
+            continue
         if o <= 0 or c <= 0 or h <= 0:
             continue
         bars.append({"date": idx.strftime("%Y-%m-%d"), "open": o, "close": c, "high": h})
