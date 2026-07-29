@@ -1064,6 +1064,7 @@ const LAB_COLORS = ['#378ADD', '#E24B4A', '#639922', '#EF9F27', '#8b5fbf', '#00a
 let labTickers = [];
 let labSeriesData = null;
 let labChart = null;
+let labPanCleanup = null;
 
 // 종목/지수마다 값의 단위가 다르므로(지수=포인트, 개별종목·ETF=달러, 금리=%),
 // 축을 단위별로 나눠 표시한다. ^TNX 등 금리류만 예외적으로 %이고, 나머지
@@ -1335,7 +1336,10 @@ function drawLabChart(data, regions) {
         },
         zoom: {
           zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
-          pan: { enabled: true, mode: 'x', modifierKey: null, threshold: 5 },
+          // 플러그인 내장 드래그-팬 감지가 환경에 따라 씹히는 경우가 있어,
+          // 아래에서 mousedown/mousemove로 직접 chart.pan()을 호출하는
+          // 커스텀 팬으로 대체한다. 내장 팬은 꺼서 이중 동작을 막는다.
+          pan: { enabled: false },
           limits: { x: { min: 0, max: Math.max(dates.length - 1, 0), minRange: 5 } },
         },
       },
@@ -1344,6 +1348,48 @@ function drawLabChart(data, regions) {
   });
   labChart.__labRegions = regions || [];
   labChart.update();
+  attachLabPan(labChart, canvas);
+}
+
+// chartjs-plugin-zoom의 내장 드래그-팬 감지가 (로드 순서/이벤트 캡처 등의
+// 이유로) 동작하지 않는 경우를 대비해, 마우스 드래그를 직접 감지해 플러그인의
+// 공개 API인 chart.pan()을 호출하는 방식으로 확실하게 동작시킨다.
+function attachLabPan(chart, canvas) {
+  if (labPanCleanup) {
+    labPanCleanup();
+    labPanCleanup = null;
+  }
+
+  let dragging = false;
+  let lastX = 0;
+
+  const onDown = (e) => {
+    dragging = true;
+    lastX = e.clientX;
+    canvas.style.cursor = 'grabbing';
+    e.preventDefault();
+  };
+  const onMove = (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX;
+    lastX = e.clientX;
+    if (dx !== 0) chart.pan({ x: dx }, undefined, 'none');
+  };
+  const onUp = () => {
+    dragging = false;
+    canvas.style.cursor = 'grab';
+  };
+
+  canvas.style.cursor = 'grab';
+  canvas.addEventListener('mousedown', onDown);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+
+  labPanCleanup = () => {
+    canvas.removeEventListener('mousedown', onDown);
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+  };
 }
 
 function computeLabRegions(dates, closes, metric, op, threshold) {

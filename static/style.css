@@ -87,6 +87,9 @@
 }
 
 html, body { overflow-x: hidden; }
+/* 결과가 로드되며 페이지 높이가 바뀔 때 세로 스크롤바가 나타났다 사라지며
+   전체 너비가 미세하게 흔들리는 것을 막기 위해 스크롤바 자리를 항상 예약한다. */
+html { overflow-y: scroll; scrollbar-gutter: stable; }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
