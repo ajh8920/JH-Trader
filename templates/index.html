@@ -254,6 +254,7 @@
                 <option value="volatility_breakout">변동성 돌파</option>
                 <option value="box_breakout">박스권 돌파</option>
                 <option value="ma_pullback">이동평균 눌림목</option>
+                <option value="combo">복합전략(추세+눌림목+모멘텀)</option>
               </select>
             </div>
             <div class="bt-field">
@@ -323,6 +324,33 @@
             </div>
           </div>
 
+          <div id="ks-params-combo" class="bt-form-grid ks-params" style="margin-top:8px;display:none;">
+            <div class="bt-field">
+              <label for="ks-combo-trend">추세 이평선(일)</label>
+              <input type="number" id="ks-combo-trend" step="1" min="5" value="60" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-combo-pullback">눌림목 이평선(일)</label>
+              <input type="number" id="ks-combo-pullback" step="1" min="2" value="20" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-combo-k">모멘텀계수 K</label>
+              <input type="number" id="ks-combo-k" step="0.05" value="0.3" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-combo-stop">손절율 (%)</label>
+              <input type="number" id="ks-combo-stop" step="0.5" value="-4" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-combo-trailing">추세이탈 기준(일)</label>
+              <input type="number" id="ks-combo-trailing" step="1" min="2" value="10" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-combo-target">목표수익률 (%)</label>
+              <input type="number" id="ks-combo-target" step="0.5" value="15" />
+            </div>
+          </div>
+
           <button class="btn-primary" style="margin-top:12px;" onclick="runKrSwingBacktest()">
             <i class="ti ti-player-play" aria-hidden="true"></i> 백테스트 실행
           </button>
@@ -332,7 +360,8 @@
             <b>변동성 돌파</b>는 시가 + 전일 변동폭×K를 당일 중 넘어서면 그 가격에 매수해 지정 보유일 후 시가에 매도합니다(단기 변동성 활용).
             <b>박스권 돌파</b>는 N일 신고가를 갱신하면 매수, M일 신저가를 이탈하면 매도하는 추세추종 스윙 전략입니다.
             <b>이동평균 눌림목</b>은 장기 이평선 위 상승추세에서 단기 이평선까지 눌렸다가 재반등할 때 매수하고, 목표수익률·손절·단기선 이탈 시 매도합니다.
-            세 전략 모두 종목당 전액매수/전량매도 단일 포지션으로 시뮬레이션하며, 슬리피지·거래세·수수료는 반영하지 않으므로 실매매 전 반드시 직접 검증하세요.
+            <b>복합전략</b>은 세 전략의 강점만 뽑아 결합한 것으로, ①장기 이평선 위 상승추세 확인(박스권 돌파의 안정성) → ②단기 이평선까지 눌림목 대기(이동평균 눌림목의 유리한 평단가) → ③그날 실제 반등 모멘텀이 확인된 경우에만 진입(변동성 돌파의 정밀한 타이밍)의 3단계를 모두 만족해야 매수하고, 손절/목표수익률 도달 또는 N일 신저가 이탈(추세 종료) 시 매도합니다. 신호가 가장 적은 대신 걸러진 만큼 더 안정적인 성과를 노립니다.
+            모든 전략은 종목당 전액매수/전량매도 단일 포지션으로 시뮬레이션하며, 슬리피지·거래세·수수료는 반영하지 않으므로 실매매 전 반드시 직접 검증하세요.
             종목코드(6자리)만 입력하면 코스피(.KS)/코스닥(.KQ)을 자동으로 찾습니다.
           </div>
         </div>

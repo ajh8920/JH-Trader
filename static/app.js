@@ -875,6 +875,7 @@ const KR_SWING_STRATEGY_LABEL = {
   volatility_breakout: '변동성 돌파',
   box_breakout: '박스권 돌파',
   ma_pullback: '이동평균 눌림목',
+  combo: '복합전략(추세+눌림목+모멘텀)',
 };
 
 function initKrSwingDates() {
@@ -911,11 +912,21 @@ function getKrSwingParams(strategy) {
       stopLossPct: document.getElementById('ks-bb-stop').value,
     };
   }
+  if (strategy === 'ma_pullback') {
+    return {
+      longMa: document.getElementById('ks-ma-long').value,
+      shortMa: document.getElementById('ks-ma-short').value,
+      stopLossPct: document.getElementById('ks-ma-stop').value,
+      targetPct: document.getElementById('ks-ma-target').value,
+    };
+  }
   return {
-    longMa: document.getElementById('ks-ma-long').value,
-    shortMa: document.getElementById('ks-ma-short').value,
-    stopLossPct: document.getElementById('ks-ma-stop').value,
-    targetPct: document.getElementById('ks-ma-target').value,
+    trendMa: document.getElementById('ks-combo-trend').value,
+    pullbackMa: document.getElementById('ks-combo-pullback').value,
+    breakoutK: document.getElementById('ks-combo-k').value,
+    stopLossPct: document.getElementById('ks-combo-stop').value,
+    trailingExitN: document.getElementById('ks-combo-trailing').value,
+    targetPct: document.getElementById('ks-combo-target').value,
   };
 }
 
