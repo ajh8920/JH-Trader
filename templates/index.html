@@ -71,6 +71,7 @@
       <button class="tab" onclick="switchTab('backtest')" role="tab"><i class="ti ti-history" aria-hidden="true"></i> 백테스트</button>
       <button class="tab" onclick="switchTab('live')" role="tab"><i class="ti ti-infinity" aria-hidden="true"></i> 실전 현황</button>
       <button class="tab" onclick="switchTab('lab')" role="tab"><i class="ti ti-flask" aria-hidden="true"></i> 실험실</button>
+      <button class="tab" onclick="switchTab('krswing')" role="tab"><i class="ti ti-chart-candle" aria-hidden="true"></i> 국내 스윙</button>
     </nav>
 
     <main>
@@ -241,6 +242,101 @@
           </div>
         </div>
         <div id="lab-result"></div>
+      </section>
+
+      <!-- 국내(KRX) 단기/스윙 백테스트 -->
+      <section id="sec-krswing" class="section">
+        <div class="card">
+          <div class="bt-form-grid">
+            <div class="bt-field">
+              <label for="ks-strategy">전략</label>
+              <select id="ks-strategy" onchange="onKrSwingStrategyChange()">
+                <option value="volatility_breakout">변동성 돌파</option>
+                <option value="box_breakout">박스권 돌파</option>
+                <option value="ma_pullback">이동평균 눌림목</option>
+              </select>
+            </div>
+            <div class="bt-field">
+              <label for="ks-code">종목코드</label>
+              <input type="text" id="ks-code" placeholder="005930 (삼성전자)" value="005930" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-start">시작일</label>
+              <input type="date" id="ks-start" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-end">종료일</label>
+              <input type="date" id="ks-end" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-seed">시드 (원)</label>
+              <input type="number" id="ks-seed" placeholder="10000000" step="10000" value="10000000" />
+            </div>
+          </div>
+
+          <div id="ks-params-volatility_breakout" class="bt-form-grid ks-params" style="margin-top:8px;">
+            <div class="bt-field">
+              <label for="ks-vb-k">변동성계수 K</label>
+              <input type="number" id="ks-vb-k" step="0.05" value="0.5" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-vb-hold">보유일수</label>
+              <input type="number" id="ks-vb-hold" step="1" min="1" value="1" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-vb-stop">손절율 (%)</label>
+              <input type="number" id="ks-vb-stop" step="0.5" value="-5" />
+            </div>
+          </div>
+
+          <div id="ks-params-box_breakout" class="bt-form-grid ks-params" style="margin-top:8px;display:none;">
+            <div class="bt-field">
+              <label for="ks-bb-entry">돌파 기간(일)</label>
+              <input type="number" id="ks-bb-entry" step="1" min="2" value="20" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-bb-exit">청산 기간(일)</label>
+              <input type="number" id="ks-bb-exit" step="1" min="2" value="10" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-bb-stop">손절율 (%)</label>
+              <input type="number" id="ks-bb-stop" step="0.5" value="-7" />
+            </div>
+          </div>
+
+          <div id="ks-params-ma_pullback" class="bt-form-grid ks-params" style="margin-top:8px;display:none;">
+            <div class="bt-field">
+              <label for="ks-ma-long">장기 이평선(일)</label>
+              <input type="number" id="ks-ma-long" step="1" min="2" value="20" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-ma-short">단기 이평선(일)</label>
+              <input type="number" id="ks-ma-short" step="1" min="2" value="5" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-ma-stop">손절율 (%)</label>
+              <input type="number" id="ks-ma-stop" step="0.5" value="-5" />
+            </div>
+            <div class="bt-field">
+              <label for="ks-ma-target">목표수익률 (%)</label>
+              <input type="number" id="ks-ma-target" step="0.5" value="10" />
+            </div>
+          </div>
+
+          <button class="btn-primary" style="margin-top:12px;" onclick="runKrSwingBacktest()">
+            <i class="ti ti-player-play" aria-hidden="true"></i> 백테스트 실행
+          </button>
+          <div class="info-box" style="margin-top:12px;">
+            <i class="ti ti-info-circle" aria-hidden="true"></i>
+            시드 5,000만원 미만처럼 상대적으로 작은 계좌에서, 신용·미수 없이 단일 종목을 단기/스윙으로 매매하는 규칙 기반 전략을 검증하는 도구입니다.
+            <b>변동성 돌파</b>는 시가 + 전일 변동폭×K를 당일 중 넘어서면 그 가격에 매수해 지정 보유일 후 시가에 매도합니다(단기 변동성 활용).
+            <b>박스권 돌파</b>는 N일 신고가를 갱신하면 매수, M일 신저가를 이탈하면 매도하는 추세추종 스윙 전략입니다.
+            <b>이동평균 눌림목</b>은 장기 이평선 위 상승추세에서 단기 이평선까지 눌렸다가 재반등할 때 매수하고, 목표수익률·손절·단기선 이탈 시 매도합니다.
+            세 전략 모두 종목당 전액매수/전량매도 단일 포지션으로 시뮬레이션하며, 슬리피지·거래세·수수료는 반영하지 않으므로 실매매 전 반드시 직접 검증하세요.
+            종목코드(6자리)만 입력하면 코스피(.KS)/코스닥(.KQ)을 자동으로 찾습니다.
+          </div>
+        </div>
+        <div id="krswing-result"></div>
       </section>
     </main>
   </div>

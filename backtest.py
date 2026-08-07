@@ -47,15 +47,15 @@ def fetch_daily_prices(ticker, start, end):
     bars = []
     for idx, row in df.iterrows():
         try:
-            o, c, h = float(row["Open"]), float(row["Close"]), float(row["High"])
+            o, c, h, l = float(row["Open"]), float(row["Close"]), float(row["High"]), float(row["Low"])
         except (TypeError, ValueError):
             continue
         # NaN과의 <= 비교는 항상 False라서 그냥 두면 결측치 행이 필터를 통과해버린다.
-        if math.isnan(o) or math.isnan(c) or math.isnan(h):
+        if math.isnan(o) or math.isnan(c) or math.isnan(h) or math.isnan(l):
             continue
-        if o <= 0 or c <= 0 or h <= 0:
+        if o <= 0 or c <= 0 or h <= 0 or l <= 0:
             continue
-        bars.append({"date": idx.strftime("%Y-%m-%d"), "open": o, "close": c, "high": h})
+        bars.append({"date": idx.strftime("%Y-%m-%d"), "open": o, "close": c, "high": h, "low": l})
     return bars
 
 

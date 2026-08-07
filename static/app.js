@@ -121,7 +121,7 @@ async function saveApiKey() {
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((btn, i) => {
-    const active = ['macro', 'search', 'portfolio', 'alerts', 'backtest', 'live', 'lab'][i] === name;
+    const active = ['macro', 'search', 'portfolio', 'alerts', 'backtest', 'live', 'lab', 'krswing'][i] === name;
     btn.classList.toggle('active', active);
   });
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -132,6 +132,7 @@ function switchTab(name) {
   if (name === 'backtest') initBacktestDates();
   if (name === 'live') loadInfinitePositions();
   if (name === 'lab') initLabTab();
+  if (name === 'krswing') initKrSwingDates();
 }
 
 document.addEventListener('DOMContentLoaded', () => loadMacro());
@@ -859,6 +860,237 @@ function drawPriceChart(priceCurve, trades, ticker) {
       },
       scales: {
         y: { ticks: { callback: v => '$' + v.toFixed(0) }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        x: { ticks: { maxTicksLimit: 8 }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+// ─── 국내(KRX) 단기/스윙 백테스트 ─────────────────────────────────────────────
+
+let krSwingReturnChart = null;
+let krSwingPriceChart = null;
+
+const KR_SWING_STRATEGY_LABEL = {
+  volatility_breakout: '변동성 돌파',
+  box_breakout: '박스권 돌파',
+  ma_pullback: '이동평균 눌림목',
+};
+
+function initKrSwingDates() {
+  const startEl = document.getElementById('ks-start');
+  const endEl = document.getElementById('ks-end');
+  if (endEl.value && startEl.value) return;
+  const today = new Date();
+  const past = new Date();
+  past.setFullYear(past.getFullYear() - 1);
+  const fmt = d => d.toISOString().slice(0, 10);
+  if (!endEl.value) endEl.value = fmt(today);
+  if (!startEl.value) startEl.value = fmt(past);
+}
+
+function onKrSwingStrategyChange() {
+  const strategy = document.getElementById('ks-strategy').value;
+  document.querySelectorAll('.ks-params').forEach(el => {
+    el.style.display = el.id === `ks-params-${strategy}` ? '' : 'none';
+  });
+}
+
+function getKrSwingParams(strategy) {
+  if (strategy === 'volatility_breakout') {
+    return {
+      k: document.getElementById('ks-vb-k').value,
+      holdDays: document.getElementById('ks-vb-hold').value,
+      stopLossPct: document.getElementById('ks-vb-stop').value,
+    };
+  }
+  if (strategy === 'box_breakout') {
+    return {
+      entryN: document.getElementById('ks-bb-entry').value,
+      exitN: document.getElementById('ks-bb-exit').value,
+      stopLossPct: document.getElementById('ks-bb-stop').value,
+    };
+  }
+  return {
+    longMa: document.getElementById('ks-ma-long').value,
+    shortMa: document.getElementById('ks-ma-short').value,
+    stopLossPct: document.getElementById('ks-ma-stop').value,
+    targetPct: document.getElementById('ks-ma-target').value,
+  };
+}
+
+function formatKrw(v) {
+  return Math.round(v).toLocaleString('ko-KR') + '원';
+}
+
+async function runKrSwingBacktest() {
+  const strategy = document.getElementById('ks-strategy').value;
+  const code = document.getElementById('ks-code').value.trim();
+  const start = document.getElementById('ks-start').value;
+  const end = document.getElementById('ks-end').value;
+  const seed = parseFloat(document.getElementById('ks-seed').value);
+  const el = document.getElementById('krswing-result');
+
+  if (!code) { alert('종목코드를 입력하세요'); return; }
+  if (!start || !end) { alert('시작일과 종료일을 입력하세요'); return; }
+  if (!seed || seed <= 0) { alert('시드를 입력하세요'); return; }
+
+  const params = getKrSwingParams(strategy);
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${escapeHtml(code)} 백테스트 진행 중...</div>`;
+
+  try {
+    const data = await api('POST', '/api/kr-swing/backtest', { strategy, code, start, end, seed, params });
+    renderKrSwingResult(data);
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderKrSwingResult(d) {
+  const el = document.getElementById('krswing-result');
+  const pnlCls = d.evalPnl >= 0 ? 'positive' : 'negative';
+  const holding = d.holding;
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="bt-summary-grid">
+        <div class="meta-item"><div class="meta-label">시드</div><div class="meta-value">${formatKrw(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">종목</div><div class="meta-value">${escapeHtml(d.ticker)} (${escapeHtml(d.market)})</div></div>
+        <div class="meta-item"><div class="meta-label">거래 횟수</div><div class="meta-value">${d.tradeCount}회</div></div>
+        <div class="meta-item"><div class="meta-label">승률</div><div class="meta-value">${d.winCount}승 / ${d.tradeCount}전 (${d.winRatePct.toFixed(1)}%)</div></div>
+        <div class="meta-item"><div class="meta-label">평균 보유일</div><div class="meta-value">${d.avgHoldDays.toFixed(1)}일</div></div>
+        <div class="meta-item"><div class="meta-label">매입 금액</div><div class="meta-value">${formatKrw(d.totalBuyAmount)}</div></div>
+        <div class="meta-item"><div class="meta-label">매도 금액</div><div class="meta-value">${formatKrw(d.totalSellAmount)}</div></div>
+        <div class="meta-item"><div class="meta-label">평가 손익</div><div class="meta-value ${pnlCls}">${d.evalPnl>=0?'+':''}${formatKrw(Math.abs(d.evalPnl))}</div></div>
+        <div class="meta-item"><div class="meta-label">시드 대비 수익률</div><div class="meta-value ${pnlCls}">${d.seedReturnPct>=0?'+':''}${d.seedReturnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">전략 MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)} 수익률</div><div class="meta-value ${d.benchmark.returnPct>=0?'positive':'negative'}">${d.benchmark.returnPct>=0?'+':''}${d.benchmark.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">알파(초과수익)</div><div class="meta-value ${d.alphaPct>=0?'positive':'negative'}">${d.alphaPct>=0?'+':''}${d.alphaPct.toFixed(1)}%p</div></div>
+      </div>
+
+      <div class="bt-holding-box">
+        <span class="cycle-pill">${escapeHtml(KR_SWING_STRATEGY_LABEL[d.strategy] || d.strategy)}</span>
+        ${holding.qty > 0
+          ? ` · 현재 보유 중: ${holding.qty.toLocaleString('ko-KR')}주 @ 평단 ${formatKrw(holding.avgPrice)} · 현재가 ${formatKrw(holding.currentPrice)} · 평가금액 ${formatKrw(holding.value)}`
+          : ` · 백테스트 종료 시점 보유 없음 (전량 매도 완료)`}
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">기간: ${d.start} ~ ${d.end}</div>
+      </div>
+
+      <div style="font-size:13px;font-weight:600;margin:14px 0 8px;">수익률 비교 (전략 vs ${escapeHtml(d.benchmark.label)})</div>
+      <div class="chart-wrap">
+        <canvas id="krswing-return-chart" role="img" aria-label="수익률 비교 차트"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${escapeHtml(d.ticker)} 가격 차트 (매수·매도 시점 표시)</div>
+      <div class="chart-wrap">
+        <canvas id="krswing-price-chart" role="img" aria-label="${escapeHtml(d.ticker)} 가격 차트"></canvas>
+      </div>
+    </div>
+
+    <div class="pf-table-wrap">
+      <table class="pf-table">
+        <thead><tr><th>날짜</th><th>구분</th><th>가격</th><th>수량</th><th>손익률</th><th>메모</th></tr></thead>
+        <tbody>
+          ${d.trades.length ? d.trades.map(t => `
+            <tr>
+              <td>${t.date}</td>
+              <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? '매수' : '매도'}</span></td>
+              <td>${formatKrw(t.price)}</td>
+              <td>${t.qty.toLocaleString('ko-KR')}</td>
+              <td>${t.pnlPct !== undefined ? `<span class="${t.pnlPct >= 0 ? 'positive' : 'negative'}">${t.pnlPct>=0?'+':''}${t.pnlPct.toFixed(1)}%</span>` : '-'}</td>
+              <td style="font-size:12px;color:var(--text-secondary);">${escapeHtml(t.note)}</td>
+            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">해당 기간 동안 체결된 거래가 없습니다</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  setTimeout(() => {
+    drawKrSwingReturnChart(d.equityCurve, d.benchmark, d.seed);
+    drawKrSwingPriceChart(d.priceCurve, d.trades, d.ticker);
+  }, 80);
+}
+
+function drawKrSwingReturnChart(curve, benchmark, seed) {
+  const canvas = document.getElementById('krswing-return-chart');
+  if (!canvas) return;
+  if (krSwingReturnChart) krSwingReturnChart.destroy();
+  const toPct = v => (v - seed) / seed * 100;
+  const datasets = [{
+    label: '전략',
+    data: curve.map(p => toPct(p.value)),
+    borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
+    fill: true, pointRadius: 0, borderWidth: 2, tension: 0.15,
+  }];
+  if (benchmark?.equityCurve?.length) {
+    datasets.push({
+      label: benchmark.label,
+      data: benchmark.equityCurve.map(p => toPct(p.value)),
+      borderColor: '#97C459', backgroundColor: 'transparent',
+      fill: false, pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: 0.15,
+    });
+  }
+  krSwingReturnChart = new Chart(canvas, {
+    type: 'line',
+    data: { labels: curve.map(p => p.date), datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y>=0?'+':''}` + ctx.parsed.y.toFixed(1) + '%' } },
+      },
+      scales: {
+        y: { ticks: { callback: v => (v>=0?'+':'') + v.toFixed(0) + '%' }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        x: { ticks: { maxTicksLimit: 8 }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+function drawKrSwingPriceChart(priceCurve, trades, ticker) {
+  const canvas = document.getElementById('krswing-price-chart');
+  if (!canvas) return;
+  if (krSwingPriceChart) krSwingPriceChart.destroy();
+
+  const validDates = new Set(priceCurve.map(p => p.date));
+  const buyPoints = [], sellPoints = [];
+  trades.forEach(t => {
+    if (!validDates.has(t.date)) return;
+    (t.action === 'buy' ? buyPoints : sellPoints).push({ x: t.date, y: t.price });
+  });
+
+  krSwingPriceChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: priceCurve.map(p => p.date),
+      datasets: [
+        {
+          label: `${ticker} 종가`, data: priceCurve.map(p => p.close),
+          borderColor: '#888780', backgroundColor: 'transparent',
+          fill: false, pointRadius: 0, borderWidth: 1.5, tension: 0.1, order: 3,
+        },
+        {
+          label: '매수', data: buyPoints, type: 'scatter',
+          backgroundColor: '#E24B4A', borderColor: '#E24B4A',
+          pointRadius: 4, pointStyle: 'triangle', order: 1,
+        },
+        {
+          label: '매도', data: sellPoints, type: 'scatter',
+          backgroundColor: '#378ADD', borderColor: '#378ADD',
+          pointRadius: 4, pointStyle: 'rectRot', order: 2,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ` + formatKrw(ctx.parsed.y) } },
+      },
+      scales: {
+        y: { ticks: { callback: v => Number(v).toLocaleString('ko-KR') }, grid: { color: 'rgba(128,128,128,0.1)' } },
         x: { ticks: { maxTicksLimit: 8 }, grid: { display: false } },
       },
     },

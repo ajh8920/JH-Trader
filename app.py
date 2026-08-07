@@ -24,6 +24,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from backtest import run_infinite_buying
 from infinite_buying import get_target_default, get_version_defaults
+from kr_swing import STRATEGIES as KR_SWING_STRATEGIES, run_kr_swing_backtest
 from live_tracker import compute_position_status
 from models import Alert, InfinitePosition, InfiniteTrade, PortfolioItem, User, db
 
@@ -746,6 +747,57 @@ def backtest_infinite_buying():
     return jsonify(sanitize_json(result))
 
 
+# ─── 국내(KRX) 스윙 백테스트 API ─────────────────────────────────────────────
+# 6자리 종목코드(예: 005930) 또는 명시적으로 .KS/.KQ가 붙은 코드를 받는다.
+KR_CODE_RE = re.compile(r"^\d{6}(\.K[SQ])?$", re.IGNORECASE)
+
+
+@app.route("/api/kr-swing/backtest", methods=["POST"])
+@login_required
+@limiter.limit("20 per minute")
+def kr_swing_backtest():
+    body = request.json or {}
+    strategy = body.get("strategy", "")
+    code = str(body.get("code", "")).strip()
+
+    if strategy not in KR_SWING_STRATEGIES:
+        return jsonify({"error": "지원하지 않는 전략입니다"}), 400
+    if not KR_CODE_RE.match(code):
+        return jsonify({"error": "종목 코드 형식이 올바르지 않습니다 (예: 005930)"}), 400
+
+    start = body.get("start", "")
+    end = body.get("end", "")
+    try:
+        start_dt = datetime.strptime(start, "%Y-%m-%d")
+        end_dt = datetime.strptime(end, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"error": "날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)"}), 400
+    if start_dt >= end_dt:
+        return jsonify({"error": "종료일은 시작일보다 이후여야 합니다"}), 400
+
+    try:
+        seed = float(body.get("seed", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "시드는 숫자여야 합니다"}), 400
+    if seed <= 0:
+        return jsonify({"error": "시드는 0보다 커야 합니다"}), 400
+
+    raw_params = body.get("params") or {}
+    if not isinstance(raw_params, dict):
+        return jsonify({"error": "전략 파라미터 형식이 올바르지 않습니다"}), 400
+    params = {}
+    for key, value in raw_params.items():
+        try:
+            params[key] = float(value)
+        except (TypeError, ValueError):
+            return jsonify({"error": "전략 파라미터는 숫자여야 합니다"}), 400
+
+    result = run_kr_swing_backtest(strategy, code, start, end, seed, params)
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(sanitize_json(result))
+
+
 # ─── 무한매수법 실전 현황 API ─────────────────────────────────────────────────
 
 @app.route("/api/infinite/positions", methods=["GET"])
@@ -920,7 +972,7 @@ for _view in (
     save_key, delete_key, get_stock, get_quote, get_macro, get_lab_series,
     get_portfolio, add_portfolio, remove_portfolio, refresh_portfolio,
     get_alerts, add_alert, remove_alert,
-    backtest_infinite_buying,
+    backtest_infinite_buying, kr_swing_backtest,
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_users, update_user_role, delete_user,
