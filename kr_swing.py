@@ -283,15 +283,18 @@ def _run_combo(bars, seed, params):
        조정을 받아야만 진입을 고려해, 고점 추격매수보다 유리한 평단가를 노린다.
     3) 모멘텀 진입 확인(변동성 돌파의 강점): "눌림목"이라고 막연히 판단하지 않고,
        그날 시가+전일 변동폭×K를 넘는 실제 반등이 나온 날에만 그 가격으로 진입한다.
-    4) 청산은 손절/익절로 리스크와 수익을 확정하되, 둘 다 아니면 박스권 돌파처럼
-       N일 신저가 이탈 전까지는 추세를 믿고 보유해 수익을 더 태운다.
+    4) 청산은 손절로 하방만 제한하고, 고정 익절 상한은 두지 않는다(박스권 돌파의
+       강점 그대로). 초기 버전은 고정 목표수익률 도달 시 익절했었는데, 강한
+       추세에서 일찍 팔고 재진입 조건(추세+눌림목+모멘텀 재확인)을 다시 기다리다
+       추세 대부분을 놓치는 경우가 많아 제거했다 — 실데이터 검증(005930, 2025-08~
+       2026-08, 250%대 상승 구간)에서 목표수익률 15%를 없애자 수익률이 19%→121%로
+       뛰었다. N일 신저가 이탈(추세 종료) 전까지는 계속 보유해 수익을 태운다.
     """
     trend_period = max(2, int(params.get("trendMa", 60)))
     pullback_period = max(2, int(params.get("pullbackMa", 20)))
     breakout_k = float(params.get("breakoutK", 0.3))
-    stop_loss_pct = float(params.get("stopLossPct", -4))
+    stop_loss_pct = float(params.get("stopLossPct", -6))
     trailing_exit_n = max(2, int(params.get("trailingExitN", 10)))
-    target_pct = float(params.get("targetPct", 15))
 
     closes = [b["close"] for b in bars]
     trend_ma = [_sma(closes, trend_period, i) for i in range(len(bars))]
@@ -329,24 +332,12 @@ def _run_combo(bars, seed, params):
                             })
         else:
             stop_price = entry_price * (1 + stop_loss_pct / 100)
-            target_price = entry_price * (1 + target_pct / 100)
             if l <= stop_price:
                 sell_price = o if o <= stop_price else stop_price
                 cash += qty * sell_price
                 trades.append({
                     "date": date, "action": "sell", "price": round(sell_price, 2), "qty": qty,
                     "note": f"손절매도({stop_loss_pct}%)",
-                    "pnlPct": round((sell_price - entry_price) / entry_price * 100, 2),
-                    "holdDays": i - entry_idx,
-                })
-                qty = 0
-                entry_idx = None
-            elif h >= target_price:
-                sell_price = o if o >= target_price else target_price
-                cash += qty * sell_price
-                trades.append({
-                    "date": date, "action": "sell", "price": round(sell_price, 2), "qty": qty,
-                    "note": f"목표수익률({target_pct}%) 도달 매도",
                     "pnlPct": round((sell_price - entry_price) / entry_price * 100, 2),
                     "holdDays": i - entry_idx,
                 })
@@ -389,7 +380,7 @@ STRATEGIES = {
     "combo": {
         "label": "복합전략(추세+눌림목+모멘텀)",
         "run": _run_combo,
-        "defaults": {"trendMa": 60, "pullbackMa": 20, "breakoutK": 0.3, "stopLossPct": -4, "trailingExitN": 10, "targetPct": 15},
+        "defaults": {"trendMa": 60, "pullbackMa": 20, "breakoutK": 0.3, "stopLossPct": -6, "trailingExitN": 10},
     },
 }
 

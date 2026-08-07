@@ -870,6 +870,8 @@ function drawPriceChart(priceCurve, trades, ticker) {
 
 let krSwingReturnChart = null;
 let krSwingPriceChart = null;
+const krSwingReturnPanState = { cleanup: null };
+const krSwingPricePanState = { cleanup: null };
 
 const KR_SWING_STRATEGY_LABEL = {
   volatility_breakout: '변동성 돌파',
@@ -881,13 +883,8 @@ const KR_SWING_STRATEGY_LABEL = {
 function initKrSwingDates() {
   const startEl = document.getElementById('ks-start');
   const endEl = document.getElementById('ks-end');
-  if (endEl.value && startEl.value) return;
-  const today = new Date();
-  const past = new Date();
-  past.setFullYear(past.getFullYear() - 1);
-  const fmt = d => d.toISOString().slice(0, 10);
-  if (!endEl.value) endEl.value = fmt(today);
-  if (!startEl.value) startEl.value = fmt(past);
+  if (!endEl.value) endEl.value = new Date().toISOString().slice(0, 10);
+  if (!startEl.value) startEl.value = '2020-01-01';
 }
 
 function onKrSwingStrategyChange() {
@@ -987,17 +984,25 @@ function renderKrSwingResult(d) {
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">기간: ${d.start} ~ ${d.end}</div>
       </div>
 
-      <div style="font-size:13px;font-weight:600;margin:14px 0 8px;">수익률 비교 (전략 vs ${escapeHtml(d.benchmark.label)})</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 8px;">
+        <div style="font-size:13px;font-weight:600;">수익률 비교 (전략 vs ${escapeHtml(d.benchmark.label)})</div>
+        <button class="btn-secondary" onclick="resetKrSwingReturnZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> 줌 초기화</button>
+      </div>
       <div class="chart-wrap">
         <canvas id="krswing-return-chart" role="img" aria-label="수익률 비교 차트"></canvas>
       </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">마우스 휠로 확대/축소, 드래그로 이동할 수 있습니다</div>
     </div>
 
     <div class="card">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${escapeHtml(d.ticker)} 가격 차트 (매수·매도 시점 표시)</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+        <div style="font-size:13px;font-weight:600;">${escapeHtml(d.ticker)} 가격 차트 (매수·매도 시점 표시)</div>
+        <button class="btn-secondary" onclick="resetKrSwingPriceZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> 줌 초기화</button>
+      </div>
       <div class="chart-wrap">
         <canvas id="krswing-price-chart" role="img" aria-label="${escapeHtml(d.ticker)} 가격 차트"></canvas>
       </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">마우스 휠로 확대/축소, 드래그로 이동할 수 있습니다</div>
     </div>
 
     <div class="pf-table-wrap">
@@ -1028,36 +1033,56 @@ function drawKrSwingReturnChart(curve, benchmark, seed) {
   const canvas = document.getElementById('krswing-return-chart');
   if (!canvas) return;
   if (krSwingReturnChart) krSwingReturnChart.destroy();
+  const dates = curve.map(p => p.date);
   const toPct = v => (v - seed) / seed * 100;
   const datasets = [{
     label: '전략',
-    data: curve.map(p => toPct(p.value)),
+    data: curve.map((p, i) => ({ x: i, y: toPct(p.value) })),
     borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
     fill: true, pointRadius: 0, borderWidth: 2, tension: 0.15,
   }];
   if (benchmark?.equityCurve?.length) {
     datasets.push({
       label: benchmark.label,
-      data: benchmark.equityCurve.map(p => toPct(p.value)),
+      data: benchmark.equityCurve.map((p, i) => ({ x: i, y: toPct(p.value) })),
       borderColor: '#97C459', backgroundColor: 'transparent',
       fill: false, pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: 0.15,
     });
   }
   krSwingReturnChart = new Chart(canvas, {
     type: 'line',
-    data: { labels: curve.map(p => p.date), datasets },
+    data: { datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y>=0?'+':''}` + ctx.parsed.y.toFixed(1) + '%' } },
+        tooltip: {
+          callbacks: {
+            title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y>=0?'+':''}` + ctx.parsed.y.toFixed(1) + '%',
+          },
+        },
+        zoom: {
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+          pan: { enabled: false },
+          limits: { x: { min: 0, max: Math.max(dates.length - 1, 0), minRange: 5 } },
+        },
       },
       scales: {
         y: { ticks: { callback: v => (v>=0?'+':'') + v.toFixed(0) + '%' }, grid: { color: 'rgba(128,128,128,0.1)' } },
-        x: { ticks: { maxTicksLimit: 8 }, grid: { display: false } },
+        x: {
+          type: 'linear', min: 0, max: Math.max(dates.length - 1, 0),
+          ticks: { maxTicksLimit: 8, callback: v => dates[Math.round(v)] ?? '' },
+          grid: { display: false },
+        },
       },
     },
   });
+  attachChartPan(krSwingReturnChart, canvas, krSwingReturnPanState);
+}
+
+function resetKrSwingReturnZoom() {
+  if (krSwingReturnChart) krSwingReturnChart.resetZoom();
 }
 
 function drawKrSwingPriceChart(priceCurve, trades, ticker) {
@@ -1065,20 +1090,21 @@ function drawKrSwingPriceChart(priceCurve, trades, ticker) {
   if (!canvas) return;
   if (krSwingPriceChart) krSwingPriceChart.destroy();
 
-  const validDates = new Set(priceCurve.map(p => p.date));
+  const dates = priceCurve.map(p => p.date);
+  const dateIndex = new Map(dates.map((d, i) => [d, i]));
   const buyPoints = [], sellPoints = [];
   trades.forEach(t => {
-    if (!validDates.has(t.date)) return;
-    (t.action === 'buy' ? buyPoints : sellPoints).push({ x: t.date, y: t.price });
+    const idx = dateIndex.get(t.date);
+    if (idx === undefined) return;
+    (t.action === 'buy' ? buyPoints : sellPoints).push({ x: idx, y: t.price });
   });
 
   krSwingPriceChart = new Chart(canvas, {
     type: 'line',
     data: {
-      labels: priceCurve.map(p => p.date),
       datasets: [
         {
-          label: `${ticker} 종가`, data: priceCurve.map(p => p.close),
+          label: `${ticker} 종가`, data: priceCurve.map((p, i) => ({ x: i, y: p.close })),
           borderColor: '#888780', backgroundColor: 'transparent',
           fill: false, pointRadius: 0, borderWidth: 1.5, tension: 0.1, order: 3,
         },
@@ -1098,14 +1124,33 @@ function drawKrSwingPriceChart(priceCurve, trades, ticker) {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ` + formatKrw(ctx.parsed.y) } },
+        tooltip: {
+          callbacks: {
+            title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
+            label: ctx => ` ${ctx.dataset.label}: ` + formatKrw(ctx.parsed.y),
+          },
+        },
+        zoom: {
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+          pan: { enabled: false },
+          limits: { x: { min: 0, max: Math.max(dates.length - 1, 0), minRange: 5 } },
+        },
       },
       scales: {
         y: { ticks: { callback: v => Number(v).toLocaleString('ko-KR') }, grid: { color: 'rgba(128,128,128,0.1)' } },
-        x: { ticks: { maxTicksLimit: 8 }, grid: { display: false } },
+        x: {
+          type: 'linear', min: 0, max: Math.max(dates.length - 1, 0),
+          ticks: { maxTicksLimit: 8, callback: v => dates[Math.round(v)] ?? '' },
+          grid: { display: false },
+        },
       },
     },
   });
+  attachChartPan(krSwingPriceChart, canvas, krSwingPricePanState);
+}
+
+function resetKrSwingPriceZoom() {
+  if (krSwingPriceChart) krSwingPriceChart.resetZoom();
 }
 
 // ─── 무한매수법 실전 현황 ────────────────────────────────────────────────────
@@ -1307,7 +1352,7 @@ const LAB_COLORS = ['#378ADD', '#E24B4A', '#639922', '#EF9F27', '#8b5fbf', '#00a
 let labTickers = [];
 let labSeriesData = null;
 let labChart = null;
-let labPanCleanup = null;
+const labPanState = { cleanup: null };
 let labConditionRows = [];
 let labConditionRowSeq = 0;
 let labCombinator = 'AND';
@@ -1660,16 +1705,18 @@ function drawLabChart(data, regions) {
   });
   labChart.__labRegions = regions || [];
   labChart.update();
-  attachLabPan(labChart, canvas);
+  attachChartPan(labChart, canvas, labPanState);
 }
 
 // chartjs-plugin-zoom의 내장 드래그-팬 감지가 (로드 순서/이벤트 캡처 등의
 // 이유로) 동작하지 않는 경우를 대비해, 마우스 드래그를 직접 감지해 플러그인의
 // 공개 API인 chart.pan()을 호출하는 방식으로 확실하게 동작시킨다.
-function attachLabPan(chart, canvas) {
-  if (labPanCleanup) {
-    labPanCleanup();
-    labPanCleanup = null;
+// state는 차트별로 독립된 정리(cleanup) 함수를 들고 있는 { cleanup } 객체로,
+// 화면에 동시에 여러 개의 확대/축소 차트가 있어도 서로 리스너를 덮어쓰지 않게 한다.
+function attachChartPan(chart, canvas, state) {
+  if (state.cleanup) {
+    state.cleanup();
+    state.cleanup = null;
   }
 
   let dragging = false;
@@ -1697,7 +1744,7 @@ function attachLabPan(chart, canvas) {
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
 
-  labPanCleanup = () => {
+  state.cleanup = () => {
     canvas.removeEventListener('mousedown', onDown);
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
