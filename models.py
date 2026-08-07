@@ -153,3 +153,22 @@ class KrFundamental(db.Model):
             return None
         d = self.rcept_no[:8]
         return f"{d[0:4]}-{d[4:6]}-{d[6:8]}"
+
+
+class QuantBacktestJob(db.Model):
+    """국내 퀀트 리밸런싱 백테스트는 전체 시장 종목의 과거 시점 가격을 실시간으로
+    조회해야 해서 몇 분씩 걸릴 수 있다 - Render의 요청 타임아웃(30초)을 넘기므로
+    요청-응답 안에서 바로 계산하지 않고, 백그라운드 스레드에서 돌려 이 테이블에
+    결과를 저장한다. 프런트는 job을 만든 뒤 status가 done/error가 될 때까지 이
+    행을 폴링한다. user_id로 걸어두어 다른 사용자의 진행 중인 백테스트가 안 보이게 한다.
+    """
+
+    __tablename__ = "quant_backtest_jobs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    status = db.Column(db.String(10), nullable=False, default="pending")  # pending|running|done|error
+    result_json = db.Column(db.Text)
+    error = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

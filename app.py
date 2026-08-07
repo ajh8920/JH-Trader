@@ -836,17 +836,24 @@ def kr_swing_backtest():
 @login_required
 def kr_quant_status():
     from models import KrFundamental
+    import kr_quant
 
     total = KrFundamental.query.count()
     codes = db.session.query(KrFundamental.stock_code).distinct().count()
-    return jsonify({"fundamentalRows": total, "stockCount": codes})
+    age = kr_quant.price_cache_age_seconds()
+    return jsonify({
+        "fundamentalRows": total, "stockCount": codes,
+        "priceCacheReady": age is not None,
+        "priceCacheAgeSeconds": round(age) if age is not None else None,
+        "priceCacheCount": len(kr_quant.get_cached_prices()),
+    })
 
 
 @app.route("/api/kr-quant/screen")
 @login_required
 @limiter.limit("10 per minute")
 def kr_quant_screen():
-    from kr_quant import _load_market_map, get_shares_outstanding_map, rank_candidates
+    from kr_quant import _load_market_map, get_cached_prices, get_shares_outstanding_map, rank_candidates
     from models import KrFundamental
 
     try:
@@ -861,18 +868,60 @@ def kr_quant_screen():
     if not rows:
         return jsonify({"error": "재무데이터가 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요."}), 400
 
+    cached_prices = get_cached_prices()
+    if not cached_prices:
+        return jsonify({
+            "error": "현재가 데이터를 아직 준비 중입니다(서버 시작 후 몇 분 정도 걸립니다). 잠시 후 다시 시도해주세요."
+        }), 503
+
     today = datetime.today().strftime("%Y-%m-%d")
     market_map = _load_market_map()
     shares_map = get_shares_outstanding_map()
-    picks = rank_candidates(today, market_map, shares_map, rows, min_market_cap, top_n)
+    picks = rank_candidates(today, market_map, shares_map, rows, min_market_cap, top_n, prices=cached_prices)
     return jsonify(sanitize_json({"date": today, "picks": picks}))
+
+
+# 리밸런싱 백테스트는 과거 여러 시점의 전체 시장 가격을 실시간으로 조회해야 해서
+# 몇 분씩 걸릴 수 있다 - Render 요청 타임아웃(30초) 안에 못 끝나 요청이 죽는
+# 문제가 있었다. 그래서 POST는 계산을 시작만 시키고 바로 job id를 돌려주고,
+# 실제 계산은 백그라운드 스레드에서 돌려 QuantBacktestJob에 결과를 저장한다.
+# 프런트는 GET으로 그 job이 끝날 때까지 주기적으로 상태를 확인한다.
+
+def _run_quant_backtest_job(job_id, start_year, end_year, seed, top_n, min_market_cap):
+    from kr_quant import run_quant_backtest
+    from models import QuantBacktestJob
+
+    with app.app_context():
+        job = db.session.get(QuantBacktestJob, job_id)
+        if not job:
+            return
+        job.status = "running"
+        db.session.commit()
+        try:
+            result = run_quant_backtest(start_year, end_year, seed, top_n, min_market_cap)
+        except Exception as e:
+            app.logger.exception("퀀트 백테스트 작업 실패: job=%s", job_id)
+            job = db.session.get(QuantBacktestJob, job_id)
+            job.status = "error"
+            job.error = str(e)
+            db.session.commit()
+            return
+
+        job = db.session.get(QuantBacktestJob, job_id)
+        if "error" in result:
+            job.status = "error"
+            job.error = result["error"]
+        else:
+            job.status = "done"
+            job.result_json = json.dumps(sanitize_json(result))
+        db.session.commit()
 
 
 @app.route("/api/kr-quant/backtest", methods=["POST"])
 @login_required
 @limiter.limit("5 per minute")
 def kr_quant_backtest():
-    from kr_quant import run_quant_backtest
+    from models import QuantBacktestJob
 
     body = request.json or {}
     try:
@@ -891,10 +940,33 @@ def kr_quant_backtest():
     if not (2015 <= start_year < end_year <= datetime.today().year):
         return jsonify({"error": "연도 범위가 올바르지 않습니다"}), 400
 
-    result = run_quant_backtest(start_year, end_year, seed, top_n, min_market_cap)
-    if "error" in result:
-        return jsonify(result), 400
-    return jsonify(sanitize_json(result))
+    job = QuantBacktestJob(user_id=current_user.id, status="pending")
+    db.session.add(job)
+    db.session.commit()
+
+    threading.Thread(
+        target=_run_quant_backtest_job,
+        args=(job.id, start_year, end_year, seed, top_n, min_market_cap),
+        daemon=True,
+    ).start()
+
+    return jsonify({"jobId": job.id})
+
+
+@app.route("/api/kr-quant/backtest/<int:job_id>")
+@login_required
+def kr_quant_backtest_status(job_id):
+    from models import QuantBacktestJob
+
+    job = QuantBacktestJob.query.filter_by(id=job_id, user_id=current_user.id).first()
+    if not job:
+        return jsonify({"error": "작업을 찾을 수 없습니다"}), 404
+
+    if job.status == "done":
+        return jsonify({"status": "done", "result": json.loads(job.result_json)})
+    if job.status == "error":
+        return jsonify({"status": "error", "error": job.error})
+    return jsonify({"status": job.status})
 
 
 # ─── 무한매수법 실전 현황 API ─────────────────────────────────────────────────
@@ -1072,7 +1144,7 @@ for _view in (
     get_portfolio, add_portfolio, remove_portfolio, refresh_portfolio,
     get_alerts, add_alert, remove_alert,
     backtest_infinite_buying, kr_swing_backtest, search_kr_stocks,
-    kr_quant_status, kr_quant_screen, kr_quant_backtest,
+    kr_quant_status, kr_quant_screen, kr_quant_backtest, kr_quant_backtest_status,
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_users, update_user_role, delete_user,
@@ -1113,6 +1185,25 @@ def alert_checker():
                 print(f"[알림 체크 오류] {e}")
 
 
+# ─── 국내 퀀트 가격 캐시 갱신 ──────────────────────────────────────────────────
+# 재무데이터가 있는 종목 전체(1,500개+)의 현재가를 매 스크리닝 요청마다 실시간
+# 조회하면 Render의 요청 타임아웃(30초)을 훌쩍 넘겨 요청이 죽는다(500 응답).
+# 그래서 이 스레드가 백그라운드에서 주기적으로 미리 받아 kr_quant의 캐시를
+# 채워두고, /api/kr-quant/screen은 그 캐시만 읽는다.
+
+def kr_quant_price_cache_refresher():
+    import kr_quant
+
+    while True:
+        with app.app_context():
+            try:
+                n = kr_quant.warm_current_price_cache()
+                print(f"[퀀트 가격 캐시] {n}개 종목 현재가 갱신 완료")
+            except Exception as e:
+                print(f"[퀀트 가격 캐시 갱신 오류] {e}")
+        time.sleep(6 * 3600)  # 6시간마다 갱신 (가격이 실시간일 필요는 없는 용도)
+
+
 # ─── 초기화 ──────────────────────────────────────────────────────────────────
 # gunicorn 등 WSGI 서버로 구동해도(=__name__ != "__main__") DB 테이블 생성과 알림
 # 체크 스레드가 항상 시작되도록 모듈 임포트 시점에 실행한다.
@@ -1121,6 +1212,7 @@ with app.app_context():
     db.create_all()
 
 threading.Thread(target=alert_checker, daemon=True).start()
+threading.Thread(target=kr_quant_price_cache_refresher, daemon=True).start()
 
 
 # ─── 실행 (로컬 개발 서버) ───────────────────────────────────────────────────

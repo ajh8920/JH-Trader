@@ -27,6 +27,38 @@ from models import KrFundamental
 BASE_DIR = Path(__file__).parent
 MIN_MARKET_CAP_DEFAULT = 50_000_000_000  # 500억원
 
+# 현재가 캐시: Render의 gunicorn 요청 타임아웃(30초)보다 "재무데이터 있는 종목
+# 전체(1,500개+)의 현재가를 매 요청마다 실시간 조회"가 훨씬 오래 걸려 요청이
+# 통째로 죽는 문제가 있었다. 그래서 스크리닝(오늘 기준)은 요청 처리 중이 아니라
+# 백그라운드 스레드가 미리 채워둔 이 캐시를 읽기만 한다(app.py에서 주기적으로
+# warm_current_price_cache()를 호출).
+_price_cache = {"prices": {}, "at": 0.0}
+
+
+def get_cached_prices():
+    return _price_cache["prices"]
+
+
+def price_cache_age_seconds():
+    if not _price_cache["prices"]:
+        return None
+    return time.time() - _price_cache["at"]
+
+
+def warm_current_price_cache():
+    """재무데이터가 있는 전 종목의 현재가를 받아 캐시에 채운다(수 분 걸릴 수 있음 -
+    반드시 백그라운드 스레드에서만 호출해야 한다)."""
+    market_map = _load_market_map()
+    codes = [
+        row.stock_code for row in
+        KrFundamental.query.with_entities(KrFundamental.stock_code).distinct().all()
+    ]
+    today = datetime.today().strftime("%Y-%m-%d")
+    prices = fetch_prices_near_date(codes, market_map, today, window_days=10)
+    _price_cache["prices"] = prices
+    _price_cache["at"] = time.time()
+    return len(prices)
+
 
 def _load_kr_stocks():
     with open(BASE_DIR / "kr_stocks.json", "r", encoding="utf-8") as f:
@@ -117,7 +149,11 @@ def fetch_prices_near_date(codes, market_map, date_str, window_days=10):
     return prices
 
 
-def rank_candidates(rebalance_date_str, market_map, shares_map, fundamentals_rows, min_market_cap, top_n):
+def rank_candidates(rebalance_date_str, market_map, shares_map, fundamentals_rows, min_market_cap, top_n,
+                     prices=None):
+    """prices를 넘기지 않으면 그 시점 가격을 실시간으로 조회한다(과거 리밸런싱 시점용,
+    느림 - 반드시 백그라운드 작업에서만 호출). 오늘 기준 스크리닝은 미리 채워둔
+    get_cached_prices()를 prices로 넘겨 요청 중 실시간 조회를 피한다."""
     fundamentals = latest_fundamentals_as_of(rebalance_date_str, fundamentals_rows)
     candidates = {
         code: f for code, f in fundamentals.items()
@@ -126,8 +162,9 @@ def rank_candidates(rebalance_date_str, market_map, shares_map, fundamentals_row
     if not candidates:
         return []
 
-    codes = list(candidates.keys())
-    prices = fetch_prices_near_date(codes, market_map, rebalance_date_str)
+    if prices is None:
+        codes = list(candidates.keys())
+        prices = fetch_prices_near_date(codes, market_map, rebalance_date_str)
 
     rows = []
     for code, f in candidates.items():

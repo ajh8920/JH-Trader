@@ -1256,7 +1256,10 @@ async function loadKrQuantStatus() {
   if (!el) return;
   try {
     const data = await api('GET', '/api/kr-quant/status');
-    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> 재무데이터 준비 상태: ${data.stockCount.toLocaleString('ko-KR')}개 종목(${data.fundamentalRows.toLocaleString('ko-KR')}건) 확보됨 — 백그라운드로 계속 채워지는 중이며, 스크리닝/백테스트는 지금 있는 데이터로 바로 동작합니다.`;
+    const priceInfo = data.priceCacheReady
+      ? `현재가 캐시 ${data.priceCacheCount.toLocaleString('ko-KR')}개 종목 준비됨(${Math.round(data.priceCacheAgeSeconds / 60)}분 전 갱신)`
+      : `현재가 캐시 준비 중(서버 시작 후 몇 분 정도 걸립니다) — 스크리닝은 캐시가 준비된 뒤 가능합니다`;
+    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> 재무데이터: ${data.stockCount.toLocaleString('ko-KR')}개 종목(${data.fundamentalRows.toLocaleString('ko-KR')}건) 확보됨. ${priceInfo}.`;
   } catch (e) {
     el.innerHTML = `<i class="ti ti-alert-circle" aria-hidden="true"></i> ${escapeHtml(e.message)}`;
   }
@@ -1317,13 +1320,39 @@ async function runKrQuantBacktest() {
   if (!seed || seed <= 0) { alert('시드를 입력하세요'); return; }
   if (!topN || topN <= 0) { alert('종목 수를 확인하세요'); return; }
 
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>연간 리밸런싱 백테스트 진행 중... (전체 시장 순위를 매기고 있어 다소 시간이 걸릴 수 있습니다)</div>`;
+  // 전체 시장의 과거 시점 가격을 조회해야 해서 몇 분씩 걸릴 수 있어, 서버가
+  // 요청 안에서 바로 계산하지 않고 작업(job)만 만들어 즉시 id를 돌려준다.
+  // 여기서는 그 작업이 끝날 때까지 몇 초 간격으로 상태를 확인(폴링)한다.
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>연간 리밸런싱 백테스트 진행 중... (전체 시장 순위를 매기고 있어 몇 분 정도 걸릴 수 있습니다)</div>`;
   try {
-    const data = await api('POST', '/api/kr-quant/backtest', { startYear, endYear, seed, topN, minMarketCap });
-    renderKrQuantBacktestResult(data);
+    const { jobId } = await api('POST', '/api/kr-quant/backtest', { startYear, endYear, seed, topN, minMarketCap });
+    await pollKrQuantBacktestJob(jobId, el);
   } catch (e) {
     el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>`;
   }
+}
+
+async function pollKrQuantBacktestJob(jobId, el) {
+  const maxAttempts = 120; // 4초 간격 최대 8분
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    await new Promise(r => setTimeout(r, 4000));
+    let data;
+    try {
+      data = await api('GET', `/api/kr-quant/backtest/${jobId}`);
+    } catch (e) {
+      el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>`;
+      return;
+    }
+    if (data.status === 'done') {
+      renderKrQuantBacktestResult(data.result);
+      return;
+    }
+    if (data.status === 'error') {
+      el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(data.error || '백테스트 중 오류가 발생했습니다')}</div>`;
+      return;
+    }
+  }
+  el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>백테스트가 예상보다 오래 걸리고 있습니다. 잠시 후 다시 시도해주세요.</div>`;
 }
 
 function renderKrQuantBacktestResult(d) {
