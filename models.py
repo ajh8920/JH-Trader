@@ -172,3 +172,19 @@ class QuantBacktestJob(db.Model):
     error = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class KrPriceCache(db.Model):
+    """국내 퀀트 스크리닝용 현재가 캐시. 프로세스 메모리가 아니라 DB에 두는 이유:
+    gunicorn 워커가 여러 개면 각자 별도 프로세스라 메모리 캐시가 서로 안 보여서,
+    캐시를 못 채운 워커가 요청을 받으면 매번 "준비 안 됨"이 뜨는 문제가 있었다.
+    DB에 두면 어느 워커가 채웠든 모든 워커가 같이 읽을 수 있다. updated_at의
+    최신값으로 "다른 워커가 이미 최근에 갱신 중/갱신함"을 판단해, 여러 워커가
+    동시에 전종목을 중복으로 받아 메모리/CPU를 과하게 쓰는 것도 함께 막는다.
+    """
+
+    __tablename__ = "kr_price_cache"
+
+    stock_code = db.Column(db.String(10), primary_key=True)
+    price = db.Column(db.Float, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

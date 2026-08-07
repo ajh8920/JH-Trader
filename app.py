@@ -1192,13 +1192,20 @@ def alert_checker():
 # 채워두고, /api/kr-quant/screen은 그 캐시만 읽는다.
 
 def kr_quant_price_cache_refresher():
+    import random
     import kr_quant
 
+    # gunicorn 워커가 여러 개면 배포 직후 다 같이 시작되는데, 캐시가 DB 공유라
+    # "최근에 이미 갱신됨"으로 서로를 건너뛰긴 해도 맨 처음엔 그 판단 기준이 될
+    # 데이터 자체가 없어 동시에 시작할 수 있다. 워커마다 시작 시점을 무작위로
+    # 흩어 그 순간이 겹칠 확률을 낮추고, 배포 직후 헬스체크와도 덜 겹치게 한다.
+    time.sleep(random.uniform(20, 90))
     while True:
         with app.app_context():
             try:
                 n = kr_quant.warm_current_price_cache()
-                print(f"[퀀트 가격 캐시] {n}개 종목 현재가 갱신 완료")
+                if n:
+                    print(f"[퀀트 가격 캐시] {n}개 종목 현재가 갱신 완료")
             except Exception as e:
                 print(f"[퀀트 가격 캐시 갱신 오류] {e}")
         time.sleep(6 * 3600)  # 6시간마다 갱신 (가격이 실시간일 필요는 없는 용도)

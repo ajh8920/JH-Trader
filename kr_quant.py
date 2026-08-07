@@ -16,38 +16,49 @@ DART에서 미리 받아 KrFundamental에 캐시해둔 연간 재무데이터(�
 
 import json
 import math
+import random
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import yfinance as yf
 
-from models import KrFundamental
+from models import KrFundamental, KrPriceCache, db
 
 BASE_DIR = Path(__file__).parent
 MIN_MARKET_CAP_DEFAULT = 50_000_000_000  # 500억원
 
-# 현재가 캐시: Render의 gunicorn 요청 타임아웃(30초)보다 "재무데이터 있는 종목
-# 전체(1,500개+)의 현재가를 매 요청마다 실시간 조회"가 훨씬 오래 걸려 요청이
-# 통째로 죽는 문제가 있었다. 그래서 스크리닝(오늘 기준)은 요청 처리 중이 아니라
-# 백그라운드 스레드가 미리 채워둔 이 캐시를 읽기만 한다(app.py에서 주기적으로
-# warm_current_price_cache()를 호출).
-_price_cache = {"prices": {}, "at": 0.0}
+# 현재가 캐시는 DB(KrPriceCache)에 둔다 - 처음엔 프로세스 메모리 dict로 했다가,
+# gunicorn 워커가 여러 개면 서로 다른 프로세스라 캐시가 안 보이는 데다(캐시 못 채운
+# 워커가 요청을 받으면 매번 "준비 안 됨"), 배포 직후 워커 여러 개가 동시에
+# 전종목(1,500개+)을 중복으로 받으면서 메모리/CPU를 과하게 써 502가 나는 문제가
+# 있어 DB 공유 캐시 + 최근 갱신 여부로 중복 작업을 막는 방식으로 바꿨다.
+WARM_MIN_INTERVAL_SECONDS = 1800  # 이 시간 안에 이미 갱신됐으면 다시 하지 않는다
 
 
 def get_cached_prices():
-    return _price_cache["prices"]
+    rows = KrPriceCache.query.all()
+    return {r.stock_code: r.price for r in rows}
 
 
 def price_cache_age_seconds():
-    if not _price_cache["prices"]:
+    latest = KrPriceCache.query.order_by(KrPriceCache.updated_at.desc()).first()
+    if not latest or not latest.updated_at:
         return None
-    return time.time() - _price_cache["at"]
+    return (datetime.utcnow() - latest.updated_at).total_seconds()
 
 
 def warm_current_price_cache():
-    """재무데이터가 있는 전 종목의 현재가를 받아 캐시에 채운다(수 분 걸릴 수 있음 -
-    반드시 백그라운드 스레드에서만 호출해야 한다)."""
+    """재무데이터가 있는 전 종목의 현재가를 받아 DB 캐시에 채운다(수 분 걸릴 수 있음 -
+    반드시 백그라운드 스레드에서만 호출해야 한다).
+
+    다른 워커가 WARM_MIN_INTERVAL_SECONDS 이내에 이미 갱신했다면 건너뛴다(여러
+    워커가 배포 직후 동시에 전종목을 중복으로 받는 것을 막기 위함).
+    """
+    age = price_cache_age_seconds()
+    if age is not None and age < WARM_MIN_INTERVAL_SECONDS:
+        return 0
+
     market_map = _load_market_map()
     codes = [
         row.stock_code for row in
@@ -55,8 +66,19 @@ def warm_current_price_cache():
     ]
     today = datetime.today().strftime("%Y-%m-%d")
     prices = fetch_prices_near_date(codes, market_map, today, window_days=10)
-    _price_cache["prices"] = prices
-    _price_cache["at"] = time.time()
+
+    now = datetime.utcnow()
+    for i, (code, price) in enumerate(prices.items()):
+        row = db.session.get(KrPriceCache, code)
+        if row:
+            row.price = price
+            row.updated_at = now
+        else:
+            db.session.add(KrPriceCache(stock_code=code, price=price, updated_at=now))
+        # 종목이 많아 한 번에 다 모았다가 커밋하면 트랜잭션이 오래 걸리니 나눠서 커밋
+        if (i + 1) % 300 == 0:
+            db.session.commit()
+    db.session.commit()
     return len(prices)
 
 
@@ -107,7 +129,11 @@ def fetch_prices_near_date(codes, market_map, date_str, window_days=10):
     end = datetime.strptime(date_str, "%Y-%m-%d")
     start = end - timedelta(days=window_days)
     prices = {}
-    CHUNK = 40  # 청크를 너무 크게/자주 돌리면 야후 쪽 요청 제한(YFRateLimitError)에 걸린다
+    # 청크를 너무 크게/자주 돌리면 야후 쪽 요청 제한에도 걸리고, Render 무료
+    # 티어의 메모리 한도에서 워커 여러 개가 동시에 큰 배치를 처리하다 죽는(502)
+    # 문제가 있었다 - 청크를 작게, threads=False(야후 내부 스레드풀 비활성화)로
+    # 메모리/CPU 순간 사용량을 낮춘다. 대신 더 많은 요청 왕복이 필요해 느려진다.
+    CHUNK = 25
     tickers_all = [_yf_ticker(c, market_map) for c in codes]
     code_by_ticker = dict(zip(tickers_all, codes))
 
@@ -118,7 +144,7 @@ def fetch_prices_near_date(codes, market_map, date_str, window_days=10):
             try:
                 df = yf.download(
                     chunk, start=start.strftime("%Y-%m-%d"), end=(end + timedelta(days=1)).strftime("%Y-%m-%d"),
-                    progress=False, auto_adjust=False, timeout=25, group_by="ticker", threads=True,
+                    progress=False, auto_adjust=False, timeout=25, group_by="ticker", threads=False,
                 )
                 if df is not None and not df.empty:
                     break
@@ -127,7 +153,7 @@ def fetch_prices_near_date(codes, market_map, date_str, window_days=10):
             time.sleep(1.5 * (attempt + 1))  # 요청 제한 걸렸을 때 점점 더 오래 쉬고 재시도
         else:
             continue
-        time.sleep(0.3)  # 청크 사이에도 짧게 쉬어 다음 청크가 제한에 덜 걸리게 한다
+        time.sleep(0.5)  # 청크 사이에도 짧게 쉬어 다음 청크가 제한에 덜 걸리게 한다
         if df is None or df.empty:
             continue
 
