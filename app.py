@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import secrets
@@ -751,6 +752,35 @@ def backtest_infinite_buying():
 # 6자리 종목코드(예: 005930) 또는 명시적으로 .KS/.KQ가 붙은 코드를 받는다.
 KR_CODE_RE = re.compile(r"^\d{6}(\.K[SQ])?$", re.IGNORECASE)
 
+# 종목명 검색용 코스피/코스닥 전체 종목 코드-이름 매핑(정적 스냅샷, FinanceDataReader로
+# 생성). 상장폐지·사명변경 등으로 시간이 지나면 조금씩 어긋날 수 있으나, 검색 자동완성
+# 용도로는 충분하다.
+KR_STOCKS_PATH = BASE_DIR / "kr_stocks.json"
+try:
+    with open(KR_STOCKS_PATH, "r", encoding="utf-8") as _f:
+        KR_STOCKS = json.load(_f)
+except (OSError, ValueError):
+    KR_STOCKS = []
+
+
+@app.route("/api/kr-swing/search-stocks")
+@login_required
+def search_kr_stocks():
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify({"results": []})
+
+    q_lower = q.lower()
+    starts, contains = [], []
+    for item in KR_STOCKS:
+        name_lower = item["name"].lower()
+        if name_lower.startswith(q_lower) or item["code"].startswith(q):
+            starts.append(item)
+        elif q_lower in name_lower:
+            contains.append(item)
+
+    return jsonify({"results": (starts + contains)[:20]})
+
 
 @app.route("/api/kr-swing/backtest", methods=["POST"])
 @login_required
@@ -972,7 +1002,7 @@ for _view in (
     save_key, delete_key, get_stock, get_quote, get_macro, get_lab_series,
     get_portfolio, add_portfolio, remove_portfolio, refresh_portfolio,
     get_alerts, add_alert, remove_alert,
-    backtest_infinite_buying, kr_swing_backtest,
+    backtest_infinite_buying, kr_swing_backtest, search_kr_stocks,
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_users, update_user_role, delete_user,

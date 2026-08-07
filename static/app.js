@@ -894,6 +894,89 @@ function onKrSwingStrategyChange() {
   });
 }
 
+// ─── 국내 스윙 종목명 자동완성 ─────────────────────────────────────────────────
+
+let krSwingSelectedName = '삼성전자';
+let krSwingSuggestions = [];
+let krSwingActiveSuggestionIndex = -1;
+let krSwingSearchTimer = null;
+let krSwingSearchSeq = 0;
+
+function onKrSwingCodeInput(value) {
+  clearTimeout(krSwingSearchTimer);
+  const q = value.trim();
+  if (!q) { closeKrSwingAutocomplete(); return; }
+  krSwingSearchTimer = setTimeout(() => runKrSwingSearch(q), 150);
+}
+
+async function runKrSwingSearch(q) {
+  const seq = ++krSwingSearchSeq;
+  let data;
+  try {
+    data = await api('GET', `/api/kr-swing/search-stocks?q=${encodeURIComponent(q)}`);
+  } catch (e) {
+    return;
+  }
+  if (seq !== krSwingSearchSeq) return; // 더 최근 검색 응답이 이미 왔으면 이 결과는 버린다
+  krSwingSuggestions = data.results || [];
+  krSwingActiveSuggestionIndex = -1;
+  renderKrSwingAutocomplete();
+}
+
+function renderKrSwingAutocomplete() {
+  const list = document.getElementById('ks-autocomplete-list');
+  if (!list) return;
+  if (!krSwingSuggestions.length) {
+    list.innerHTML = `<div class="ks-autocomplete-empty">일치하는 종목이 없습니다</div>`;
+    list.style.display = 'block';
+    return;
+  }
+  list.innerHTML = krSwingSuggestions.map((s, i) => `
+    <div class="ks-autocomplete-item ${i === krSwingActiveSuggestionIndex ? 'active' : ''}"
+         data-code="${escapeHtml(s.code)}" data-name="${escapeHtml(s.name)}"
+         onmousedown="selectKrSwingStock(this.dataset.code, this.dataset.name)">
+      <span>${escapeHtml(s.name)} <span style="color:var(--text-muted);">${escapeHtml(s.code)}</span></span>
+      <span class="ks-ac-market">${escapeHtml(s.market)}</span>
+    </div>`).join('');
+  list.style.display = 'block';
+}
+
+function selectKrSwingStock(code, name) {
+  document.getElementById('ks-code').value = code;
+  document.getElementById('ks-code-input').value = name;
+  krSwingSelectedName = name;
+  closeKrSwingAutocomplete();
+}
+
+function closeKrSwingAutocomplete() {
+  const list = document.getElementById('ks-autocomplete-list');
+  if (list) list.style.display = 'none';
+  krSwingActiveSuggestionIndex = -1;
+}
+
+function onKrSwingCodeKeydown(event) {
+  const list = document.getElementById('ks-autocomplete-list');
+  const visible = list && list.style.display !== 'none';
+  if (!visible || !krSwingSuggestions.length) return;
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    krSwingActiveSuggestionIndex = Math.min(krSwingActiveSuggestionIndex + 1, krSwingSuggestions.length - 1);
+    renderKrSwingAutocomplete();
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    krSwingActiveSuggestionIndex = Math.max(krSwingActiveSuggestionIndex - 1, 0);
+    renderKrSwingAutocomplete();
+  } else if (event.key === 'Enter') {
+    if (krSwingActiveSuggestionIndex >= 0) {
+      event.preventDefault();
+      const s = krSwingSuggestions[krSwingActiveSuggestionIndex];
+      selectKrSwingStock(s.code, s.name);
+    }
+  } else if (event.key === 'Escape') {
+    closeKrSwingAutocomplete();
+  }
+}
+
 function getKrSwingParams(strategy) {
   if (strategy === 'volatility_breakout') {
     return {
@@ -933,18 +1016,22 @@ function formatKrw(v) {
 
 async function runKrSwingBacktest() {
   const strategy = document.getElementById('ks-strategy').value;
+  const codeInputEl = document.getElementById('ks-code-input');
   const code = document.getElementById('ks-code').value.trim();
   const start = document.getElementById('ks-start').value;
   const end = document.getElementById('ks-end').value;
   const seed = parseFloat(document.getElementById('ks-seed').value);
   const el = document.getElementById('krswing-result');
 
-  if (!code) { alert('종목코드를 입력하세요'); return; }
+  if (!code || codeInputEl.value.trim() !== krSwingSelectedName) {
+    alert('목록에서 종목을 선택하세요');
+    return;
+  }
   if (!start || !end) { alert('시작일과 종료일을 입력하세요'); return; }
   if (!seed || seed <= 0) { alert('시드를 입력하세요'); return; }
 
   const params = getKrSwingParams(strategy);
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${escapeHtml(code)} 백테스트 진행 중...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${escapeHtml(krSwingSelectedName)} 백테스트 진행 중...</div>`;
 
   try {
     const data = await api('POST', '/api/kr-swing/backtest', { strategy, code, start, end, seed, params });

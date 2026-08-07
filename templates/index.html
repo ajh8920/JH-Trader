@@ -257,9 +257,15 @@
                 <option value="combo">복합전략(추세+눌림목+모멘텀)</option>
               </select>
             </div>
-            <div class="bt-field">
-              <label for="ks-code">종목코드</label>
-              <input type="text" id="ks-code" placeholder="005930 (삼성전자)" value="005930" />
+            <div class="bt-field ks-autocomplete">
+              <label for="ks-code-input">종목명</label>
+              <input type="text" id="ks-code-input" placeholder="삼성전자" value="삼성전자" autocomplete="off"
+                     oninput="onKrSwingCodeInput(this.value)"
+                     onfocus="onKrSwingCodeInput(this.value)"
+                     onkeydown="onKrSwingCodeKeydown(event)"
+                     onblur="setTimeout(closeKrSwingAutocomplete, 150)" />
+              <input type="hidden" id="ks-code" value="005930" />
+              <div id="ks-autocomplete-list" class="ks-autocomplete-list" style="display:none;"></div>
             </div>
             <div class="bt-field">
               <label for="ks-start">시작일</label>
