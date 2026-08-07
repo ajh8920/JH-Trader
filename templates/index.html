@@ -72,6 +72,7 @@
       <button class="tab" onclick="switchTab('live')" role="tab"><i class="ti ti-infinity" aria-hidden="true"></i> 실전 현황</button>
       <button class="tab" onclick="switchTab('lab')" role="tab"><i class="ti ti-flask" aria-hidden="true"></i> 실험실</button>
       <button class="tab" onclick="switchTab('krswing')" role="tab"><i class="ti ti-chart-candle" aria-hidden="true"></i> 국내 스윙</button>
+      <button class="tab" onclick="switchTab('krquant')" role="tab"><i class="ti ti-filter" aria-hidden="true"></i> 국내 퀀트</button>
     </nav>
 
     <main>
@@ -372,6 +373,67 @@
           </div>
         </div>
         <div id="krswing-result"></div>
+      </section>
+
+      <!-- 국내 퀀트(재무지표 팩터) 스크리닝/백테스트 -->
+      <section id="sec-krquant" class="section">
+        <div id="krquant-status" class="info-box" style="margin-bottom:1rem;">
+          <i class="ti ti-loader-2" aria-hidden="true"></i> 재무데이터 준비 상태 확인 중...
+        </div>
+
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+            <div style="font-size:13px;font-weight:600;">현재 시점 스크리닝 (저PER + 고ROE)</div>
+            <button class="btn-secondary" onclick="runKrQuantScreen()"><i class="ti ti-refresh" aria-hidden="true"></i> 새로고침</button>
+          </div>
+          <div class="bt-form-grid" style="margin-bottom:10px;">
+            <div class="bt-field">
+              <label for="kq-screen-topn">종목 수</label>
+              <input type="number" id="kq-screen-topn" min="1" max="100" value="20" />
+            </div>
+            <div class="bt-field">
+              <label for="kq-screen-mcap">최소 시가총액 (억원)</label>
+              <input type="number" id="kq-screen-mcap" min="0" step="10" value="500" />
+            </div>
+          </div>
+          <div id="krquant-screen-result"></div>
+        </div>
+
+        <div class="card">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;">연간 리밸런싱 백테스트</div>
+          <div class="bt-form-grid">
+            <div class="bt-field">
+              <label for="kq-bt-start">시작연도</label>
+              <input type="number" id="kq-bt-start" min="2016" value="2023" />
+            </div>
+            <div class="bt-field">
+              <label for="kq-bt-end">종료연도</label>
+              <input type="number" id="kq-bt-end" value="2026" />
+            </div>
+            <div class="bt-field">
+              <label for="kq-bt-seed">시드 (원)</label>
+              <input type="number" id="kq-bt-seed" step="1000000" value="30000000" />
+            </div>
+            <div class="bt-field">
+              <label for="kq-bt-topn">보유 종목 수</label>
+              <input type="number" id="kq-bt-topn" min="1" max="100" value="20" />
+            </div>
+            <div class="bt-field">
+              <label for="kq-bt-mcap">최소 시가총액 (억원)</label>
+              <input type="number" id="kq-bt-mcap" min="0" step="10" value="500" />
+            </div>
+          </div>
+          <button class="btn-primary" style="margin-top:12px;" onclick="runKrQuantBacktest()">
+            <i class="ti ti-player-play" aria-hidden="true"></i> 백테스트 실행
+          </button>
+          <div class="info-box" style="margin-top:12px;">
+            <i class="ti ti-info-circle" aria-hidden="true"></i>
+            매년 4월 1일(전년도 사업보고서가 대부분 공시된 시점)에 저PER+고ROE 종합순위 상위 종목을 동일비중으로 전량 재편성하는 방식입니다.
+            재무데이터는 DART 전자공시(자본총계/당기순이익)를 미리 받아 저장해두고, 그 리밸런싱 시점에 실제로 공시되어 있던 가장 최근 연도 데이터만 사용합니다(미래 데이터를 미리 아는 오류 방지).
+            시가총액은 현재 상장주식수 × 그 시점 종가로 근사하며, 상장주식수 변동 이력(유상증자·액면분할 등)은 반영하지 않습니다. 상장폐지 종목은 가격 조회 실패 시 조용히 후보에서 빠질 수 있어(생존편향) 실제보다 성과가 좋게 보일 수 있습니다.
+          </div>
+        </div>
+        <div id="krquant-result"></div>
       </section>
     </main>
   </div>

@@ -828,6 +828,75 @@ def kr_swing_backtest():
     return jsonify(sanitize_json(result))
 
 
+# ─── 국내 퀀트(재무지표 팩터) 스크리닝/백테스트 API ───────────────────────────
+# DART 재무데이터 백필 진행 상황도 함께 노출한다(전체 백필은 시간이 걸리므로
+# 화면에서 "지금 몇 종목까지 준비됐는지"를 보여주기 위함).
+
+@app.route("/api/kr-quant/status")
+@login_required
+def kr_quant_status():
+    from models import KrFundamental
+
+    total = KrFundamental.query.count()
+    codes = db.session.query(KrFundamental.stock_code).distinct().count()
+    return jsonify({"fundamentalRows": total, "stockCount": codes})
+
+
+@app.route("/api/kr-quant/screen")
+@login_required
+@limiter.limit("10 per minute")
+def kr_quant_screen():
+    from kr_quant import _load_market_map, get_shares_outstanding_map, rank_candidates
+    from models import KrFundamental
+
+    try:
+        top_n = int(request.args.get("topN", 20))
+        min_market_cap = float(request.args.get("minMarketCap", 50_000_000_000))
+    except (TypeError, ValueError):
+        return jsonify({"error": "파라미터가 올바르지 않습니다"}), 400
+    if not (1 <= top_n <= 100):
+        return jsonify({"error": "종목 수는 1~100 사이여야 합니다"}), 400
+
+    rows = KrFundamental.query.filter(KrFundamental.rcept_no != "").all()
+    if not rows:
+        return jsonify({"error": "재무데이터가 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요."}), 400
+
+    today = datetime.today().strftime("%Y-%m-%d")
+    market_map = _load_market_map()
+    shares_map = get_shares_outstanding_map()
+    picks = rank_candidates(today, market_map, shares_map, rows, min_market_cap, top_n)
+    return jsonify(sanitize_json({"date": today, "picks": picks}))
+
+
+@app.route("/api/kr-quant/backtest", methods=["POST"])
+@login_required
+@limiter.limit("5 per minute")
+def kr_quant_backtest():
+    from kr_quant import run_quant_backtest
+
+    body = request.json or {}
+    try:
+        start_year = int(body.get("startYear"))
+        end_year = int(body.get("endYear"))
+        seed = float(body.get("seed", 0))
+        top_n = int(body.get("topN", 20))
+        min_market_cap = float(body.get("minMarketCap", 50_000_000_000))
+    except (TypeError, ValueError):
+        return jsonify({"error": "입력값이 올바르지 않습니다"}), 400
+
+    if seed <= 0:
+        return jsonify({"error": "시드는 0보다 커야 합니다"}), 400
+    if not (1 <= top_n <= 100):
+        return jsonify({"error": "종목 수는 1~100 사이여야 합니다"}), 400
+    if not (2015 <= start_year < end_year <= datetime.today().year):
+        return jsonify({"error": "연도 범위가 올바르지 않습니다"}), 400
+
+    result = run_quant_backtest(start_year, end_year, seed, top_n, min_market_cap)
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(sanitize_json(result))
+
+
 # ─── 무한매수법 실전 현황 API ─────────────────────────────────────────────────
 
 @app.route("/api/infinite/positions", methods=["GET"])
@@ -1003,6 +1072,7 @@ for _view in (
     get_portfolio, add_portfolio, remove_portfolio, refresh_portfolio,
     get_alerts, add_alert, remove_alert,
     backtest_infinite_buying, kr_swing_backtest, search_kr_stocks,
+    kr_quant_status, kr_quant_screen, kr_quant_backtest,
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_users, update_user_role, delete_user,

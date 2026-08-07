@@ -117,3 +117,39 @@ class InfiniteTrade(db.Model):
             "qty": self.qty,
             "note": self.note or "",
         }
+
+
+class KrFundamental(db.Model):
+    """DART(전자공시시스템)에서 받아온 국내 상장사 연간 재무제표 캐시.
+
+    사용자별 데이터가 아니라 전체 사용자가 공유하는 시장 데이터라서 user_id가 없다.
+    사업보고서(연간) 하나를 조회하면 당기/전기/전전기 3개 연도 금액이 함께 오므로,
+    bsns_year는 "그 보고서가 표지에 적힌 기준연도"이고 실제로는 그 연도를 포함해
+    앞선 2개 연도까지 알 수 있다 - 어느 연도 금액인지는 이 레코드 자체가 이미 특정
+    연도(=조회 기준연도) 값만 담고 있으므로 신경 쓸 필요 없다(연도별로 별도 행 생성).
+    """
+
+    __tablename__ = "kr_fundamentals"
+    __table_args__ = (
+        db.UniqueConstraint("stock_code", "bsns_year", name="uq_kr_fund_stock_year"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    stock_code = db.Column(db.String(10), nullable=False, index=True)
+    corp_code = db.Column(db.String(10), nullable=False)
+    corp_name = db.Column(db.String(128), default="")
+    bsns_year = db.Column(db.String(4), nullable=False)
+    fs_div = db.Column(db.String(4), default="CFS")  # CFS=연결, OFS=별도
+    rcept_no = db.Column(db.String(20), default="")  # 공시 접수번호(앞 8자리=제출일 YYYYMMDD)
+    total_equity = db.Column(db.Float)  # 자본총계
+    net_income = db.Column(db.Float)  # 당기순이익
+    revenue = db.Column(db.Float)  # 매출액
+    fetched_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def rcept_date(self):
+        """공시 제출일(YYYY-MM-DD). 이 날짜 이후에야 시장에 이 데이터가 공개된 것으로 본다."""
+        if not self.rcept_no or len(self.rcept_no) < 8:
+            return None
+        d = self.rcept_no[:8]
+        return f"{d[0:4]}-{d[4:6]}-{d[6:8]}"

@@ -121,7 +121,7 @@ async function saveApiKey() {
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((btn, i) => {
-    const active = ['macro', 'search', 'portfolio', 'alerts', 'backtest', 'live', 'lab', 'krswing'][i] === name;
+    const active = ['macro', 'search', 'portfolio', 'alerts', 'backtest', 'live', 'lab', 'krswing', 'krquant'][i] === name;
     btn.classList.toggle('active', active);
   });
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -133,6 +133,7 @@ function switchTab(name) {
   if (name === 'live') loadInfinitePositions();
   if (name === 'lab') initLabTab();
   if (name === 'krswing') initKrSwingDates();
+  if (name === 'krquant') initKrQuantTab();
 }
 
 document.addEventListener('DOMContentLoaded', () => loadMacro());
@@ -1238,6 +1239,210 @@ function drawKrSwingPriceChart(priceCurve, trades, ticker) {
 
 function resetKrSwingPriceZoom() {
   if (krSwingPriceChart) krSwingPriceChart.resetZoom();
+}
+
+// ─── 국내 퀀트(재무지표 팩터) 스크리닝/백테스트 ───────────────────────────────
+
+let krQuantChart = null;
+const krQuantPanState = { cleanup: null };
+
+function initKrQuantTab() {
+  loadKrQuantStatus();
+  runKrQuantScreen();
+}
+
+async function loadKrQuantStatus() {
+  const el = document.getElementById('krquant-status');
+  if (!el) return;
+  try {
+    const data = await api('GET', '/api/kr-quant/status');
+    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> 재무데이터 준비 상태: ${data.stockCount.toLocaleString('ko-KR')}개 종목(${data.fundamentalRows.toLocaleString('ko-KR')}건) 확보됨 — 백그라운드로 계속 채워지는 중이며, 스크리닝/백테스트는 지금 있는 데이터로 바로 동작합니다.`;
+  } catch (e) {
+    el.innerHTML = `<i class="ti ti-alert-circle" aria-hidden="true"></i> ${escapeHtml(e.message)}`;
+  }
+}
+
+async function runKrQuantScreen() {
+  const el = document.getElementById('krquant-screen-result');
+  if (!el) return;
+  const topN = parseInt(document.getElementById('kq-screen-topn').value, 10) || 20;
+  const minMarketCap = (parseFloat(document.getElementById('kq-screen-mcap').value) || 0) * 100000000;
+
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>스크리닝 중...</div>`;
+  try {
+    const data = await api('GET', `/api/kr-quant/screen?topN=${topN}&minMarketCap=${minMarketCap}`);
+    renderKrQuantScreenResult(data);
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderKrQuantScreenResult(data) {
+  const el = document.getElementById('krquant-screen-result');
+  const picks = data.picks || [];
+  if (!picks.length) {
+    el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>조건을 만족하는 종목이 없습니다</p></div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">기준일: ${escapeHtml(data.date)}</div>
+    <div class="pf-table-wrap">
+      <table class="pf-table">
+        <thead><tr><th>종합순위</th><th>종목명</th><th>코드</th><th>PER</th><th>ROE</th><th>시가총액</th><th>기준연도</th></tr></thead>
+        <tbody>
+          ${picks.map(p => `
+            <tr>
+              <td>${p.combinedRank}</td>
+              <td>${escapeHtml(p.name)}</td>
+              <td>${escapeHtml(p.code)}</td>
+              <td>${p.per.toFixed(2)}</td>
+              <td>${p.roe.toFixed(2)}%</td>
+              <td>${formatKrw(p.marketCap)}</td>
+              <td>${escapeHtml(p.bsnsYear)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function runKrQuantBacktest() {
+  const startYear = parseInt(document.getElementById('kq-bt-start').value, 10);
+  const endYear = parseInt(document.getElementById('kq-bt-end').value, 10);
+  const seed = parseFloat(document.getElementById('kq-bt-seed').value);
+  const topN = parseInt(document.getElementById('kq-bt-topn').value, 10);
+  const minMarketCap = (parseFloat(document.getElementById('kq-bt-mcap').value) || 0) * 100000000;
+  const el = document.getElementById('krquant-result');
+
+  if (!startYear || !endYear || startYear >= endYear) { alert('연도 범위를 확인하세요'); return; }
+  if (!seed || seed <= 0) { alert('시드를 입력하세요'); return; }
+  if (!topN || topN <= 0) { alert('종목 수를 확인하세요'); return; }
+
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>연간 리밸런싱 백테스트 진행 중... (전체 시장 순위를 매기고 있어 다소 시간이 걸릴 수 있습니다)</div>`;
+  try {
+    const data = await api('POST', '/api/kr-quant/backtest', { startYear, endYear, seed, topN, minMarketCap });
+    renderKrQuantBacktestResult(data);
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderKrQuantBacktestResult(d) {
+  const el = document.getElementById('krquant-result');
+  const pnlCls = d.totalReturnPct >= 0 ? 'positive' : 'negative';
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="bt-summary-grid">
+        <div class="meta-item"><div class="meta-label">시드</div><div class="meta-value">${formatKrw(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">최종 평가금액</div><div class="meta-value">${formatKrw(d.finalValue)}</div></div>
+        <div class="meta-item"><div class="meta-label">총 수익률</div><div class="meta-value ${pnlCls}">${d.totalReturnPct>=0?'+':''}${d.totalReturnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)}</div><div class="meta-value ${(d.benchmark.returnPct ?? 0) >= 0 ? 'positive' : 'negative'}">${d.benchmark.returnPct !== null && d.benchmark.returnPct !== undefined ? (d.benchmark.returnPct >= 0 ? '+' : '') + d.benchmark.returnPct.toFixed(1) + '%' : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">리밸런싱 횟수</div><div class="meta-value">${d.rebalanceDates.length}회</div></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 8px;">
+        <div style="font-size:13px;font-weight:600;">자산 추이 (전략 vs ${escapeHtml(d.benchmark.label)})</div>
+        <button class="btn-secondary" onclick="resetKrQuantZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> 줌 초기화</button>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="krquant-chart" role="img" aria-label="자산 추이 차트"></canvas>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">마우스 휠로 확대/축소, 드래그로 이동할 수 있습니다</div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">리밸런싱 시점별 선정 종목</div>
+      ${d.picksLog.map(pl => `
+        <div style="margin-bottom:14px;">
+          <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">${escapeHtml(pl.date)} (${pl.picks.length}종목)</div>
+          <div class="pf-table-wrap">
+            <table class="pf-table">
+              <thead><tr><th>순위</th><th>종목명</th><th>PER</th><th>ROE</th><th>시가총액</th></tr></thead>
+              <tbody>
+                ${pl.picks.length ? pl.picks.map(p => `
+                  <tr><td>${p.combinedRank}</td><td>${escapeHtml(p.name)}</td><td>${p.per.toFixed(2)}</td><td>${p.roe.toFixed(2)}%</td><td>${formatKrw(p.marketCap)}</td></tr>
+                `).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">선정된 종목 없음</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>`).join('')}
+    </div>
+
+    <div class="pf-table-wrap">
+      <table class="pf-table">
+        <thead><tr><th>날짜</th><th>구분</th><th>종목명</th><th>가격</th><th>수량</th><th>손익률</th></tr></thead>
+        <tbody>
+          ${d.trades.length ? d.trades.map(t => `
+            <tr>
+              <td>${t.date}</td>
+              <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? '매수' : '매도'}</span></td>
+              <td>${escapeHtml(t.name)}</td>
+              <td>${formatKrw(t.price)}</td>
+              <td>${t.qty.toLocaleString('ko-KR')}</td>
+              <td>${t.pnlPct !== undefined ? `<span class="${t.pnlPct >= 0 ? 'positive' : 'negative'}">${t.pnlPct>=0?'+':''}${t.pnlPct.toFixed(1)}%</span>` : '-'}</td>
+            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">거래 내역이 없습니다</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  setTimeout(() => drawKrQuantChart(d.equityCurve, d.benchmark, d.seed), 80);
+}
+
+function drawKrQuantChart(curve, benchmark, seed) {
+  const canvas = document.getElementById('krquant-chart');
+  if (!canvas) return;
+  if (krQuantChart) krQuantChart.destroy();
+  const dates = curve.map(p => p.date);
+  const toPct = v => (v - seed) / seed * 100;
+  const datasets = [{
+    label: '퀀트 전략',
+    data: curve.map((p, i) => ({ x: i, y: toPct(p.value) })),
+    borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
+    fill: true, pointRadius: 3, borderWidth: 2, tension: 0.1,
+  }];
+  if (benchmark?.equityCurve?.length) {
+    datasets.push({
+      label: benchmark.label,
+      data: benchmark.equityCurve.map((p, i) => ({ x: i, y: toPct(p.value) })),
+      borderColor: '#97C459', backgroundColor: 'transparent',
+      fill: false, pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: 0.1,
+    });
+  }
+  krQuantChart = new Chart(canvas, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y>=0?'+':''}` + ctx.parsed.y.toFixed(1) + '%',
+          },
+        },
+        zoom: {
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+          pan: { enabled: false },
+          limits: { x: { min: 0, max: Math.max(dates.length - 1, 0), minRange: 1 } },
+        },
+      },
+      scales: {
+        y: { ticks: { callback: v => (v>=0?'+':'') + v.toFixed(0) + '%' }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        x: {
+          type: 'linear', min: 0, max: Math.max(dates.length - 1, 0),
+          ticks: { maxTicksLimit: 8, callback: v => dates[Math.round(v)] ?? '' },
+          grid: { display: false },
+        },
+      },
+    },
+  });
+  attachChartPan(krQuantChart, canvas, krQuantPanState);
+}
+
+function resetKrQuantZoom() {
+  if (krQuantChart) krQuantChart.resetZoom();
 }
 
 // ─── 무한매수법 실전 현황 ────────────────────────────────────────────────────
