@@ -1323,7 +1323,7 @@ async function runKrQuantBacktest() {
   // 전체 시장의 과거 시점 가격을 조회해야 해서 몇 분씩 걸릴 수 있어, 서버가
   // 요청 안에서 바로 계산하지 않고 작업(job)만 만들어 즉시 id를 돌려준다.
   // 여기서는 그 작업이 끝날 때까지 몇 초 간격으로 상태를 확인(폴링)한다.
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>연간 리밸런싱 백테스트 진행 중... (전체 시장 순위를 매기고 있어 몇 분 정도 걸릴 수 있습니다)</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>연간 리밸런싱 백테스트 진행 중... (전체 시장 가격을 조회하고 있어 기간에 따라 5~15분 정도 걸릴 수 있습니다)</div>`;
   try {
     const { jobId } = await api('POST', '/api/kr-quant/backtest', { startYear, endYear, seed, topN, minMarketCap });
     await pollKrQuantBacktestJob(jobId, el);
@@ -1333,7 +1333,7 @@ async function runKrQuantBacktest() {
 }
 
 async function pollKrQuantBacktestJob(jobId, el) {
-  const maxAttempts = 120; // 4초 간격 최대 8분
+  const maxAttempts = 300; // 4초 간격 최대 20분 (실측: 7개 리밸런싱 시점 기준 약 10분)
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await new Promise(r => setTimeout(r, 4000));
     let data;

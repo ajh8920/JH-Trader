@@ -175,6 +175,77 @@ def fetch_prices_near_date(codes, market_map, date_str, window_days=10):
     return prices
 
 
+def fetch_price_history_batch(codes, market_map, start_date, end_date):
+    """여러 종목의 전체 기간 종가 히스토리를 한 번에 배치로 가져온다.
+
+    리밸런싱 시점마다 fetch_prices_near_date를 따로 부르면 조회 기간(리밸런싱
+    횟수)이 늘어날수록 네트워크 왕복도 똑같이 배로 늘어 백테스트가 몇 배씩
+    느려진다. 대신 전체 기간을 한 번만 받아두고, 각 리밸런싱 시점에는 이
+    히스토리에서 스냅샷만 뽑아 쓰면(_nearest_price) 리밸런싱 횟수와 무관하게
+    네트워크 조회는 항상 한 번으로 끝난다.
+
+    반환: {stock_code: [(date_str, close), ...]} (날짜 오름차순)
+    """
+    if not codes:
+        return {}
+    CHUNK = 25
+    tickers_all = [_yf_ticker(c, market_map) for c in codes]
+    code_by_ticker = dict(zip(tickers_all, codes))
+    history = {}
+
+    for i in range(0, len(tickers_all), CHUNK):
+        chunk = tickers_all[i:i + CHUNK]
+        df = None
+        for attempt in range(3):
+            try:
+                df = yf.download(
+                    chunk, start=start_date, end=end_date,
+                    progress=False, auto_adjust=False, timeout=30, group_by="ticker", threads=False,
+                )
+                if df is not None and not df.empty:
+                    break
+            except Exception:
+                df = None
+            time.sleep(1.5 * (attempt + 1))
+        else:
+            continue
+        time.sleep(0.5)
+        if df is None or df.empty:
+            continue
+
+        if len(chunk) == 1:
+            closes = df["Close"].dropna() if "Close" in df.columns else None
+            if closes is not None and not closes.empty:
+                code = code_by_ticker[chunk[0]]
+                history[code] = [(idx.strftime("%Y-%m-%d"), float(v)) for idx, v in closes.items()]
+            continue
+
+        for t in chunk:
+            try:
+                sub = df[t]
+            except KeyError:
+                continue
+            closes = sub["Close"].dropna() if "Close" in sub.columns else None
+            if closes is not None and not closes.empty:
+                code = code_by_ticker[t]
+                history[code] = [(idx.strftime("%Y-%m-%d"), float(v)) for idx, v in closes.items()]
+
+    return history
+
+
+def _nearest_price(history, code, date_str):
+    """그 날짜 또는 그 직전 가장 가까운 거래일 종가를 히스토리에서 찾는다."""
+    series = history.get(code)
+    if not series:
+        return None
+    result = None
+    for d, price in series:
+        if d > date_str:
+            break
+        result = price
+    return result
+
+
 def rank_candidates(rebalance_date_str, market_map, shares_map, fundamentals_rows, min_market_cap, top_n,
                      prices=None):
     """prices를 넘기지 않으면 그 시점 가격을 실시간으로 조회한다(과거 리밸런싱 시점용,
@@ -259,6 +330,12 @@ def run_quant_backtest(start_year, end_year, seed, top_n=20, min_market_cap=MIN_
     if len(rebalance_dates) < 2:
         return {"error": "리밸런싱 시점이 2회 미만입니다(기간을 늘려주세요)"}
 
+    # 전체 기간 가격을 한 번만 배치로 받아두고(fetch_price_history_batch), 각
+    # 리밸런싱 시점에는 그 히스토리에서 스냅샷만 뽑아 쓴다. 리밸런싱 시점마다
+    # 매번 새로 조회하면 기간이 길어질수록(리밸런싱 횟수만큼) 몇 배씩 느려진다.
+    all_codes = sorted({row.stock_code for row in fundamentals_rows})
+    history = fetch_price_history_batch(all_codes, market_map, rebalance_dates[0], today_str)
+
     portfolio_value = seed
     holdings = {}
     equity_curve = []
@@ -266,13 +343,19 @@ def run_quant_backtest(start_year, end_year, seed, top_n=20, min_market_cap=MIN_
     picks_log = []
 
     for date_str in rebalance_dates:
-        picks = rank_candidates(date_str, market_map, shares_map, fundamentals_rows, min_market_cap, top_n)
+        prices_at_date = {}
+        for code in all_codes:
+            px = _nearest_price(history, code, date_str)
+            if px is not None:
+                prices_at_date[code] = px
+
+        picks = rank_candidates(date_str, market_map, shares_map, fundamentals_rows, min_market_cap, top_n,
+                                 prices=prices_at_date)
 
         if holdings:
-            exit_prices = fetch_prices_near_date(list(holdings.keys()), market_map, date_str)
             new_value = 0.0
             for code, h in holdings.items():
-                px = exit_prices.get(code, h["entryPrice"])
+                px = prices_at_date.get(code, h["entryPrice"])
                 proceeds = h["shares"] * px
                 new_value += proceeds
                 trades.append({
@@ -303,10 +386,11 @@ def run_quant_backtest(start_year, end_year, seed, top_n=20, min_market_cap=MIN_
             })
 
     if holdings:
-        final_prices = fetch_prices_near_date(list(holdings.keys()), market_map, today_str)
         final_value = 0.0
         for code, h in holdings.items():
-            px = final_prices.get(code, h["entryPrice"])
+            px = _nearest_price(history, code, today_str)
+            if px is None:
+                px = h["entryPrice"]
             final_value += h["shares"] * px
         portfolio_value = final_value
         equity_curve.append({"date": today_str, "value": round(portfolio_value, 2)})
