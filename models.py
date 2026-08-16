@@ -188,3 +188,34 @@ class KrPriceCache(db.Model):
     stock_code = db.Column(db.String(10), primary_key=True)
     price = db.Column(db.Float, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrendScreenCache(db.Model):
+    """트렌드 템플릿(미너비니 스타일) 스크리닝 결과 캐시. 유니버스 전체(국내
+    ~2,700종목 또는 미국 ~600종목)의 가격 히스토리를 받아 계산하는 데 시간이
+    걸리므로(KrPriceCache와 같은 이유로) 요청 중이 아니라 백그라운드 스레드가
+    미리 계산해 이 테이블에 저장해두고, API는 결과만 읽는다.
+    """
+
+    __tablename__ = "trend_screen_cache"
+    __table_args__ = (
+        db.UniqueConstraint("market", "code", name="uq_trend_screen_market_code"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    market = db.Column(db.String(4), nullable=False)  # "KR" | "US"
+    code = db.Column(db.String(10), nullable=False)
+    name = db.Column(db.String(128), default="")
+    price = db.Column(db.Float)
+    ma50 = db.Column(db.Float)
+    ma150 = db.Column(db.Float)
+    ma200 = db.Column(db.Float)
+    week52_high = db.Column(db.Float)
+    week52_low = db.Column(db.Float)
+    pct_above_52w_low = db.Column(db.Float)
+    pct_below_52w_high = db.Column(db.Float)
+    rs_rating = db.Column(db.Integer)
+    pass_count = db.Column(db.Integer)
+    all_pass = db.Column(db.Boolean, default=False)
+    conditions_json = db.Column(db.Text)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -969,6 +969,59 @@ def kr_quant_backtest_status(job_id):
     return jsonify({"status": job.status})
 
 
+# ─── 트렌드 템플릿 스크리닝 API ────────────────────────────────────────────────
+# 미너비니류 트렌드 템플릿(8개 조건)으로 국내/미국 종목을 스크리닝한다. 결과는
+# 백그라운드 스레드(trend_screen_refresher)가 미리 계산해둔 캐시를 읽기만 해서
+# 항상 빠르게 응답한다.
+
+@app.route("/api/screener/status")
+@login_required
+def screener_status():
+    from models import TrendScreenCache
+
+    out = {}
+    for market in ("KR", "US"):
+        latest = (
+            TrendScreenCache.query.filter_by(market=market)
+            .order_by(TrendScreenCache.updated_at.desc()).first()
+        )
+        count = TrendScreenCache.query.filter_by(market=market).count()
+        age = (datetime.utcnow() - latest.updated_at).total_seconds() if latest and latest.updated_at else None
+        out[market] = {"ready": latest is not None, "count": count, "ageSeconds": round(age) if age else None}
+    return jsonify(out)
+
+
+@app.route("/api/screener/results")
+@login_required
+def screener_results():
+    from models import TrendScreenCache
+
+    market = request.args.get("market", "KR").upper()
+    if market not in ("KR", "US"):
+        return jsonify({"error": "market은 KR 또는 US여야 합니다"}), 400
+    only_pass = request.args.get("onlyPass", "true").lower() != "false"
+
+    q = TrendScreenCache.query.filter_by(market=market)
+    if only_pass:
+        q = q.filter_by(all_pass=True)
+    rows = q.order_by(TrendScreenCache.pass_count.desc(), TrendScreenCache.rs_rating.desc()).limit(300).all()
+
+    if not rows and TrendScreenCache.query.filter_by(market=market).count() == 0:
+        return jsonify({
+            "error": "스크리닝 데이터를 아직 준비 중입니다(서버 시작 후 최대 몇 분에서 십수 분 걸릴 수 있습니다). 잠시 후 다시 시도해주세요."
+        }), 503
+
+    results = [{
+        "code": r.code, "name": r.name, "price": r.price,
+        "ma50": r.ma50, "ma150": r.ma150, "ma200": r.ma200,
+        "week52High": r.week52_high, "week52Low": r.week52_low,
+        "pctAbove52wLow": r.pct_above_52w_low, "pctBelow52wHigh": r.pct_below_52w_high,
+        "rsRating": r.rs_rating, "passCount": r.pass_count, "allPass": r.all_pass,
+        "conditions": json.loads(r.conditions_json) if r.conditions_json else {},
+    } for r in rows]
+    return jsonify(sanitize_json({"market": market, "results": results}))
+
+
 # ─── 무한매수법 실전 현황 API ─────────────────────────────────────────────────
 
 @app.route("/api/infinite/positions", methods=["GET"])
@@ -1145,6 +1198,7 @@ for _view in (
     get_alerts, add_alert, remove_alert,
     backtest_infinite_buying, kr_swing_backtest, search_kr_stocks,
     kr_quant_status, kr_quant_screen, kr_quant_backtest, kr_quant_backtest_status,
+    screener_status, screener_results,
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_users, update_user_role, delete_user,
@@ -1211,6 +1265,53 @@ def kr_quant_price_cache_refresher():
         time.sleep(6 * 3600)  # 6시간마다 갱신 (가격이 실시간일 필요는 없는 용도)
 
 
+# ─── 트렌드 템플릿 스크리닝 캐시 갱신 ──────────────────────────────────────────
+# 국내 퀀트와 같은 이유로(유니버스 전체 가격 히스토리 조회가 몇 분씩 걸림),
+# 요청 중이 아니라 이 스레드가 미리 계산해 DB에 저장해두고 API는 결과만 읽는다.
+# 일봉 기준 지표라 하루 한두 번이면 충분해 12시간 주기로 돌린다.
+
+TREND_SCREEN_MIN_INTERVAL_SECONDS = 12 * 3600
+
+
+def trend_screen_refresher():
+    import random
+    from models import TrendScreenCache
+    import trend_screener
+
+    time.sleep(random.uniform(30, 120))
+    while True:
+        for market in ("KR", "US"):
+            with app.app_context():
+                try:
+                    latest = (
+                        TrendScreenCache.query.filter_by(market=market)
+                        .order_by(TrendScreenCache.updated_at.desc()).first()
+                    )
+                    if latest and latest.updated_at:
+                        age = (datetime.utcnow() - latest.updated_at).total_seconds()
+                        if age < TREND_SCREEN_MIN_INTERVAL_SECONDS:
+                            continue
+
+                    results = trend_screener.run_screen(market)
+                    now = datetime.utcnow()
+                    TrendScreenCache.query.filter_by(market=market).delete()
+                    for r in results:
+                        db.session.add(TrendScreenCache(
+                            market=market, code=r["code"], name=r["name"], price=r["price"],
+                            ma50=r["ma50"], ma150=r["ma150"], ma200=r["ma200"],
+                            week52_high=r["week52High"], week52_low=r["week52Low"],
+                            pct_above_52w_low=r["pctAbove52wLow"], pct_below_52w_high=r["pctBelow52wHigh"],
+                            rs_rating=r.get("rsRating"), pass_count=r["passCount"], all_pass=r["allPass"],
+                            conditions_json=json.dumps(r["conditions"]), updated_at=now,
+                        ))
+                    db.session.commit()
+                    print(f"[트렌드 스크리닝] {market} {len(results)}개 종목 평가 완료 "
+                          f"({sum(1 for r in results if r['allPass'])}개 전 조건 통과)")
+                except Exception as e:
+                    app.logger.exception("트렌드 스크리닝 갱신 오류: %s", market)
+        time.sleep(1800)  # 30분마다 깨어나 시장별로 갱신 필요 여부를 확인
+
+
 # ─── 초기화 ──────────────────────────────────────────────────────────────────
 # gunicorn 등 WSGI 서버로 구동해도(=__name__ != "__main__") DB 테이블 생성과 알림
 # 체크 스레드가 항상 시작되도록 모듈 임포트 시점에 실행한다.
@@ -1220,6 +1321,7 @@ with app.app_context():
 
 threading.Thread(target=alert_checker, daemon=True).start()
 threading.Thread(target=kr_quant_price_cache_refresher, daemon=True).start()
+threading.Thread(target=trend_screen_refresher, daemon=True).start()
 
 
 # ─── 실행 (로컬 개발 서버) ───────────────────────────────────────────────────
