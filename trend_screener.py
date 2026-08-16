@@ -35,18 +35,20 @@ DEFAULT_RS_THRESHOLD = 70
 
 
 def load_universe(market):
-    """반환: [(code, name, yf_ticker, industry), ...]"""
+    """반환: [(code, name, yf_ticker, industry, sector), ...]"""
     filename = "kr_stocks.json" if market == "KR" else "us_stocks.json"
     with open(BASE_DIR / filename, "r", encoding="utf-8") as f:
         stocks = json.load(f)
     if market == "KR":
+        # 국내는 fdr에 신뢰할 만한 섹터(대분류) 데이터가 없어(KRX-DESC의 Sector 컬럼이
+        # 대부분 비어 있음) sector를 항상 None으로 둔다 - 업종(industry) 태그로 대신한다.
         tickers = [
             (s["code"], s["name"], f"{s['code']}.KQ" if s.get("market") == "KOSDAQ" else f"{s['code']}.KS",
-             s.get("industry"))
+             s.get("industry"), None)
             for s in stocks
         ]
     else:
-        tickers = [(s["code"], s["name"], s["code"], s.get("industry")) for s in stocks]
+        tickers = [(s["code"], s["name"], s["code"], s.get("industry"), s.get("sector")) for s in stocks]
     return tickers
 
 
@@ -148,7 +150,23 @@ def _weighted_return_score(closes):
     return r3 * 0.4 + r6 * 0.2 + r9 * 0.2 + r12 * 0.2
 
 
-def evaluate_trend_template(code, name, bars, industry=None):
+def _volume_stats(bars):
+    """최근 거래일 거래량과 상대거래량(최근 거래량 / 직전 20거래일 평균거래량)을 계산한다.
+    일봉 데이터만 있어 TradingView의 장중 상대볼륨과는 다르게, 전일 마감 기준 근사치다."""
+    recent = [b.get("volume") for b in bars[-21:]]
+    recent = [v for v in recent if v is not None]
+    if not recent:
+        return None, None
+    volume = recent[-1]
+    prior = recent[:-1]
+    if not prior:
+        return volume, None
+    avg_prior = sum(prior) / len(prior)
+    rel_volume = round(volume / avg_prior, 2) if avg_prior > 0 else None
+    return volume, rel_volume
+
+
+def evaluate_trend_template(code, name, bars, industry=None, sector=None):
     """bars: 날짜 오름차순 OHLC 리스트. 조건1~7과 RS 계산용 가중수익률을 반환한다
     (RS 백분위 자체는 유니버스 전체를 모아야 계산 가능해 compute_universe_screen에서 처리)."""
     if len(bars) < MIN_BARS:
@@ -181,6 +199,7 @@ def evaluate_trend_template(code, name, bars, industry=None):
     week52_high = max(highs[-252:])
     week52_low = min(lows[-252:])
     weighted_return = _weighted_return_score(closes)
+    volume, rel_volume = _volume_stats(bars)
 
     conditions = {
         "priceAboveMa150And200": price > ma150 and price > ma200,
@@ -193,13 +212,15 @@ def evaluate_trend_template(code, name, bars, industry=None):
     }
 
     return {
-        "code": code, "name": name, "industry": industry, "price": round(price, 2),
+        "code": code, "name": name, "industry": industry, "sector": sector, "price": round(price, 2),
         "ma50": round(ma50, 2), "ma150": round(ma150, 2), "ma200": round(ma200, 2),
         "week52High": round(week52_high, 2), "week52Low": round(week52_low, 2),
         "pctAbove52wLow": round((price / week52_low - 1) * 100, 1) if week52_low > 0 else None,
         "pctBelow52wHigh": round((1 - price / week52_high) * 100, 1) if week52_high > 0 else None,
         "conditions": conditions,
         "weightedReturn": weighted_return,
+        "volume": volume,
+        "relVolume": rel_volume,
     }
 
 
@@ -227,8 +248,8 @@ def compute_universe_screen(evaluated_list, rs_threshold=DEFAULT_RS_THRESHOLD):
 def run_screen(market, rs_threshold=DEFAULT_RS_THRESHOLD):
     """market: "KR" 또는 "US". 유니버스 전체를 스크리닝해 평가 결과 리스트를 반환한다."""
     universe = load_universe(market)
-    tickers = [t for _, _, t, _ in universe]
-    info_by_ticker = {t: (code, name, industry) for code, name, t, industry in universe}
+    tickers = [t for _, _, t, _, _ in universe]
+    info_by_ticker = {t: (code, name, industry, sector) for code, name, t, industry, sector in universe}
 
     end = datetime.today()
     start = end - timedelta(days=450)
@@ -236,8 +257,8 @@ def run_screen(market, rs_threshold=DEFAULT_RS_THRESHOLD):
 
     evaluated = []
     for ticker, bars in history.items():
-        code, name, industry = info_by_ticker.get(ticker, (ticker, ticker, None))
-        result = evaluate_trend_template(code, name, bars, industry)
+        code, name, industry, sector = info_by_ticker.get(ticker, (ticker, ticker, None, None))
+        result = evaluate_trend_template(code, name, bars, industry, sector)
         if result:
             evaluated.append(result)
 

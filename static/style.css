@@ -455,6 +455,11 @@ input::placeholder { color: var(--text-muted); }
 .scr-star { font-size: 16px; color: var(--text-muted); cursor: pointer; }
 .scr-star:hover { color: var(--amber); }
 .scr-star.on { color: var(--amber); }
+.scr-relvol { display: block; font-size: 11px; color: var(--text-muted); font-weight: 500; }
+.scr-rating-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--bg-tertiary); color: var(--text-secondary); }
+.scr-rating-badge.buy { background: var(--green-bg); color: var(--green); }
+.scr-rating-badge.sell { background: var(--red-bg); color: var(--red); }
+.scr-rating-badge.hold { background: var(--blue-bg); color: var(--blue); }
 .scr-detail-star-btn {
   display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px;
   border: 1px solid var(--border-strong); background: var(--bg); color: var(--text-secondary);

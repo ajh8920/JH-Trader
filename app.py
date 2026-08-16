@@ -1012,12 +1012,15 @@ def screener_results():
         }), 503
 
     results = [{
-        "code": r.code, "name": r.name, "industry": r.industry, "price": r.price,
+        "code": r.code, "name": r.name, "industry": r.industry, "sector": r.sector, "price": r.price,
         "ma50": r.ma50, "ma150": r.ma150, "ma200": r.ma200,
         "week52High": r.week52_high, "week52Low": r.week52_low,
         "pctAbove52wLow": r.pct_above_52w_low, "pctBelow52wHigh": r.pct_below_52w_high,
         "rsRating": r.rs_rating, "passCount": r.pass_count, "allPass": r.all_pass,
         "conditions": json.loads(r.conditions_json) if r.conditions_json else {},
+        "volume": r.volume, "relVolume": r.rel_volume,
+        "marketCap": r.market_cap, "peRatio": r.pe_ratio, "epsGrowth": r.eps_growth,
+        "dividendYield": r.dividend_yield, "analystRating": r.analyst_rating,
     } for r in rows]
     return jsonify(sanitize_json({"market": market, "results": results}))
 
@@ -1056,13 +1059,17 @@ def screener_detail():
     bars = history.get(ticker, [])
 
     result = {
-        "code": row.code, "name": row.name, "industry": row.industry, "market": market, "ticker": ticker,
+        "code": row.code, "name": row.name, "industry": row.industry, "sector": row.sector,
+        "market": market, "ticker": ticker,
         "price": row.price, "ma50": row.ma50, "ma150": row.ma150, "ma200": row.ma200,
         "week52High": row.week52_high, "week52Low": row.week52_low,
         "pctAbove52wLow": row.pct_above_52w_low, "pctBelow52wHigh": row.pct_below_52w_high,
         "rsRating": row.rs_rating, "passCount": row.pass_count, "allPass": row.all_pass,
         "conditions": json.loads(row.conditions_json) if row.conditions_json else {},
         "priceCurve": [{"date": b["date"], "close": b["close"]} for b in bars],
+        "volume": row.volume, "relVolume": row.rel_volume,
+        "marketCap": row.market_cap, "peRatio": row.pe_ratio, "epsGrowth": row.eps_growth,
+        "dividendYield": row.dividend_yield, "analystRating": row.analyst_rating,
         "financials": None, "target": None,
     }
 
@@ -1416,6 +1423,47 @@ def kr_quant_price_cache_refresher():
 # 일봉 기준 지표라 하루 한두 번이면 충분해 12시간 주기로 돌린다.
 
 TREND_SCREEN_MIN_INTERVAL_SECONDS = 12 * 3600
+# 미국 재무 보강(시가총액/PE/EPS성장률/배당수익률/애널리스트 레이팅)은 Finnhub
+# 무료 API 호출 한도(분당 60회) 때문에 종목당 2회 호출×약 600종목이면 한 바퀴에
+# 20분 넘게 걸린다 - 가격 갱신(12시간)보다 더 느슨한 주기로 돌린다.
+US_FUND_MIN_INTERVAL_SECONDS = 20 * 3600
+
+
+def _enrich_kr_fundamentals(results):
+    """국내 종목의 시가총액/PE/EPS성장률을 로컬 데이터(DART 재무 캐시 + kr_stocks.json의
+    발행주식수 스냅샷)만으로 계산한다. 외부 API 호출이 없어 12시간 주기 스크리닝
+    갱신에 그대로 끼워 넣어도 부담이 없다(미국처럼 별도 느린 주기가 필요 없음).
+    EPS 자체가 아니라 최근 2개 연도의 순이익 증감률로 EPS 성장률을 근사한다
+    (발행주식수가 두 해 사이 크게 바뀌지 않는다는 전제 - kr_quant 백테스트와 같은 근사 방식).
+    """
+    import kr_quant
+    from models import KrFundamental
+
+    shares_map = kr_quant.get_shares_outstanding_map()
+    fund_by_code = {}
+    for fr in KrFundamental.query.all():
+        fund_by_code.setdefault(fr.stock_code, []).append(fr)
+
+    for r in results:
+        shares = shares_map.get(r["code"])
+        market_cap = r["price"] * shares if shares and r["price"] else None
+        r["marketCap"] = market_cap
+
+        frs = sorted(fund_by_code.get(r["code"], []), key=lambda x: x.bsns_year, reverse=True)
+        latest_f = frs[0] if frs else None
+        prev_f = frs[1] if len(frs) > 1 else None
+
+        r["peRatio"] = (
+            round(market_cap / latest_f.net_income, 2)
+            if latest_f and market_cap and latest_f.net_income and latest_f.net_income > 0 else None
+        )
+        r["epsGrowth"] = (
+            round((latest_f.net_income - prev_f.net_income) / abs(prev_f.net_income) * 100, 1)
+            if latest_f and prev_f and latest_f.net_income is not None and prev_f.net_income not in (None, 0)
+            else None
+        )
+        r["dividendYield"] = None  # 국내는 배당 데이터 소스가 없어 항상 비움
+        r["analystRating"] = None  # 국내는 애널리스트 레이팅 소스가 없어 항상 비움
 
 
 def trend_screen_refresher():
@@ -1438,23 +1486,120 @@ def trend_screen_refresher():
                             continue
 
                     results = trend_screener.run_screen(market)
+                    if market == "KR":
+                        _enrich_kr_fundamentals(results)
+
                     now = datetime.utcnow()
-                    TrendScreenCache.query.filter_by(market=market).delete()
+                    # delete-all 후 재삽입하면 미국 종목의 Finnhub 재무 보강 결과가
+                    # 이 12시간 주기 갱신마다 통째로 날아간다(재무 보강은 훨씬 느린
+                    # 별도 주기로 돈다) - 종목별 upsert로 바꿔 market_cap/pe_ratio 등
+                    # 재무 보강 컬럼은 그대로 보존한다.
+                    existing = {row.code: row for row in TrendScreenCache.query.filter_by(market=market).all()}
+                    seen = set()
                     for r in results:
-                        db.session.add(TrendScreenCache(
-                            market=market, code=r["code"], name=r["name"], industry=r.get("industry"), price=r["price"],
-                            ma50=r["ma50"], ma150=r["ma150"], ma200=r["ma200"],
-                            week52_high=r["week52High"], week52_low=r["week52Low"],
-                            pct_above_52w_low=r["pctAbove52wLow"], pct_below_52w_high=r["pctBelow52wHigh"],
-                            rs_rating=r.get("rsRating"), pass_count=r["passCount"], all_pass=r["allPass"],
-                            conditions_json=json.dumps(r["conditions"]), updated_at=now,
-                        ))
+                        seen.add(r["code"])
+                        row = existing.get(r["code"])
+                        if row is None:
+                            row = TrendScreenCache(market=market, code=r["code"])
+                            db.session.add(row)
+                        row.name = r["name"]
+                        row.industry = r.get("industry")
+                        row.sector = r.get("sector")
+                        row.price = r["price"]
+                        row.ma50 = r["ma50"]
+                        row.ma150 = r["ma150"]
+                        row.ma200 = r["ma200"]
+                        row.week52_high = r["week52High"]
+                        row.week52_low = r["week52Low"]
+                        row.pct_above_52w_low = r["pctAbove52wLow"]
+                        row.pct_below_52w_high = r["pctBelow52wHigh"]
+                        row.rs_rating = r.get("rsRating")
+                        row.pass_count = r["passCount"]
+                        row.all_pass = r["allPass"]
+                        row.conditions_json = json.dumps(r["conditions"])
+                        row.volume = r.get("volume")
+                        row.rel_volume = r.get("relVolume")
+                        if market == "KR":
+                            row.market_cap = r.get("marketCap")
+                            row.pe_ratio = r.get("peRatio")
+                            row.eps_growth = r.get("epsGrowth")
+                            row.dividend_yield = r.get("dividendYield")
+                            row.analyst_rating = r.get("analystRating")
+                        row.updated_at = now
+                    for code, row in existing.items():
+                        if code not in seen:
+                            db.session.delete(row)
                     db.session.commit()
                     print(f"[트렌드 스크리닝] {market} {len(results)}개 종목 평가 완료 "
                           f"({sum(1 for r in results if r['allPass'])}개 전 조건 통과)")
                 except Exception as e:
                     app.logger.exception("트렌드 스크리닝 갱신 오류: %s", market)
         time.sleep(1800)  # 30분마다 깨어나 시장별로 갱신 필요 여부를 확인
+
+
+def _analyst_rating_label(rec):
+    if not rec:
+        return None
+    buy = (rec.get("strongBuy", 0) or 0) + (rec.get("buy", 0) or 0)
+    hold = rec.get("hold", 0) or 0
+    sell = (rec.get("strongSell", 0) or 0) + (rec.get("sell", 0) or 0)
+    total = buy + hold + sell
+    if total == 0:
+        return None
+    if buy >= total * 0.6:
+        return "매수"
+    if sell >= total * 0.6:
+        return "매도"
+    return "중립"
+
+
+def us_fundamentals_refresher():
+    """미국 스크리닝 종목의 시가총액/PE/EPS성장률/배당수익률/애널리스트 레이팅을
+    Finnhub(서버 공용 기본 키)로 보강한다. 무료 API 호출 한도(분당 60회) 안에서
+    종목당 2회(metric, recommendation) 호출하며 천천히 도는 별도 백그라운드 작업이라
+    가격/조건 갱신(trend_screen_refresher)과 주기·리듬을 분리했다."""
+    import random
+    from models import TrendScreenCache
+
+    time.sleep(random.uniform(60, 180))
+    while True:
+        with app.app_context():
+            try:
+                key = DEFAULT_FINNHUB_KEY
+                rows = TrendScreenCache.query.filter_by(market="US").all()
+                if not key or not rows:
+                    time.sleep(1800)
+                    continue
+
+                latest_fund = max((r.fund_updated_at for r in rows if r.fund_updated_at), default=None)
+                if latest_fund and (datetime.utcnow() - latest_fund).total_seconds() < US_FUND_MIN_INTERVAL_SECONDS:
+                    time.sleep(1800)
+                    continue
+
+                now = datetime.utcnow()
+                updated = 0
+                for row in rows:
+                    metric_data, _ = fh_get("/stock/metric", key, {"symbol": row.code, "metric": "all"})
+                    time.sleep(1.1)
+                    rec_data, _ = fh_get("/stock/recommendation", key, {"symbol": row.code})
+                    time.sleep(1.1)
+
+                    m = (metric_data or {}).get("metric") or {}
+                    row.market_cap = m.get("marketCapitalization")
+                    row.pe_ratio = m.get("peTTM")
+                    row.eps_growth = m.get("epsGrowthTTMYoy")
+                    row.dividend_yield = m.get("dividendYieldIndicatedAnnual")
+                    latest_rec = rec_data[0] if isinstance(rec_data, list) and rec_data else {}
+                    row.analyst_rating = _analyst_rating_label(latest_rec)
+                    row.fund_updated_at = now
+                    updated += 1
+                    if updated % 50 == 0:
+                        db.session.commit()
+                db.session.commit()
+                print(f"[미국 재무 보강] {updated}개 종목 갱신 완료")
+            except Exception:
+                app.logger.exception("미국 스크리닝 재무 보강 오류")
+        time.sleep(1800)
 
 
 # ─── 초기화 ──────────────────────────────────────────────────────────────────
@@ -1467,6 +1612,7 @@ with app.app_context():
 threading.Thread(target=alert_checker, daemon=True).start()
 threading.Thread(target=kr_quant_price_cache_refresher, daemon=True).start()
 threading.Thread(target=trend_screen_refresher, daemon=True).start()
+threading.Thread(target=us_fundamentals_refresher, daemon=True).start()
 
 
 # ─── 실행 (로컬 개발 서버) ───────────────────────────────────────────────────

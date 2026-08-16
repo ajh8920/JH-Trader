@@ -1488,6 +1488,10 @@ const TREND_CONDITION_LABELS = [
   ['rsAboveThreshold', '⑧ RS Rating 70 이상'],
 ];
 
+function ratingClass(r) {
+  return r === '매수' ? 'buy' : r === '매도' ? 'sell' : r === '중립' ? 'hold' : '';
+}
+
 function initScreenerTab() {
   loadScreenerStatus();
   loadScreenerResults();
@@ -1622,6 +1626,26 @@ function renderFilteredScreenerRows() {
   });
 
   const fmtPrice = v => v == null ? '-' : (scrIsUS ? `$${Number(v).toFixed(2)}` : `${Math.round(v).toLocaleString('ko-KR')}원`);
+  const fmtMarketCap = v => {
+    if (v == null) return '-';
+    if (scrIsUS) {
+      const usd = v * 1e6; // Finnhub 단위: 백만 달러
+      if (usd >= 1e12) return `$${(usd / 1e12).toFixed(2)}T`;
+      if (usd >= 1e9) return `$${(usd / 1e9).toFixed(2)}B`;
+      return `$${(usd / 1e6).toFixed(0)}M`;
+    }
+    const jo = v / 1e12; // 1조 = 1e12원
+    if (jo >= 1) return `${jo.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}조`;
+    return `${(v / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 0 })}억`;
+  };
+  const fmtPe = v => v == null ? '-' : Number(v).toFixed(1);
+  const fmtPct1 = v => v == null ? '-' : `${v > 0 ? '+' : ''}${Number(v).toFixed(1)}%`;
+  const fmtVolume = v => {
+    if (v == null) return '-';
+    if (v >= 1e8) return `${(v / 1e8).toFixed(1)}억`;
+    if (v >= 1e4) return `${(v / 1e4).toFixed(1)}만`;
+    return `${Math.round(v).toLocaleString('ko-KR')}`;
+  };
 
   if (!scrRawResults.length) {
     el.innerHTML = `<div class="empty-state" style="padding:2.5rem 1.5rem;"><i class="ti ti-filter-off" aria-hidden="true"></i><p>조건을 만족하는 종목이 없습니다</p></div>`;
@@ -1640,6 +1664,12 @@ function renderFilteredScreenerRows() {
           <tr>
             <th style="width:32px;"></th>
             <th>종목명</th><th>코드</th><th style="text-align:right;">현재가</th><th>RS</th><th>조건</th>
+            <th style="text-align:right;">거래량(상대)</th>
+            <th style="text-align:right;">시가총액</th>
+            <th style="text-align:right;">P/E</th>
+            <th style="text-align:right;">EPS성장률</th>
+            <th style="text-align:right;">배당수익률</th>
+            <th>애널리스트</th>
             <th style="text-align:right;">52주저 대비</th><th style="text-align:right;">52주고 대비</th>
           </tr>
         </thead>
@@ -1662,6 +1692,12 @@ function renderFilteredScreenerRows() {
                   ${TREND_CONDITION_LABELS.map(([key]) => `<span class="scr-dot ${r.conditions[key] ? 'on' : ''}"></span>`).join('')}
                 </span>
               </td>
+              <td class="scr-num-cell">${fmtVolume(r.volume)}${r.relVolume != null ? `<span class="scr-relvol">${r.relVolume.toFixed(2)}x</span>` : ''}</td>
+              <td class="scr-num-cell">${fmtMarketCap(r.marketCap)}</td>
+              <td class="scr-num-cell">${fmtPe(r.peRatio)}</td>
+              <td class="scr-num-cell ${r.epsGrowth > 0 ? 'positive' : ''}" ${!scrIsUS ? `title="발행주식수 변동을 반영하지 않은 순이익 증가율 근사치입니다"` : ''}>${fmtPct1(r.epsGrowth)}</td>
+              <td class="scr-num-cell" ${!scrIsUS ? `title="국내 종목은 배당수익률 데이터를 제공하지 않습니다"` : ''}>${r.dividendYield != null ? Number(r.dividendYield).toFixed(2) + '%' : '-'}</td>
+              <td ${!scrIsUS ? `title="국내 종목은 애널리스트 레이팅 데이터를 제공하지 않습니다"` : ''}>${r.analystRating ? `<span class="scr-rating-badge ${ratingClass(r.analystRating)}">${r.analystRating}</span>` : '-'}</td>
               <td class="scr-num-cell ${r.pctAbove52wLow >= 30 ? 'positive' : ''}">${r.pctAbove52wLow != null ? '+' + r.pctAbove52wLow.toFixed(1) + '%' : '-'}</td>
               <td class="scr-num-cell ${r.pctBelow52wHigh <= 25 ? 'positive' : ''}">${r.pctBelow52wHigh != null ? '-' + r.pctBelow52wHigh.toFixed(1) + '%' : '-'}</td>
             </tr>`).join('')}
@@ -1764,6 +1800,33 @@ function renderScreenerDetail(d) {
     </div>`;
   }).join('');
 
+  const fmtMarketCapDetail = v => {
+    if (v == null) return '-';
+    if (isUS) {
+      const usd = v * 1e6; // Finnhub 단위: 백만 달러
+      if (usd >= 1e12) return `$${(usd / 1e12).toFixed(2)}T`;
+      if (usd >= 1e9) return `$${(usd / 1e9).toFixed(2)}B`;
+      return `$${(usd / 1e6).toFixed(0)}M`;
+    }
+    const jo = v / 1e12;
+    if (jo >= 1) return `${jo.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}조`;
+    return `${(v / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 0 })}억`;
+  };
+
+  const screenerStatsHtml = `
+    <div class="scr-detail-section">
+      <div class="scr-detail-section-title">스크리닝 지표</div>
+      <div class="scr-detail-grid">
+        <div class="scr-detail-stat"><div class="scr-detail-stat-label">시가총액</div><div class="scr-detail-stat-value">${fmtMarketCapDetail(d.marketCap)}</div></div>
+        <div class="scr-detail-stat"><div class="scr-detail-stat-label">P/E</div><div class="scr-detail-stat-value">${d.peRatio != null ? Number(d.peRatio).toFixed(1) : '-'}</div></div>
+        <div class="scr-detail-stat"><div class="scr-detail-stat-label">EPS성장률</div><div class="scr-detail-stat-value ${d.epsGrowth > 0 ? 'positive' : d.epsGrowth < 0 ? 'negative' : ''}">${d.epsGrowth != null ? (d.epsGrowth > 0 ? '+' : '') + Number(d.epsGrowth).toFixed(1) + '%' : '-'}</div></div>
+        <div class="scr-detail-stat"><div class="scr-detail-stat-label">배당수익률</div><div class="scr-detail-stat-value">${d.dividendYield != null ? Number(d.dividendYield).toFixed(2) + '%' : '-'}</div></div>
+        <div class="scr-detail-stat"><div class="scr-detail-stat-label">거래량(상대)</div><div class="scr-detail-stat-value" style="font-size:13px;">${d.volume != null ? Math.round(d.volume).toLocaleString('ko-KR') : '-'}${d.relVolume != null ? ` (${Number(d.relVolume).toFixed(2)}x)` : ''}</div></div>
+        <div class="scr-detail-stat"><div class="scr-detail-stat-label">애널리스트</div><div class="scr-detail-stat-value">${d.analystRating ? `<span class="scr-rating-badge ${ratingClass(d.analystRating)}">${d.analystRating}</span>` : '-'}</div></div>
+      </div>
+      ${!isUS ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px;">EPS성장률은 발행주식수 변동을 반영하지 않은 순이익 증가율 근사치이며, 배당수익률·애널리스트 레이팅은 국내 종목에는 제공되지 않습니다.</div>` : ''}
+    </div>`;
+
   let financialsHtml = '';
   if (d.financials) {
     if (d.market === 'KR') {
@@ -1836,6 +1899,8 @@ function renderScreenerDetail(d) {
       <span class="scr-detail-price">${fmt(d.price)}</span>
       <span class="scr-pass-badge ${d.passCount < 8 ? 'partial' : ''}">트렌드 템플릿 ${d.passCount}/8</span>
     </div>
+
+    ${screenerStatsHtml}
 
     <div class="scr-detail-actions">
       <button type="button" id="scr-detail-star" class="scr-detail-star-btn ${isInWatchlist(d.market, d.code) ? 'on' : ''}"

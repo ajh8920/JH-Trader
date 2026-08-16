@@ -207,6 +207,7 @@ class TrendScreenCache(db.Model):
     code = db.Column(db.String(10), nullable=False)
     name = db.Column(db.String(128), default="")
     industry = db.Column(db.String(128))
+    sector = db.Column(db.String(128))  # 국내는 신뢰할 만한 소스가 없어 비워둠, 미국은 S&P500 편입 종목만 채움
     price = db.Column(db.Float)
     ma50 = db.Column(db.Float)
     ma150 = db.Column(db.Float)
@@ -219,7 +220,18 @@ class TrendScreenCache(db.Model):
     pass_count = db.Column(db.Integer)
     all_pass = db.Column(db.Boolean, default=False)
     conditions_json = db.Column(db.Text)
+    volume = db.Column(db.Float)  # 최근 거래일 거래량
+    rel_volume = db.Column(db.Float)  # 최근 거래량 / 직전 20거래일 평균거래량
+    market_cap = db.Column(db.Float)  # 국내: 원, 미국: 백만 달러(Finnhub 기준)
+    pe_ratio = db.Column(db.Float)
+    eps_growth = db.Column(db.Float)  # YoY %. 국내는 순이익 증가율로 근사
+    dividend_yield = db.Column(db.Float)  # %. 미국만 제공(국내는 소스 없음)
+    analyst_rating = db.Column(db.String(16))  # "매수"|"중립"|"매도". 미국만 제공
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # 가격/조건 갱신(trend_screen_refresher, 12시간 주기)과 재무 보강(미국만, Finnhub
+    # 무료 API 호출 제한 때문에 더 느린 별도 주기) 갱신 시각을 분리해서 추적한다 -
+    # 같은 컬럼을 쓰면 서로의 "최근에 갱신했는지" 판단이 꼬인다.
+    fund_updated_at = db.Column(db.DateTime)
 
 
 class ScreenerWatchlist(db.Model):
