@@ -441,9 +441,9 @@ input::placeholder { color: var(--text-muted); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .scr-code-cell { color: var(--text-muted); font-size: 12px; }
-.scr-sector-cell {
-  max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 12px; color: var(--text-secondary);
+.scr-sector-tag {
+  display: inline-block; font-size: 11px; font-weight: 600; color: var(--blue);
+  background: var(--blue-bg); padding: 2px 9px; border-radius: 999px; white-space: nowrap;
 }
 .scr-num-cell { text-align: right; font-variant-numeric: tabular-nums; }
 .scr-rs-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }

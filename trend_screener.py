@@ -40,11 +40,9 @@ def load_universe(market):
     with open(BASE_DIR / filename, "r", encoding="utf-8") as f:
         stocks = json.load(f)
     if market == "KR":
-        # 국내는 fdr에 신뢰할 만한 섹터(대분류) 데이터가 없어(KRX-DESC의 Sector 컬럼이
-        # 대부분 비어 있음) sector를 항상 None으로 둔다 - 업종(industry) 태그로 대신한다.
         tickers = [
             (s["code"], s["name"], f"{s['code']}.KQ" if s.get("market") == "KOSDAQ" else f"{s['code']}.KS",
-             s.get("industry"), None)
+             s.get("industry"), s.get("sector"))
             for s in stocks
         ]
     else:

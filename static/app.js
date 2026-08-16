@@ -1683,7 +1683,7 @@ function renderFilteredScreenerRows() {
                 <span class="scr-name-text">${escapeHtml(r.name)}</span>
               </td>
               <td class="scr-code-cell">${escapeHtml(r.code)}</td>
-              <td class="scr-sector-cell" title="${escapeHtml(r.industry || '')}">${r.industry ? escapeHtml(r.industry) : '-'}</td>
+              <td title="${escapeHtml(r.industry || '')}">${r.sector ? `<span class="scr-sector-tag">${escapeHtml(r.sector)}</span>` : '-'}</td>
               <td class="scr-num-cell">${fmtPrice(r.price)}</td>
               <td><span class="scr-rs-badge ${rsBadgeClass(r.rsRating)}">${r.rsRating ?? '-'}</span></td>
               <td>
