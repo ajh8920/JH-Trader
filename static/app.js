@@ -1594,7 +1594,7 @@ function renderFilteredScreenerRows() {
         </thead>
         <tbody>
           ${filtered.map(r => `
-            <tr>
+            <tr onclick="openScreenerDetail('${escapeHtml(r.code)}')">
               <td class="scr-name-cell" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</td>
               <td class="scr-code-cell">${escapeHtml(r.code)}</td>
               <td class="scr-num-cell">${fmtPrice(r.price)}</td>
@@ -1642,6 +1642,218 @@ function showScrPopover(anchorEl, code) {
 
 function hideScrPopover() {
   if (scrPopoverEl) { scrPopoverEl.remove(); scrPopoverEl = null; }
+}
+
+// ─── 스크리닝 종목 상세 모달 ────────────────────────────────────────────────────
+
+let scrDetailChart = null;
+const scrDetailPanState = { cleanup: null };
+
+async function openScreenerDetail(code) {
+  const market = document.getElementById('scr-market').value;
+  const overlay = document.getElementById('scr-detail-overlay');
+  const body = document.getElementById('scr-detail-body');
+  overlay.style.display = 'flex';
+  body.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>불러오는 중...</div>`;
+  document.addEventListener('keydown', scrDetailEscHandler);
+
+  try {
+    const data = await api('GET', `/api/screener/detail?market=${market}&code=${encodeURIComponent(code)}`);
+    renderScreenerDetail(data);
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function scrDetailEscHandler(e) {
+  if (e.key === 'Escape') closeScreenerDetail();
+}
+
+function closeScreenerDetail() {
+  document.getElementById('scr-detail-overlay').style.display = 'none';
+  document.removeEventListener('keydown', scrDetailEscHandler);
+  if (scrDetailChart) { scrDetailChart.destroy(); scrDetailChart = null; }
+  if (scrDetailPanState.cleanup) { scrDetailPanState.cleanup(); scrDetailPanState.cleanup = null; }
+}
+
+function smaSeries(values, period) {
+  const out = new Array(values.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < values.length; i++) {
+    sum += values[i];
+    if (i >= period) sum -= values[i - period];
+    if (i >= period - 1) out[i] = sum / period;
+  }
+  return out;
+}
+
+function renderScreenerDetail(d) {
+  const body = document.getElementById('scr-detail-body');
+  const isUS = d.market === 'US';
+  const fmt = v => v == null ? '-' : (isUS ? `$${Number(v).toFixed(2)}` : `${Math.round(v).toLocaleString('ko-KR')}원`);
+  const fmtBig = v => {
+    if (v == null) return '-';
+    if (isUS) return `$${(v / 1000).toFixed(1)}B`; // profile2 marketCap 단위=백만달러
+    if (v >= 1e12) return `${(v / 1e12).toFixed(1)}조원`;
+    if (v >= 1e8) return `${Math.round(v / 1e8).toLocaleString('ko-KR')}억원`;
+    return `${Math.round(v).toLocaleString('ko-KR')}원`;
+  };
+
+  const condRows = TREND_CONDITION_LABELS.map(([key, label]) => {
+    const pass = !!d.conditions[key];
+    return `<div class="scr-detail-cond-row ${pass ? '' : 'fail'}">
+      <i class="ti ${pass ? 'ti-check' : 'ti-x'} ${pass ? 'pass' : 'fail'}" aria-hidden="true"></i>
+      <span>${label}</span>
+    </div>`;
+  }).join('');
+
+  let financialsHtml = '';
+  if (d.financials) {
+    if (d.market === 'KR') {
+      const f = d.financials;
+      financialsHtml = `
+        <div class="scr-detail-section">
+          <div class="scr-detail-section-title">재무 (DART ${escapeHtml(f.bsnsYear || '')}년 사업보고서)</div>
+          <div class="scr-detail-grid">
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">시가총액</div><div class="scr-detail-stat-value">${fmtBig(f.marketCap)}</div></div>
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">PER</div><div class="scr-detail-stat-value">${f.per != null ? f.per.toFixed(1) + '배' : (f.netIncome < 0 ? '적자' : '-')}</div></div>
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">ROE</div><div class="scr-detail-stat-value ${f.roe != null && f.roe < 0 ? 'negative' : ''}">${f.roe != null ? f.roe.toFixed(1) + '%' : '-'}</div></div>
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">당기순이익</div><div class="scr-detail-stat-value ${f.netIncome < 0 ? 'negative' : ''}">${fmtBig(f.netIncome)}</div></div>
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">매출액</div><div class="scr-detail-stat-value">${fmtBig(f.revenue)}</div></div>
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">자본총계</div><div class="scr-detail-stat-value">${fmtBig(f.totalEquity)}</div></div>
+          </div>
+        </div>`;
+    } else {
+      const f = d.financials;
+      financialsHtml = `
+        <div class="scr-detail-section">
+          <div class="scr-detail-section-title">기업 정보</div>
+          <div class="scr-detail-grid">
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">업종</div><div class="scr-detail-stat-value" style="font-size:12.5px;">${escapeHtml(f.industry || '-')}</div></div>
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">시가총액</div><div class="scr-detail-stat-value">${fmtBig(f.marketCap)}</div></div>
+          </div>
+        </div>`;
+    }
+  }
+
+  let targetHtml = '';
+  if (d.target) {
+    const t = d.target;
+    const totalRec = (t.recBuy || 0) + (t.recHold || 0) + (t.recSell || 0);
+    const buyPct = totalRec ? t.recBuy / totalRec * 100 : 0;
+    const holdPct = totalRec ? t.recHold / totalRec * 100 : 0;
+    const sellPct = totalRec ? t.recSell / totalRec * 100 : 0;
+    targetHtml = `
+      <div class="scr-detail-section">
+        <div class="scr-detail-section-title">애널리스트 목표가·추천의견 (Finnhub)</div>
+        ${t.targetMean ? `
+          <div class="scr-detail-grid" style="margin-bottom:10px;">
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">목표가 평균</div><div class="scr-detail-stat-value">$${t.targetMean.toFixed(2)}</div></div>
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">최고</div><div class="scr-detail-stat-value">$${t.targetHigh?.toFixed(2) ?? '-'}</div></div>
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">최저</div><div class="scr-detail-stat-value">$${t.targetLow?.toFixed(2) ?? '-'}</div></div>
+          </div>` : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">목표가 수치는 Finnhub 무료 플랜에서 제공되지 않습니다.</div>`}
+        ${totalRec ? `
+          <div class="scr-detail-rec-bar">
+            <div style="width:${buyPct}%;background:var(--green);"></div>
+            <div style="width:${holdPct}%;background:var(--amber);"></div>
+            <div style="width:${sellPct}%;background:var(--red);"></div>
+          </div>
+          <div class="scr-detail-rec-legend">
+            <span><span class="scr-detail-rec-dot" style="background:var(--green);"></span>매수 ${t.recBuy}</span>
+            <span><span class="scr-detail-rec-dot" style="background:var(--amber);"></span>보유 ${t.recHold}</span>
+            <span><span class="scr-detail-rec-dot" style="background:var(--red);"></span>매도 ${t.recSell}</span>
+          </div>` : ''}
+      </div>`;
+  } else if (d.market === 'US') {
+    targetHtml = `<div class="scr-detail-section"><div class="scr-detail-section-title">애널리스트 목표가·추천의견</div><div style="font-size:12px;color:var(--text-muted);">데이터를 불러오지 못했습니다.</div></div>`;
+  }
+
+  body.innerHTML = `
+    <div class="scr-detail-header">
+      <span class="scr-detail-name">${escapeHtml(d.name)}</span>
+      <span class="scr-detail-code">${escapeHtml(d.code)} · ${d.market === 'KR' ? '국내' : '미국'}</span>
+      <span class="scr-rs-badge ${rsBadgeClass(d.rsRating)}">RS ${d.rsRating ?? '-'}</span>
+    </div>
+    <div class="scr-detail-price-row">
+      <span class="scr-detail-price">${fmt(d.price)}</span>
+      <span class="scr-pass-badge ${d.passCount < 8 ? 'partial' : ''}">트렌드 템플릿 ${d.passCount}/8</span>
+    </div>
+
+    <div class="chart-wrap" style="height:260px;">
+      <canvas id="scr-detail-chart" role="img" aria-label="${escapeHtml(d.name)} 가격 차트"></canvas>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">마우스 휠로 확대/축소, 드래그로 이동할 수 있습니다</div>
+
+    <div class="scr-detail-section">
+      <div class="scr-detail-section-title">트렌드 템플릿 8개 조건</div>
+      <div class="scr-detail-cond-list">${condRows}</div>
+    </div>
+
+    ${financialsHtml}
+    ${targetHtml}
+  `;
+
+  setTimeout(() => drawScreenerDetailChart(d), 60);
+}
+
+function drawScreenerDetailChart(d) {
+  const canvas = document.getElementById('scr-detail-chart');
+  if (!canvas || !d.priceCurve?.length) return;
+  if (scrDetailChart) scrDetailChart.destroy();
+
+  const dates = d.priceCurve.map(p => p.date);
+  const closes = d.priceCurve.map(p => p.close);
+  const ma50 = smaSeries(closes, 50);
+  const ma150 = smaSeries(closes, 150);
+  const ma200 = smaSeries(closes, 200);
+  const isUS = d.market === 'US';
+  const fmtY = v => isUS ? `$${v.toFixed(0)}` : `${Number(v).toLocaleString('ko-KR')}`;
+
+  const mkLine = (data, color, label, dash) => ({
+    label, data: data.map((v, i) => v == null ? null : { x: i, y: v }),
+    borderColor: color, backgroundColor: 'transparent', fill: false,
+    pointRadius: 0, borderWidth: label === '종가' ? 1.5 : 1.2, tension: 0.1, spanGaps: false,
+    borderDash: dash || [],
+  });
+
+  scrDetailChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      datasets: [
+        mkLine(closes, '#888780', '종가'),
+        mkLine(ma50, '#E24B4A', '50일선'),
+        mkLine(ma150, '#EF9F27', '150일선'),
+        mkLine(ma200, '#378ADD', '200일선'),
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
+            label: ctx => ctx.parsed.y == null ? undefined : ` ${ctx.dataset.label}: ${fmtY(ctx.parsed.y)}`,
+          },
+        },
+        zoom: {
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+          pan: { enabled: false },
+          limits: { x: { min: 0, max: Math.max(dates.length - 1, 0), minRange: 10 } },
+        },
+      },
+      scales: {
+        y: { ticks: { callback: v => fmtY(Number(v)) }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        x: {
+          type: 'linear', min: 0, max: Math.max(dates.length - 1, 0),
+          ticks: { maxTicksLimit: 8, callback: v => dates[Math.round(v)] ?? '' },
+          grid: { display: false },
+        },
+      },
+    },
+  });
+  attachChartPan(scrDetailChart, canvas, scrDetailPanState);
 }
 
 // ─── 무한매수법 실전 현황 ────────────────────────────────────────────────────

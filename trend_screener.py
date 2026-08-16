@@ -80,13 +80,11 @@ def fetch_ohlc_history_batch(tickers, start_date, end_date):
         if df is None or df.empty:
             continue
 
-        if len(chunk) == 1:
-            sub = df
-            bars = _extract_bars(sub)
-            if bars:
-                history[chunk[0]] = bars
-            continue
-
+        # yfinance는 티커를 리스트로 넘기면 원소가 1개여도(group_by="ticker") 항상
+        # (티커, 필드) 멀티인덱스 컬럼을 돌려준다 - 리스트가 아니라 문자열 하나만
+        # 넘길 때만 컬럼이 flat이 된다. 그래서 청크 크기와 무관하게 항상 df[t]로
+        # 접근해야 한다(예전에 len(chunk)==1일 때 flat이라고 잘못 가정해 단일 종목
+        # 조회가 항상 빈 결과를 반환하던 버그가 있었다).
         for t in chunk:
             try:
                 sub = df[t]

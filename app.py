@@ -4,7 +4,7 @@ import re
 import secrets
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
 
@@ -1022,6 +1022,106 @@ def screener_results():
     return jsonify(sanitize_json({"market": market, "results": results}))
 
 
+@app.route("/api/screener/detail")
+@login_required
+@limiter.limit("30 per minute")
+def screener_detail():
+    from models import KrFundamental, TrendScreenCache
+    import trend_screener as ts
+
+    market = request.args.get("market", "KR").upper()
+    code = request.args.get("code", "").strip()
+    if market not in ("KR", "US") or not code:
+        return jsonify({"error": "잘못된 요청입니다"}), 400
+
+    row = TrendScreenCache.query.filter_by(market=market, code=code).first()
+    if not row:
+        return jsonify({"error": "스크리닝 결과에서 해당 종목을 찾을 수 없습니다"}), 404
+
+    if market == "KR":
+        import kr_quant
+        market_map = kr_quant._load_market_map()
+        ticker = f"{code}.KQ" if market_map.get(code) == "KOSDAQ" else f"{code}.KS"
+    else:
+        ticker = code
+    end = datetime.today()
+    start = end - timedelta(days=450)
+    history = ts.fetch_ohlc_history_batch(
+        [ticker], start.strftime("%Y-%m-%d"), (end + timedelta(days=1)).strftime("%Y-%m-%d")
+    )
+    bars = history.get(ticker, [])
+
+    result = {
+        "code": row.code, "name": row.name, "market": market, "ticker": ticker,
+        "price": row.price, "ma50": row.ma50, "ma150": row.ma150, "ma200": row.ma200,
+        "week52High": row.week52_high, "week52Low": row.week52_low,
+        "pctAbove52wLow": row.pct_above_52w_low, "pctBelow52wHigh": row.pct_below_52w_high,
+        "rsRating": row.rs_rating, "passCount": row.pass_count, "allPass": row.all_pass,
+        "conditions": json.loads(row.conditions_json) if row.conditions_json else {},
+        "priceCurve": [{"date": b["date"], "close": b["close"]} for b in bars],
+        "financials": None, "target": None,
+    }
+
+    if market == "KR":
+        fundamentals = (
+            KrFundamental.query.filter_by(stock_code=code)
+            .order_by(KrFundamental.bsns_year.desc()).first()
+        )
+        if fundamentals:
+            import kr_quant
+            shares = kr_quant.get_shares_outstanding_map().get(code)
+            market_cap = row.price * shares if shares and row.price else None
+            per = (
+                round(market_cap / fundamentals.net_income, 2)
+                if market_cap and fundamentals.net_income and fundamentals.net_income > 0 else None
+            )
+            roe = (
+                round(fundamentals.net_income / fundamentals.total_equity * 100, 2)
+                if fundamentals.total_equity else None
+            )
+            result["financials"] = {
+                "bsnsYear": fundamentals.bsns_year, "totalEquity": fundamentals.total_equity,
+                "netIncome": fundamentals.net_income, "revenue": fundamentals.revenue,
+                "marketCap": market_cap, "per": per, "roe": roe,
+            }
+    else:
+        key = get_effective_api_key(current_user)
+        if key:
+            import concurrent.futures
+            endpoints = {"target": "/stock/price-target", "rec": "/stock/recommendation", "profile": "/stock/profile2"}
+            fh_results = {}
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+                futures = {ex.submit(fh_get, path, key, {"symbol": code}): name for name, path in endpoints.items()}
+                for fut in concurrent.futures.as_completed(futures):
+                    name = futures[fut]
+                    data, _err = fut.result()
+                    fh_results[name] = data if data is not None else {}
+            rec_list = fh_results.get("rec", [])
+            latest_rec = rec_list[0] if isinstance(rec_list, list) and rec_list else {}
+            target = fh_results.get("target", {})
+            profile = fh_results.get("profile", {})
+            # Finnhub 무료 플랜은 목표가(price-target) 엔드포인트가 막혀 있어(403)
+            # targetMean은 거의 항상 비어 있다. 그래도 추천의견(recommendation)
+            # 엔드포인트는 무료로 되므로 목표가와 별개로 항상 채워둔다.
+            has_target = bool(target.get("targetMean"))
+            has_rec = bool(latest_rec)
+            if has_target or has_rec:
+                result["target"] = {
+                    "targetMean": target.get("targetMean"), "targetHigh": target.get("targetHigh"),
+                    "targetLow": target.get("targetLow"), "targetUpdated": target.get("lastUpdated", ""),
+                    "recBuy": latest_rec.get("strongBuy", 0) + latest_rec.get("buy", 0),
+                    "recHold": latest_rec.get("hold", 0),
+                    "recSell": latest_rec.get("strongSell", 0) + latest_rec.get("sell", 0),
+                }
+            if profile.get("finnhubIndustry") or profile.get("marketCapitalization"):
+                result["financials"] = {
+                    "industry": profile.get("finnhubIndustry", ""),
+                    "marketCap": profile.get("marketCapitalization"),  # 단위: 백만 달러
+                }
+
+    return jsonify(sanitize_json(result))
+
+
 # ─── 무한매수법 실전 현황 API ─────────────────────────────────────────────────
 
 @app.route("/api/infinite/positions", methods=["GET"])
@@ -1198,7 +1298,7 @@ for _view in (
     get_alerts, add_alert, remove_alert,
     backtest_infinite_buying, kr_swing_backtest, search_kr_stocks,
     kr_quant_status, kr_quant_screen, kr_quant_backtest, kr_quant_backtest_status,
-    screener_status, screener_results,
+    screener_status, screener_results, screener_detail,
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_users, update_user_role, delete_user,
