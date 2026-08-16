@@ -1557,48 +1557,65 @@ def us_fundamentals_refresher():
     """미국 스크리닝 종목의 시가총액/PE/EPS성장률/배당수익률/애널리스트 레이팅을
     Finnhub(서버 공용 기본 키)로 보강한다. 무료 API 호출 한도(분당 60회) 안에서
     종목당 2회(metric, recommendation) 호출하며 천천히 도는 별도 백그라운드 작업이라
-    가격/조건 갱신(trend_screen_refresher)과 주기·리듬을 분리했다."""
+    가격/조건 갱신(trend_screen_refresher)과 주기·리듬을 분리했다.
+
+    gunicorn --workers 2라 이 스레드가 워커마다 하나씩 독립적으로 돈다(의도된
+    설계). 종목 하나씩 "SELECT ... FOR UPDATE SKIP LOCKED"로 원자적으로 선점한
+    뒤 아주 짧은 트랜잭션으로 커밋하고 놓아준다 - 배치 전체를 한 세션에 20~30분
+    물고 있으면 두 워커의 UPDATE 순서가 꼬여 데드락이 난다(실제로 한 번 겪었다:
+    가격 재스캔 수동 스크립트가 app.py를 임포트하며 이 스레드까지 같이 띄워
+    운영 서버의 진짜 스레드와 동시에 같은 행을 건드렸다). SKIP LOCKED 덕분에
+    다른 워커가 이미 잠근 행은 건너뛰고 다음 종목으로 넘어가 중복 작업도 피한다."""
     import random
     from models import TrendScreenCache
 
     time.sleep(random.uniform(60, 180))
     while True:
-        with app.app_context():
-            try:
-                key = DEFAULT_FINNHUB_KEY
-                rows = TrendScreenCache.query.filter_by(market="US").all()
-                if not key or not rows:
-                    time.sleep(1800)
-                    continue
+        try:
+            key = DEFAULT_FINNHUB_KEY
+            if not key:
+                time.sleep(1800)
+                continue
 
-                latest_fund = max((r.fund_updated_at for r in rows if r.fund_updated_at), default=None)
-                if latest_fund and (datetime.utcnow() - latest_fund).total_seconds() < US_FUND_MIN_INTERVAL_SECONDS:
-                    time.sleep(1800)
-                    continue
+            cutoff = datetime.utcnow() - timedelta(seconds=US_FUND_MIN_INTERVAL_SECONDS)
+            processed = 0
+            while True:
+                with app.app_context():
+                    row = (
+                        TrendScreenCache.query.filter_by(market="US")
+                        .filter(db.or_(TrendScreenCache.fund_updated_at.is_(None), TrendScreenCache.fund_updated_at < cutoff))
+                        .order_by(TrendScreenCache.fund_updated_at.is_(None).desc(), TrendScreenCache.fund_updated_at.asc())
+                        .with_for_update(skip_locked=True)
+                        .first()
+                    )
+                    if row is None:
+                        break
+                    row.fund_updated_at = datetime.utcnow()  # 먼저 선점 표시부터 남겨 다른 워커가 못 집어가게 함
+                    db.session.commit()
+                    code, row_id = row.code, row.id
 
-                now = datetime.utcnow()
-                updated = 0
-                for row in rows:
-                    metric_data, _ = fh_get("/stock/metric", key, {"symbol": row.code, "metric": "all"})
-                    time.sleep(1.1)
-                    rec_data, _ = fh_get("/stock/recommendation", key, {"symbol": row.code})
-                    time.sleep(1.1)
+                metric_data, _ = fh_get("/stock/metric", key, {"symbol": code, "metric": "all"})
+                time.sleep(1.1)
+                rec_data, _ = fh_get("/stock/recommendation", key, {"symbol": code})
+                time.sleep(1.1)
 
-                    m = (metric_data or {}).get("metric") or {}
-                    row.market_cap = m.get("marketCapitalization")
-                    row.pe_ratio = m.get("peTTM")
-                    row.eps_growth = m.get("epsGrowthTTMYoy")
-                    row.dividend_yield = m.get("dividendYieldIndicatedAnnual")
-                    latest_rec = rec_data[0] if isinstance(rec_data, list) and rec_data else {}
-                    row.analyst_rating = _analyst_rating_label(latest_rec)
-                    row.fund_updated_at = now
-                    updated += 1
-                    if updated % 50 == 0:
+                with app.app_context():
+                    row = TrendScreenCache.query.get(row_id)
+                    if row is not None:
+                        m = (metric_data or {}).get("metric") or {}
+                        row.market_cap = m.get("marketCapitalization")
+                        row.pe_ratio = m.get("peTTM")
+                        row.eps_growth = m.get("epsGrowthTTMYoy")
+                        row.dividend_yield = m.get("dividendYieldIndicatedAnnual")
+                        latest_rec = rec_data[0] if isinstance(rec_data, list) and rec_data else {}
+                        row.analyst_rating = _analyst_rating_label(latest_rec)
+                        row.fund_updated_at = datetime.utcnow()
                         db.session.commit()
-                db.session.commit()
-                print(f"[미국 재무 보강] {updated}개 종목 갱신 완료")
-            except Exception:
-                app.logger.exception("미국 스크리닝 재무 보강 오류")
+                processed += 1
+            if processed:
+                print(f"[미국 재무 보강] {processed}개 종목 갱신 완료")
+        except Exception:
+            app.logger.exception("미국 스크리닝 재무 보강 오류")
         time.sleep(1800)
 
 
