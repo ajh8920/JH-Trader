@@ -35,16 +35,18 @@ DEFAULT_RS_THRESHOLD = 70
 
 
 def load_universe(market):
+    """반환: [(code, name, yf_ticker, industry), ...]"""
     filename = "kr_stocks.json" if market == "KR" else "us_stocks.json"
     with open(BASE_DIR / filename, "r", encoding="utf-8") as f:
         stocks = json.load(f)
     if market == "KR":
         tickers = [
-            (s["code"], s["name"], f"{s['code']}.KQ" if s.get("market") == "KOSDAQ" else f"{s['code']}.KS")
+            (s["code"], s["name"], f"{s['code']}.KQ" if s.get("market") == "KOSDAQ" else f"{s['code']}.KS",
+             s.get("industry"))
             for s in stocks
         ]
     else:
-        tickers = [(s["code"], s["name"], s["code"]) for s in stocks]
+        tickers = [(s["code"], s["name"], s["code"], s.get("industry")) for s in stocks]
     return tickers
 
 
@@ -146,7 +148,7 @@ def _weighted_return_score(closes):
     return r3 * 0.4 + r6 * 0.2 + r9 * 0.2 + r12 * 0.2
 
 
-def evaluate_trend_template(code, name, bars):
+def evaluate_trend_template(code, name, bars, industry=None):
     """bars: 날짜 오름차순 OHLC 리스트. 조건1~7과 RS 계산용 가중수익률을 반환한다
     (RS 백분위 자체는 유니버스 전체를 모아야 계산 가능해 compute_universe_screen에서 처리)."""
     if len(bars) < MIN_BARS:
@@ -191,7 +193,7 @@ def evaluate_trend_template(code, name, bars):
     }
 
     return {
-        "code": code, "name": name, "price": round(price, 2),
+        "code": code, "name": name, "industry": industry, "price": round(price, 2),
         "ma50": round(ma50, 2), "ma150": round(ma150, 2), "ma200": round(ma200, 2),
         "week52High": round(week52_high, 2), "week52Low": round(week52_low, 2),
         "pctAbove52wLow": round((price / week52_low - 1) * 100, 1) if week52_low > 0 else None,
@@ -225,8 +227,8 @@ def compute_universe_screen(evaluated_list, rs_threshold=DEFAULT_RS_THRESHOLD):
 def run_screen(market, rs_threshold=DEFAULT_RS_THRESHOLD):
     """market: "KR" 또는 "US". 유니버스 전체를 스크리닝해 평가 결과 리스트를 반환한다."""
     universe = load_universe(market)
-    tickers = [t for _, _, t in universe]
-    name_by_ticker = {t: (code, name) for code, name, t in universe}
+    tickers = [t for _, _, t, _ in universe]
+    info_by_ticker = {t: (code, name, industry) for code, name, t, industry in universe}
 
     end = datetime.today()
     start = end - timedelta(days=450)
@@ -234,8 +236,8 @@ def run_screen(market, rs_threshold=DEFAULT_RS_THRESHOLD):
 
     evaluated = []
     for ticker, bars in history.items():
-        code, name = name_by_ticker.get(ticker, (ticker, ticker))
-        result = evaluate_trend_template(code, name, bars)
+        code, name, industry = info_by_ticker.get(ticker, (ticker, ticker, None))
+        result = evaluate_trend_template(code, name, bars, industry)
         if result:
             evaluated.append(result)
 

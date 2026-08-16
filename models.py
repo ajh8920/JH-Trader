@@ -206,6 +206,7 @@ class TrendScreenCache(db.Model):
     market = db.Column(db.String(4), nullable=False)  # "KR" | "US"
     code = db.Column(db.String(10), nullable=False)
     name = db.Column(db.String(128), default="")
+    industry = db.Column(db.String(128))
     price = db.Column(db.Float)
     ma50 = db.Column(db.Float)
     ma150 = db.Column(db.Float)

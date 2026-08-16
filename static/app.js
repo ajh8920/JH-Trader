@@ -1649,7 +1649,10 @@ function renderFilteredScreenerRows() {
               <td onclick="toggleScreenerWatchlist('${scrIsUS ? 'US' : 'KR'}', '${escapeHtml(r.code)}', '${escapeHtml(r.name).replace(/'/g, "\\'")}', event)">
                 <i class="ti ${isInWatchlist(scrIsUS ? 'US' : 'KR', r.code) ? 'ti-star-filled scr-star on' : 'ti-star scr-star'}" aria-hidden="true"></i>
               </td>
-              <td class="scr-name-cell" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</td>
+              <td class="scr-name-cell" title="${escapeHtml(r.name)}">
+                <span class="scr-name-text">${escapeHtml(r.name)}</span>
+                ${r.industry ? `<span class="scr-industry-tag" title="${escapeHtml(r.industry)}">${escapeHtml(r.industry)}</span>` : ''}
+              </td>
               <td class="scr-code-cell">${escapeHtml(r.code)}</td>
               <td class="scr-num-cell">${fmtPrice(r.price)}</td>
               <td><span class="scr-rs-badge ${rsBadgeClass(r.rsRating)}">${r.rsRating ?? '-'}</span></td>
@@ -1827,6 +1830,7 @@ function renderScreenerDetail(d) {
       <span class="scr-detail-name">${escapeHtml(d.name)}</span>
       <span class="scr-detail-code">${escapeHtml(d.code)} · ${d.market === 'KR' ? '국내' : '미국'}</span>
       <span class="scr-rs-badge ${rsBadgeClass(d.rsRating)}">RS ${d.rsRating ?? '-'}</span>
+      ${d.industry ? `<span class="scr-industry-tag" style="display:inline-block;">${escapeHtml(d.industry)}</span>` : ''}
     </div>
     <div class="scr-detail-price-row">
       <span class="scr-detail-price">${fmt(d.price)}</span>

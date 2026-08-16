@@ -1012,7 +1012,7 @@ def screener_results():
         }), 503
 
     results = [{
-        "code": r.code, "name": r.name, "price": r.price,
+        "code": r.code, "name": r.name, "industry": r.industry, "price": r.price,
         "ma50": r.ma50, "ma150": r.ma150, "ma200": r.ma200,
         "week52High": r.week52_high, "week52Low": r.week52_low,
         "pctAbove52wLow": r.pct_above_52w_low, "pctBelow52wHigh": r.pct_below_52w_high,
@@ -1056,7 +1056,7 @@ def screener_detail():
     bars = history.get(ticker, [])
 
     result = {
-        "code": row.code, "name": row.name, "market": market, "ticker": ticker,
+        "code": row.code, "name": row.name, "industry": row.industry, "market": market, "ticker": ticker,
         "price": row.price, "ma50": row.ma50, "ma150": row.ma150, "ma200": row.ma200,
         "week52High": row.week52_high, "week52Low": row.week52_low,
         "pctAbove52wLow": row.pct_above_52w_low, "pctBelow52wHigh": row.pct_below_52w_high,
@@ -1442,7 +1442,7 @@ def trend_screen_refresher():
                     TrendScreenCache.query.filter_by(market=market).delete()
                     for r in results:
                         db.session.add(TrendScreenCache(
-                            market=market, code=r["code"], name=r["name"], price=r["price"],
+                            market=market, code=r["code"], name=r["name"], industry=r.get("industry"), price=r["price"],
                             ma50=r["ma50"], ma150=r["ma150"], ma200=r["ma200"],
                             week52_high=r["week52High"], week52_low=r["week52Low"],
                             pct_above_52w_low=r["pctAbove52wLow"], pct_below_52w_high=r["pctBelow52wHigh"],
