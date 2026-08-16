@@ -433,14 +433,18 @@ input::placeholder { color: var(--text-muted); }
 .scr-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
 .scr-table tr:last-child td { border-bottom: none; }
 .scr-table tr:hover td { background: var(--bg-secondary); }
-.scr-name-cell { max-width: 175px; white-space: normal !important; }
+.scr-name-cell { max-width: 160px; }
 .scr-name-cell .scr-name-text { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .scr-industry-tag {
-  display: block; width: fit-content; max-width: 100%; margin-top: 3px; font-size: 10px; font-weight: 500;
+  display: inline-block; width: fit-content; max-width: 100%; font-size: 10px; font-weight: 500;
   color: var(--text-muted); background: var(--bg-tertiary); padding: 1px 7px; border-radius: 999px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .scr-code-cell { color: var(--text-muted); font-size: 12px; }
+.scr-sector-cell {
+  max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; color: var(--text-secondary);
+}
 .scr-num-cell { text-align: right; font-variant-numeric: tabular-nums; }
 .scr-rs-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .scr-rs-badge.strong { background: var(--green-bg); color: var(--green); }

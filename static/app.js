@@ -1663,7 +1663,7 @@ function renderFilteredScreenerRows() {
         <thead>
           <tr>
             <th style="width:32px;"></th>
-            <th>종목명</th><th>코드</th><th style="text-align:right;">현재가</th><th>RS</th><th>조건</th>
+            <th>종목명</th><th>코드</th><th>섹터</th><th style="text-align:right;">현재가</th><th>RS</th><th>조건</th>
             <th style="text-align:right;">거래량(상대)</th>
             <th style="text-align:right;">시가총액</th>
             <th style="text-align:right;">P/E</th>
@@ -1681,9 +1681,9 @@ function renderFilteredScreenerRows() {
               </td>
               <td class="scr-name-cell" title="${escapeHtml(r.name)}">
                 <span class="scr-name-text">${escapeHtml(r.name)}</span>
-                ${r.industry ? `<span class="scr-industry-tag" title="${escapeHtml(r.industry)}">${escapeHtml(r.industry)}</span>` : ''}
               </td>
               <td class="scr-code-cell">${escapeHtml(r.code)}</td>
+              <td class="scr-sector-cell" title="${escapeHtml(r.industry || '')}">${r.industry ? escapeHtml(r.industry) : '-'}</td>
               <td class="scr-num-cell">${fmtPrice(r.price)}</td>
               <td><span class="scr-rs-badge ${rsBadgeClass(r.rsRating)}">${r.rsRating ?? '-'}</span></td>
               <td>
