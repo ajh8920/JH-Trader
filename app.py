@@ -1681,11 +1681,22 @@ def us_fundamentals_refresher():
                     processed += 1
                 except Exception:
                     app.logger.exception(f"미국 재무 보강 - 종목 처리 실패, 다음 종목으로 계속 진행: {code}")
+                    # DB 오류로 예외가 났으면 세션이 "실패한 트랜잭션" 상태로 남아,
+                    # 롤백하지 않으면 이후 커밋이 전부 같은 이유로 계속 실패해
+                    # 사실상 멈춰버린다(실제로 이 문제로 441개에서 멈췄었다).
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
                     time.sleep(1)
             if processed:
                 print(f"[미국 재무 보강] {processed}개 종목 갱신 완료")
         except Exception:
             app.logger.exception("미국 스크리닝 재무 보강 오류")
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
         time.sleep(1800)
 
 
