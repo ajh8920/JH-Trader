@@ -227,6 +227,11 @@ class TrendScreenCache(db.Model):
     eps_growth = db.Column(db.Float)  # YoY %. 국내는 순이익 증가율로 근사
     dividend_yield = db.Column(db.Float)  # %. 미국만 제공(국내는 소스 없음)
     analyst_rating = db.Column(db.String(16))  # "매수"|"중립"|"매도". 미국만 제공
+    # 종목 상세 모달의 수익성/성장성/안정성/가치지표 아코디언용 확장 재무 지표.
+    # 항목이 계속 늘어날 걸 감안해 컬럼을 늘리는 대신 JSON 하나로 묶어둔다.
+    # 키: grossMargin/operatingMargin/netMargin/roe/roa/revenueGrowth/
+    #     currentRatio/quickRatio/debtRatio/pbr/psr/evEbitda (전부 % 또는 배수, 없으면 키 자체가 없음)
+    metrics_json = db.Column(db.Text)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     # 가격/조건 갱신(trend_screen_refresher, 12시간 주기)과 재무 보강(미국만, Finnhub
     # 무료 API 호출 제한 때문에 더 느린 별도 주기) 갱신 시각을 분리해서 추적한다 -

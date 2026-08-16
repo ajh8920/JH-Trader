@@ -524,6 +524,28 @@ input::placeholder { color: var(--text-muted); }
 .scr-detail-stat-value { font-size: 14.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .scr-detail-cond-list { display: flex; flex-direction: column; gap: 1px; border-radius: var(--radius-md); overflow: hidden; }
 .scr-detail-cond-row { display: flex; align-items: center; gap: 9px; padding: 8px 12px; background: var(--bg-secondary); font-size: 13px; }
+.scr-detail-volume { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* 재무 지표 아코디언 (B안) */
+.scr-fin-search {
+  display: flex; align-items: center; gap: 8px; background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 8px 12px; margin-bottom: 10px; font-size: 13px; color: var(--text-muted);
+}
+.scr-fin-search input { border: none; background: none; outline: none; color: var(--text); font-size: 13px; flex: 1; }
+.scr-fin-list { display: flex; flex-direction: column; gap: 6px; }
+.scr-fin-acc { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-secondary); overflow: hidden; }
+.scr-fin-acc-head { display: flex; align-items: center; gap: 8px; padding: 11px 13px; cursor: pointer; user-select: none; }
+.scr-fin-acc-head .name { font-size: 13px; font-weight: 700; flex: 0 0 auto; }
+.scr-fin-acc-head .hl { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scr-fin-acc-head .chev { font-size: 11px; color: var(--text-muted); display: flex; transition: transform .15s ease; flex: 0 0 auto; }
+.scr-fin-acc.open .chev { transform: rotate(90deg); }
+.scr-fin-acc-body { max-height: 0; overflow: hidden; transition: max-height .2s ease; }
+.scr-fin-acc.open .scr-fin-acc-body { max-height: 400px; }
+.scr-fin-acc-body-inner { padding: 2px 13px 11px; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px 16px; }
+.scr-fin-metric { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.scr-fin-metric .label { color: var(--text-secondary); }
+.scr-fin-metric .value { font-weight: 700; font-variant-numeric: tabular-nums; }
+.scr-fin-empty { padding: 2px 13px 11px; font-size: 12px; color: var(--text-muted); }
 .scr-detail-cond-row.fail { color: var(--text-muted); }
 .scr-detail-cond-row i.pass { color: var(--green); }
 .scr-detail-cond-row i.fail { color: var(--text-muted); }

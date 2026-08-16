@@ -1807,6 +1807,109 @@ function smaSeries(values, period) {
   return out;
 }
 
+function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
+  const m = d.metrics || {};
+  const fmtPct = v => v == null ? null : `${v > 0 ? '+' : ''}${Number(v).toFixed(1)}%`;
+  const fmtPctPlain = v => v == null ? null : `${Number(v).toFixed(1)}%`;
+  const fmtMult = v => v == null ? null : `${Number(v).toFixed(1)}배`;
+
+  const categories = [
+    {
+      key: 'profit', icon: '📈', title: '수익성',
+      items: [
+        ['매출총이익률', fmtPctPlain(m.grossMargin)],
+        ['영업이익률', fmtPctPlain(m.operatingMargin)],
+        ['순이익률', fmtPctPlain(m.netMargin)],
+        ['ROE', fmtPctPlain(m.roe)],
+        ['ROA', fmtPctPlain(m.roa)],
+      ],
+    },
+    {
+      key: 'growth', icon: '🌱', title: '성장성 (전년동기대비)',
+      items: [
+        ['매출액증가율', fmtPct(m.revenueGrowth)],
+        ['EPS성장률', fmtPct(d.epsGrowth)],
+      ],
+    },
+    {
+      key: 'stability', icon: '🛡️', title: '안정성',
+      items: [
+        ['유동비율', fmtPctPlain(m.currentRatio)],
+        ['당좌비율', fmtPctPlain(m.quickRatio)],
+        ['부채비율', fmtPctPlain(m.debtRatio)],
+      ],
+    },
+    {
+      key: 'value', icon: '💰', title: '가치지표',
+      items: [
+        ['시가총액', d.marketCap != null ? fmtMarketCapDetail(d.marketCap) : null],
+        ['P/E', d.peRatio != null ? Number(d.peRatio).toFixed(1) : null],
+        ['PBR', fmtMult(m.pbr)],
+        ['PSR', fmtMult(m.psr)],
+        ['EV/EBITDA', fmtMult(m.evEbitda)],
+        ['배당수익률', d.dividendYield != null ? Number(d.dividendYield).toFixed(2) + '%' : null],
+      ],
+    },
+  ];
+
+  const catsHtml = categories.map((cat, idx) => {
+    const available = cat.items.filter(([, v]) => v != null);
+    const highlight = available.slice(0, 2).map(([l, v]) => `${l} ${v}`).join(' · ');
+    const bodyHtml = available.length
+      ? available.map(([label, value]) => {
+          const isNeg = typeof value === 'string' && value.trim().startsWith('-');
+          const isPos = typeof value === 'string' && value.trim().startsWith('+');
+          return `<div class="scr-fin-metric" data-label="${escapeHtml(label)}">
+            <span class="label">${escapeHtml(label)}</span>
+            <span class="value ${isPos ? 'positive' : isNeg ? 'negative' : ''}">${value}</span>
+          </div>`;
+        }).join('')
+      : `<div class="scr-fin-empty">${isUS ? '데이터를 불러오지 못했습니다' : '국내 종목은 이 항목의 데이터 소스가 없어 제공되지 않습니다'}</div>`;
+    return `
+      <div class="scr-fin-acc ${idx === 0 ? 'open' : ''}" data-cat="${cat.key}">
+        <div class="scr-fin-acc-head" onclick="toggleFinAcc(this)">
+          <span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>
+          <span class="name">${cat.icon} ${cat.title}</span>
+          <span class="hl">${highlight}</span>
+        </div>
+        <div class="scr-fin-acc-body"><div class="scr-fin-acc-body-inner">${bodyHtml}</div></div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="scr-detail-section">
+      <div class="scr-detail-section-title">재무 지표</div>
+      <div class="scr-fin-search">
+        <i class="ti ti-search" aria-hidden="true"></i>
+        <input type="text" placeholder="지표 이름으로 검색 (예: 부채비율, ROE)" oninput="filterFinAccordion(this.value)">
+      </div>
+      <div class="scr-fin-list">${catsHtml}</div>
+    </div>`;
+}
+
+function toggleFinAcc(headEl) {
+  headEl.parentElement.classList.toggle('open');
+}
+
+function filterFinAccordion(query) {
+  const q = query.trim();
+  document.querySelectorAll('.scr-fin-acc').forEach(acc => {
+    if (!q) {
+      acc.style.display = '';
+      acc.querySelectorAll('.scr-fin-metric').forEach(m => { m.style.display = ''; });
+      return;
+    }
+    let anyMatch = false;
+    acc.querySelectorAll('.scr-fin-metric').forEach(m => {
+      const match = m.dataset.label.includes(q);
+      m.style.display = match ? '' : 'none';
+      if (match) anyMatch = true;
+    });
+    acc.style.display = anyMatch ? '' : 'none';
+    if (anyMatch) acc.classList.add('open');
+  });
+}
+
 function renderScreenerDetail(d) {
   const body = document.getElementById('scr-detail-body');
   const isUS = d.market === 'US';
@@ -1840,47 +1943,20 @@ function renderScreenerDetail(d) {
     return `${(v / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 0 })}억`;
   };
 
-  const screenerStatsHtml = `
-    <div class="scr-detail-section">
-      <div class="scr-detail-section-title">스크리닝 지표</div>
-      <div class="scr-detail-grid">
-        <div class="scr-detail-stat"><div class="scr-detail-stat-label">시가총액</div><div class="scr-detail-stat-value">${fmtMarketCapDetail(d.marketCap)}</div></div>
-        <div class="scr-detail-stat"><div class="scr-detail-stat-label">P/E</div><div class="scr-detail-stat-value">${d.peRatio != null ? Number(d.peRatio).toFixed(1) : '-'}</div></div>
-        <div class="scr-detail-stat"><div class="scr-detail-stat-label">EPS성장률</div><div class="scr-detail-stat-value ${d.epsGrowth > 0 ? 'positive' : d.epsGrowth < 0 ? 'negative' : ''}">${d.epsGrowth != null ? (d.epsGrowth > 0 ? '+' : '') + Number(d.epsGrowth).toFixed(1) + '%' : '-'}</div></div>
-        <div class="scr-detail-stat"><div class="scr-detail-stat-label">배당수익률</div><div class="scr-detail-stat-value">${d.dividendYield != null ? Number(d.dividendYield).toFixed(2) + '%' : '-'}</div></div>
-        <div class="scr-detail-stat"><div class="scr-detail-stat-label">거래량(상대)</div><div class="scr-detail-stat-value" style="font-size:13px;">${d.volume != null ? Math.round(d.volume).toLocaleString('ko-KR') : '-'}${d.relVolume != null ? ` (${Number(d.relVolume).toFixed(2)}x)` : ''}</div></div>
-        <div class="scr-detail-stat"><div class="scr-detail-stat-label">애널리스트</div><div class="scr-detail-stat-value">${d.analystRating ? `<span class="scr-rating-badge ${ratingClass(d.analystRating)}">${d.analystRating}</span>` : '-'}</div></div>
-      </div>
-      ${!isUS ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px;">EPS성장률은 발행주식수 변동을 반영하지 않은 순이익 증가율 근사치이며, 배당수익률·애널리스트 레이팅은 국내 종목에는 제공되지 않습니다.</div>` : ''}
-    </div>`;
+  const financialAccordionHtml = buildFinancialAccordion(d, isUS, fmtMarketCapDetail);
 
   let financialsHtml = '';
-  if (d.financials) {
-    if (d.market === 'KR') {
-      const f = d.financials;
-      financialsHtml = `
-        <div class="scr-detail-section">
-          <div class="scr-detail-section-title">재무 (DART ${escapeHtml(f.bsnsYear || '')}년 사업보고서)</div>
-          <div class="scr-detail-grid">
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">시가총액</div><div class="scr-detail-stat-value">${fmtBig(f.marketCap)}</div></div>
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">PER</div><div class="scr-detail-stat-value">${f.per != null ? f.per.toFixed(1) + '배' : (f.netIncome < 0 ? '적자' : '-')}</div></div>
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">ROE</div><div class="scr-detail-stat-value ${f.roe != null && f.roe < 0 ? 'negative' : ''}">${f.roe != null ? f.roe.toFixed(1) + '%' : '-'}</div></div>
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">당기순이익</div><div class="scr-detail-stat-value ${f.netIncome < 0 ? 'negative' : ''}">${fmtBig(f.netIncome)}</div></div>
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">매출액</div><div class="scr-detail-stat-value">${fmtBig(f.revenue)}</div></div>
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">자본총계</div><div class="scr-detail-stat-value">${fmtBig(f.totalEquity)}</div></div>
-          </div>
-        </div>`;
-    } else {
-      const f = d.financials;
-      financialsHtml = `
-        <div class="scr-detail-section">
-          <div class="scr-detail-section-title">기업 정보</div>
-          <div class="scr-detail-grid">
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">업종</div><div class="scr-detail-stat-value" style="font-size:12.5px;">${escapeHtml(f.industry || '-')}</div></div>
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">시가총액</div><div class="scr-detail-stat-value">${fmtBig(f.marketCap)}</div></div>
-          </div>
-        </div>`;
-    }
+  if (d.market === 'KR' && d.financials) {
+    const f = d.financials;
+    financialsHtml = `
+      <div class="scr-detail-section">
+        <div class="scr-detail-section-title">실적 (DART ${escapeHtml(f.bsnsYear || '')}년 사업보고서)</div>
+        <div class="scr-detail-grid">
+          <div class="scr-detail-stat"><div class="scr-detail-stat-label">당기순이익</div><div class="scr-detail-stat-value ${f.netIncome < 0 ? 'negative' : ''}">${fmtBig(f.netIncome)}</div></div>
+          <div class="scr-detail-stat"><div class="scr-detail-stat-label">매출액</div><div class="scr-detail-stat-value">${fmtBig(f.revenue)}</div></div>
+          <div class="scr-detail-stat"><div class="scr-detail-stat-label">자본총계</div><div class="scr-detail-stat-value">${fmtBig(f.totalEquity)}</div></div>
+        </div>
+      </div>`;
   }
 
   let targetHtml = '';
@@ -1925,9 +2001,10 @@ function renderScreenerDetail(d) {
     <div class="scr-detail-price-row">
       <span class="scr-detail-price">${fmt(d.price)}</span>
       <span class="scr-pass-badge ${d.passCount < 8 ? 'partial' : ''}">트렌드 템플릿 ${d.passCount}/8</span>
+      ${d.volume != null ? `<span class="scr-detail-volume">거래량 ${Math.round(d.volume).toLocaleString('ko-KR')}${d.relVolume != null ? ` (${Number(d.relVolume).toFixed(2)}x)` : ''}</span>` : ''}
     </div>
 
-    ${screenerStatsHtml}
+    ${financialAccordionHtml}
 
     <div class="scr-detail-actions">
       <button type="button" id="scr-detail-star" class="scr-detail-star-btn ${isInWatchlist(d.market, d.code) ? 'on' : ''}"

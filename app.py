@@ -1078,6 +1078,7 @@ def screener_detail():
         "volume": row.volume, "relVolume": row.rel_volume,
         "marketCap": row.market_cap, "peRatio": row.pe_ratio, "epsGrowth": row.eps_growth,
         "dividendYield": row.dividend_yield, "analystRating": row.analyst_rating,
+        "metrics": json.loads(row.metrics_json) if row.metrics_json else {},
         "financials": None, "target": None,
     }
 
@@ -1473,6 +1474,24 @@ def _enrich_kr_fundamentals(results):
         r["dividendYield"] = None  # 국내는 배당 데이터 소스가 없어 항상 비움
         r["analystRating"] = None  # 국내는 애널리스트 레이팅 소스가 없어 항상 비움
 
+        # 상세 모달 아코디언용 확장 지표 - DART에서 받아둔 자본총계/순이익/매출액
+        # 3개 항목만으로 계산 가능한 것만 채운다. 영업이익률/ROA/유동비율/부채비율 등은
+        # DART에서 재무상태표·손익계산서 항목을 더 받아와야 해서 지금은 비워둔다
+        # (프런트에서 "제공되지 않음"으로 표시됨).
+        metrics = {}
+        if latest_f and latest_f.revenue and latest_f.net_income is not None:
+            metrics["netMargin"] = round(latest_f.net_income / latest_f.revenue * 100, 1)
+        if latest_f and latest_f.total_equity:
+            if latest_f.net_income is not None:
+                metrics["roe"] = round(latest_f.net_income / latest_f.total_equity * 100, 1)
+            if market_cap:
+                metrics["pbr"] = round(market_cap / latest_f.total_equity, 2)
+        if latest_f and market_cap and latest_f.revenue:
+            metrics["psr"] = round(market_cap / latest_f.revenue, 2)
+        if latest_f and prev_f and latest_f.revenue and prev_f.revenue:
+            metrics["revenueGrowth"] = round((latest_f.revenue - prev_f.revenue) / abs(prev_f.revenue) * 100, 1)
+        r["metrics"] = metrics
+
 
 def trend_screen_refresher():
     import random
@@ -1533,6 +1552,7 @@ def trend_screen_refresher():
                             row.eps_growth = r.get("epsGrowth")
                             row.dividend_yield = r.get("dividendYield")
                             row.analyst_rating = r.get("analystRating")
+                            row.metrics_json = json.dumps(r.get("metrics") or {})
                         row.updated_at = now
                     for code, row in existing.items():
                         if code not in seen:
@@ -1543,6 +1563,38 @@ def trend_screen_refresher():
                 except Exception as e:
                     app.logger.exception("트렌드 스크리닝 갱신 오류: %s", market)
         time.sleep(1800)  # 30분마다 깨어나 시장별로 갱신 필요 여부를 확인
+
+
+def _extract_us_metrics(m):
+    """Finnhub /stock/metric 응답(m)에서 종목 상세 모달 아코디언에 쓸 확장 지표만
+    골라낸다. 이미 받아오는 응답 안에 다 들어있어 추가 API 호출은 없다."""
+    def pct(key):
+        v = m.get(key)
+        return round(v, 1) if isinstance(v, (int, float)) else None
+
+    def ratio(key):
+        v = m.get(key)
+        return round(v * 100, 1) if isinstance(v, (int, float)) else None
+
+    def mult(key):
+        v = m.get(key)
+        return round(v, 2) if isinstance(v, (int, float)) else None
+
+    metrics = {
+        "grossMargin": pct("grossMarginTTM"),
+        "operatingMargin": pct("operatingMarginTTM"),
+        "netMargin": pct("netProfitMarginTTM"),
+        "roe": pct("roeTTM"),
+        "roa": pct("roaTTM"),
+        "revenueGrowth": pct("revenueGrowthTTMYoy"),
+        "currentRatio": ratio("currentRatioQuarterly"),
+        "quickRatio": ratio("quickRatioQuarterly"),
+        "debtRatio": ratio("totalDebt/totalEquityQuarterly"),
+        "pbr": mult("pbQuarterly"),
+        "psr": mult("psTTM"),
+        "evEbitda": mult("evEbitdaTTM"),
+    }
+    return {k: v for k, v in metrics.items() if v is not None}
 
 
 def _analyst_rating_label(rec):
@@ -1617,6 +1669,7 @@ def us_fundamentals_refresher():
                         row.dividend_yield = m.get("dividendYieldIndicatedAnnual")
                         latest_rec = rec_data[0] if isinstance(rec_data, list) and rec_data else {}
                         row.analyst_rating = _analyst_rating_label(latest_rec)
+                        row.metrics_json = json.dumps(_extract_us_metrics(m))
                         row.fund_updated_at = datetime.utcnow()
                         db.session.commit()
                 processed += 1
