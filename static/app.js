@@ -1913,7 +1913,7 @@ function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
         }).join('')
       : `<div class="scr-fin-empty">${isUS ? '데이터를 불러오지 못했습니다' : '국내 종목은 이 항목의 데이터 소스가 없어 제공되지 않습니다'}</div>`;
     return `
-      <div class="scr-fin-acc ${idx === 0 ? 'open' : ''}" data-cat="${cat.key}">
+      <div class="scr-fin-acc" data-cat="${cat.key}">
         <div class="scr-fin-acc-head" onclick="toggleFinAcc(this)">
           <span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>
           <span class="name">${cat.icon} ${cat.title}</span>
@@ -2079,7 +2079,11 @@ function renderScreenerDetail(d) {
     ${targetHtml}
   `;
 
-  setTimeout(() => drawScreenerDetailChart(d), 60);
+  // 모달 레이아웃(특히 재무 아코디언)이 완전히 자리잡기 전에 Chart.js가 초기화되면
+  // 캔버스 크기를 감지하는 ResizeObserver가 레이아웃이 안정되는 동안 계속 리사이즈를
+  // 반복해 화면이 깜박이는 문제가 있었다. 고정 지연(setTimeout) 대신 두 번의
+  // requestAnimationFrame으로 레이아웃/페인트가 실제로 끝난 뒤에 그리도록 한다.
+  requestAnimationFrame(() => requestAnimationFrame(() => drawScreenerDetailChart(d)));
 }
 
 function drawScreenerDetailChart(d) {
