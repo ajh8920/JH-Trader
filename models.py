@@ -219,3 +219,19 @@ class TrendScreenCache(db.Model):
     all_pass = db.Column(db.Boolean, default=False)
     conditions_json = db.Column(db.Text)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ScreenerWatchlist(db.Model):
+    """스크리닝 탭에서 사용자가 별표(찜)한 종목 목록."""
+
+    __tablename__ = "screener_watchlist"
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "market", "code", name="uq_watchlist_user_market_code"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    market = db.Column(db.String(4), nullable=False)
+    code = db.Column(db.String(10), nullable=False)
+    name = db.Column(db.String(128), default="")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

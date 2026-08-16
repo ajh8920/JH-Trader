@@ -1491,6 +1491,55 @@ const TREND_CONDITION_LABELS = [
 function initScreenerTab() {
   loadScreenerStatus();
   loadScreenerResults();
+  loadScreenerWatchlist();
+}
+
+let scrWatchlistSet = new Set();
+
+async function loadScreenerWatchlist() {
+  try {
+    const data = await api('GET', '/api/screener/watchlist');
+    scrWatchlistSet = new Set((data.items || []).map(it => `${it.market}:${it.code}`));
+  } catch (e) {
+    // 관심종목 로드 실패는 스크리닝 결과 자체를 막을 정도는 아니라 조용히 무시
+  }
+}
+
+function isInWatchlist(market, code) {
+  return scrWatchlistSet.has(`${market}:${code}`);
+}
+
+async function toggleScreenerWatchlist(market, code, name, event) {
+  if (event) event.stopPropagation();
+  const key = `${market}:${code}`;
+  try {
+    if (scrWatchlistSet.has(key)) {
+      await api('DELETE', `/api/screener/watchlist?market=${market}&code=${encodeURIComponent(code)}`);
+      scrWatchlistSet.delete(key);
+    } else {
+      await api('POST', '/api/screener/watchlist', { market, code, name });
+      scrWatchlistSet.add(key);
+    }
+  } catch (e) {
+    alert(e.message);
+    return;
+  }
+  renderFilteredScreenerRows();
+  const starBtn = document.getElementById('scr-detail-star');
+  if (starBtn) updateScrDetailStarButton(starBtn, market, code, name);
+}
+
+function updateScrDetailStarButton(btn, market, code) {
+  const on = isInWatchlist(market, code);
+  btn.classList.toggle('on', on);
+  btn.querySelector('i').className = `ti ${on ? 'ti-star-filled' : 'ti-star'}`;
+  btn.querySelector('span').textContent = on ? '관심종목 담김' : '관심종목 담기';
+}
+
+function jumpToKrSwingBacktest(code, name) {
+  closeScreenerDetail();
+  switchTab('krswing');
+  selectKrSwingStock(code, name);
 }
 
 async function loadScreenerStatus() {
@@ -1543,6 +1592,7 @@ const SCR_PRESETS = {
   rsStrong: r => r.rsRating != null && r.rsRating >= 90,
   nearHigh: r => r.pctBelow52wHigh != null && r.pctBelow52wHigh <= 10,
   freshBreakout: r => r.pctAbove52wLow != null && r.pctAbove52wLow >= 30 && r.pctAbove52wLow <= 60,
+  watchlist: r => isInWatchlist(document.getElementById('scr-market').value, r.code),
 };
 
 function renderScreenerResults(data) {
@@ -1588,6 +1638,7 @@ function renderFilteredScreenerRows() {
       <table class="scr-table">
         <thead>
           <tr>
+            <th style="width:32px;"></th>
             <th>종목명</th><th>코드</th><th style="text-align:right;">현재가</th><th>RS</th><th>조건</th>
             <th style="text-align:right;">52주저 대비</th><th style="text-align:right;">52주고 대비</th>
           </tr>
@@ -1595,6 +1646,9 @@ function renderFilteredScreenerRows() {
         <tbody>
           ${filtered.map(r => `
             <tr onclick="openScreenerDetail('${escapeHtml(r.code)}')">
+              <td onclick="toggleScreenerWatchlist('${scrIsUS ? 'US' : 'KR'}', '${escapeHtml(r.code)}', '${escapeHtml(r.name).replace(/'/g, "\\'")}', event)">
+                <i class="ti ${isInWatchlist(scrIsUS ? 'US' : 'KR', r.code) ? 'ti-star-filled scr-star on' : 'ti-star scr-star'}" aria-hidden="true"></i>
+              </td>
               <td class="scr-name-cell" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</td>
               <td class="scr-code-cell">${escapeHtml(r.code)}</td>
               <td class="scr-num-cell">${fmtPrice(r.price)}</td>
@@ -1779,6 +1833,18 @@ function renderScreenerDetail(d) {
       <span class="scr-pass-badge ${d.passCount < 8 ? 'partial' : ''}">트렌드 템플릿 ${d.passCount}/8</span>
     </div>
 
+    <div class="scr-detail-actions">
+      <button type="button" id="scr-detail-star" class="scr-detail-star-btn ${isInWatchlist(d.market, d.code) ? 'on' : ''}"
+              onclick="toggleScreenerWatchlist('${d.market}', '${escapeHtml(d.code)}', '${escapeHtml(d.name).replace(/'/g, "\\'")}', event)">
+        <i class="ti ${isInWatchlist(d.market, d.code) ? 'ti-star-filled' : 'ti-star'}" aria-hidden="true"></i>
+        <span>${isInWatchlist(d.market, d.code) ? '관심종목 담김' : '관심종목 담기'}</span>
+      </button>
+      ${d.market === 'KR' ? `
+        <button type="button" class="btn-secondary" onclick="jumpToKrSwingBacktest('${escapeHtml(d.code)}', '${escapeHtml(d.name).replace(/'/g, "\\'")}')">
+          <i class="ti ti-chart-candle" aria-hidden="true"></i> 국내 스윙에서 백테스트
+        </button>` : ''}
+    </div>
+
     <div class="chart-wrap" style="height:260px;">
       <canvas id="scr-detail-chart" role="img" aria-label="${escapeHtml(d.name)} 가격 차트"></canvas>
     </div>
@@ -1809,8 +1875,11 @@ function drawScreenerDetailChart(d) {
   const isUS = d.market === 'US';
   const fmtY = v => isUS ? `$${v.toFixed(0)}` : `${Number(v).toLocaleString('ko-KR')}`;
 
+  // data 배열 원소를 null과 {x,y} 객체로 섞어서 넣으면 Chart.js가 그 데이터셋
+  // 전체를 파싱하지 못해 선이 아예 안 그려진다(50/150/200일선이 안 보이던 원인) -
+  // 항상 {x, y} 형태를 유지하고 y만 null로 둬서 그 구간만 끊기게(gap) 한다.
   const mkLine = (data, color, label, dash) => ({
-    label, data: data.map((v, i) => v == null ? null : { x: i, y: v }),
+    label, data: data.map((v, i) => ({ x: i, y: v })),
     borderColor: color, backgroundColor: 'transparent', fill: false,
     pointRadius: 0, borderWidth: label === '종가' ? 1.5 : 1.2, tension: 0.1, spanGaps: false,
     borderDash: dash || [],

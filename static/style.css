@@ -446,6 +446,17 @@ input::placeholder { color: var(--text-muted); }
 .scr-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--bg-tertiary); border: 1px solid var(--border-strong); }
 .scr-dot.on { background: var(--green); border-color: var(--green); }
 .scr-table tbody tr { cursor: pointer; }
+.scr-star { font-size: 16px; color: var(--text-muted); cursor: pointer; }
+.scr-star:hover { color: var(--amber); }
+.scr-star.on { color: var(--amber); }
+.scr-detail-star-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px;
+  border: 1px solid var(--border-strong); background: var(--bg); color: var(--text-secondary);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.scr-detail-star-btn.on { background: var(--amber-bg); border-color: var(--amber); color: var(--amber); }
+.scr-detail-star-btn i { font-size: 15px; }
+.scr-detail-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 4px; }
 
 .scr-modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1000;

@@ -1122,6 +1122,46 @@ def screener_detail():
     return jsonify(sanitize_json(result))
 
 
+@app.route("/api/screener/watchlist", methods=["GET"])
+@login_required
+def list_screener_watchlist():
+    from models import ScreenerWatchlist
+
+    rows = ScreenerWatchlist.query.filter_by(user_id=current_user.id).order_by(ScreenerWatchlist.created_at.desc()).all()
+    return jsonify({"items": [{"market": r.market, "code": r.code, "name": r.name} for r in rows]})
+
+
+@app.route("/api/screener/watchlist", methods=["POST"])
+@login_required
+def add_screener_watchlist():
+    from models import ScreenerWatchlist
+
+    body = request.json or {}
+    market = str(body.get("market", "")).upper()
+    code = str(body.get("code", "")).strip()
+    name = str(body.get("name", "")).strip()
+    if market not in ("KR", "US") or not code:
+        return jsonify({"error": "잘못된 요청입니다"}), 400
+
+    existing = ScreenerWatchlist.query.filter_by(user_id=current_user.id, market=market, code=code).first()
+    if not existing:
+        db.session.add(ScreenerWatchlist(user_id=current_user.id, market=market, code=code, name=name))
+        db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/screener/watchlist", methods=["DELETE"])
+@login_required
+def remove_screener_watchlist():
+    from models import ScreenerWatchlist
+
+    market = str(request.args.get("market", "")).upper()
+    code = str(request.args.get("code", "")).strip()
+    ScreenerWatchlist.query.filter_by(user_id=current_user.id, market=market, code=code).delete()
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
 # ─── 무한매수법 실전 현황 API ─────────────────────────────────────────────────
 
 @app.route("/api/infinite/positions", methods=["GET"])
@@ -1299,6 +1339,7 @@ for _view in (
     backtest_infinite_buying, kr_swing_backtest, search_kr_stocks,
     kr_quant_status, kr_quant_screen, kr_quant_backtest, kr_quant_backtest_status,
     screener_status, screener_results, screener_detail,
+    list_screener_watchlist, add_screener_watchlist, remove_screener_watchlist,
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_users, update_user_role, delete_user,
