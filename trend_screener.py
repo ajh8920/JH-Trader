@@ -109,9 +109,11 @@ def _extract_bars(df):
     if not all(c in df.columns for c in needed):
         return []
     sub = df.dropna(subset=list(needed))
+    has_volume = "Volume" in sub.columns
     return [
         {"date": idx.strftime("%Y-%m-%d"), "close": float(row["Close"]),
-         "high": float(row["High"]), "low": float(row["Low"])}
+         "high": float(row["High"]), "low": float(row["Low"]),
+         "volume": float(row["Volume"]) if has_volume and row["Volume"] == row["Volume"] else None}
         for idx, row in sub.iterrows()
     ]
 
@@ -148,6 +150,16 @@ def evaluate_trend_template(code, name, bars):
     """bars: 날짜 오름차순 OHLC 리스트. 조건1~7과 RS 계산용 가중수익률을 반환한다
     (RS 백분위 자체는 유니버스 전체를 모아야 계산 가능해 compute_universe_screen에서 처리)."""
     if len(bars) < MIN_BARS:
+        return None
+
+    # 거래정지/상장폐지 임박 종목은 야후가 마지막 시세를 그대로 반복해 보여주는
+    # 경우가 있는데(거래량 0), 이 "평평한 정지 구간"이 급등처럼 보여 트렌드
+    # 템플릿을 통과하는 오탐이 있었다(실제 사례: 031860, 거래량 0인 채로 가격이
+    # 10배로 튐 - 실제 매매가 아니라 액면병합 등 표시상의 변화). 최근 10거래일
+    # 중 거래량이 있는 날이 없으면 후보에서 제외한다.
+    recent_volumes = [b.get("volume") for b in bars[-10:]]
+    known_volumes = [v for v in recent_volumes if v is not None]
+    if known_volumes and all(v == 0 for v in known_volumes):
         return None
 
     closes = [b["close"] for b in bars]
