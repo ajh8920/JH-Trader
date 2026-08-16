@@ -1601,7 +1601,189 @@ const SCR_PRESETS = {
 function renderScreenerResults(data) {
   scrRawResults = data.results || [];
   scrIsUS = data.market === 'US';
+  buildFinFilterPanel();
   renderFilteredScreenerRows();
+}
+
+// ─── 재무 지표 필터 패널 ────────────────────────────────────────────────────
+// 종목 상세 아코디언(buildFinancialAccordion)과 같은 지표 키를 쓰되, 여기서는
+// 각 항목을 "값에 접근하는 함수"로 정의해 절대금액(abs)/퍼센트(unit)를
+// 구분한다 - 절대금액은 억원(국내)·백만달러(미국) 단위로 입력받아 원 단위로
+// 환산해서 비교한다(그대로 원 단위로 입력하게 하면 숫자가 너무 커서 비실용적).
+const FIN_FILTER_CATEGORIES = [
+  { key: 'bs', icon: '🧾', title: '재무상태표', items: [
+    { key: 'totalAssets', label: '자산총계', abs: true, get: r => r.metrics?.totalAssets },
+    { key: 'totalLiabilities', label: '부채총계', abs: true, get: r => r.metrics?.totalLiabilities },
+    { key: 'totalEquity', label: '자본총계', abs: true, get: r => r.metrics?.totalEquity },
+    { key: 'equityAttributable', label: '자본총계(지배)', abs: true, get: r => r.metrics?.equityAttributable },
+    { key: 'issuedCapital', label: '자본금', abs: true, get: r => r.metrics?.issuedCapital },
+  ] },
+  { key: 'ic', icon: '📄', title: '포괄손익계산서', items: [
+    { key: 'revenue', label: '매출액', abs: true, get: r => r.metrics?.revenue },
+    { key: 'grossProfit', label: '매출총이익', abs: true, get: r => r.metrics?.grossProfit },
+    { key: 'operatingIncome', label: '영업이익', abs: true, get: r => r.metrics?.operatingIncome },
+    { key: 'profitBeforeTax', label: '세전계속사업이익', abs: true, get: r => r.metrics?.profitBeforeTax },
+    { key: 'netIncome', label: '당기순이익', abs: true, get: r => r.metrics?.netIncome },
+    { key: 'netIncomeAttributable', label: '당기순이익(지배)', abs: true, get: r => r.metrics?.netIncomeAttributable },
+  ] },
+  { key: 'profit', icon: '📈', title: '수익성', items: [
+    { key: 'grossMargin', label: '매출총이익률', unit: '%', get: r => r.metrics?.grossMargin },
+    { key: 'operatingMargin', label: '영업이익률', unit: '%', get: r => r.metrics?.operatingMargin },
+    { key: 'netMargin', label: '순이익률', unit: '%', get: r => r.metrics?.netMargin },
+    { key: 'roe', label: 'ROE', unit: '%', get: r => r.metrics?.roe },
+    { key: 'roa', label: 'ROA', unit: '%', get: r => r.metrics?.roa },
+  ] },
+  { key: 'growth', icon: '🌱', title: '성장성 (전년동기대비)', items: [
+    { key: 'revenueGrowth', label: '매출액증가율', unit: '%', get: r => r.metrics?.revenueGrowth },
+    { key: 'opIncomeGrowth', label: '영업이익증가율', unit: '%', get: r => r.metrics?.opIncomeGrowth },
+    { key: 'epsGrowth', label: 'EPS(순이익)증가율', unit: '%', get: r => r.epsGrowth },
+  ] },
+  { key: 'stability', icon: '🛡️', title: '안정성', items: [
+    { key: 'currentRatio', label: '유동비율', unit: '%', get: r => r.metrics?.currentRatio },
+    { key: 'quickRatio', label: '당좌비율', unit: '%', get: r => r.metrics?.quickRatio },
+    { key: 'debtRatio', label: '부채비율', unit: '%', get: r => r.metrics?.debtRatio },
+    { key: 'netDebtRatio', label: '순부채비율', unit: '%', get: r => r.metrics?.netDebtRatio },
+  ] },
+  { key: 'value', icon: '💰', title: '가치지표', items: [
+    { key: 'marketCap', label: '시가총액', abs: true, get: r => r.marketCap },
+    { key: 'peRatio', label: 'P/E', unit: '배', get: r => r.peRatio },
+    { key: 'pbr', label: 'PBR', unit: '배', get: r => r.metrics?.pbr },
+    { key: 'psr', label: 'PSR', unit: '배', get: r => r.metrics?.psr },
+    { key: 'evEbitda', label: 'EV/EBITDA', unit: '배', get: r => r.metrics?.evEbitda },
+    { key: 'dividendYield', label: '배당수익률', unit: '%', get: r => r.dividendYield },
+  ] },
+];
+
+let scrActiveFilters = {}; // { [itemKey]: {min, max} }
+let scrActiveRatings = new Set(); // 컨센서스(투자의견) 다중 선택
+
+function absScale() { return scrIsUS ? 1e6 : 1e8; }
+function absUnitLabel() { return scrIsUS ? '백만달러' : '억원'; }
+
+function buildFinFilterPanel() {
+  const panel = document.getElementById('scr-filter-panel');
+  if (!panel) return;
+
+  const catsHtml = FIN_FILTER_CATEGORIES.map(cat => {
+    const rowsHtml = cat.items.map(item => {
+      const unitLabel = item.abs ? `(${absUnitLabel()})` : item.unit ? `(${item.unit})` : '';
+      const cur = scrActiveFilters[item.key] || {};
+      return `
+        <div class="ffrow">
+          <span class="fflabel">${escapeHtml(item.label)} <span class="ffunit">${unitLabel}</span></span>
+          <span class="ffrange">
+            <input type="number" placeholder="최소" data-fkey="${item.key}" data-bound="min" value="${cur.min ?? ''}">
+            <span>~</span>
+            <input type="number" placeholder="최대" data-fkey="${item.key}" data-bound="max" value="${cur.max ?? ''}">
+          </span>
+        </div>`;
+    }).join('');
+    return `
+      <div class="ffcat" data-cat="${cat.key}">
+        <div class="ffcat-head" onclick="toggleFinFilterCat(this)">
+          <span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>
+          <span class="name">${cat.icon} ${cat.title}</span>
+        </div>
+        <div class="ffcat-body"><div class="ffcat-body-inner">${rowsHtml}</div></div>
+      </div>`;
+  }).join('');
+
+  const ratingHtml = !scrIsUS ? '' : `
+    <div class="ffcat" data-cat="consensus">
+      <div class="ffcat-head" onclick="toggleFinFilterCat(this)">
+        <span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>
+        <span class="name">🎯 컨센서스</span>
+      </div>
+      <div class="ffcat-body"><div class="ffcat-body-inner">
+        <div class="ffrow">
+          <span class="fflabel">투자의견</span>
+          <span class="ffchips">
+            ${['매수', '중립', '매도'].map(label => `
+              <span class="ffchip ${scrActiveRatings.has(label) ? 'selected' : ''}" onclick="toggleFinFilterRating('${label}')">${label}</span>
+            `).join('')}
+          </span>
+        </div>
+      </div></div>
+    </div>`;
+
+  panel.innerHTML = `
+    <div class="ffpanel-head">
+      <span class="ffpanel-title">재무 지표 필터</span>
+      <div class="ffpanel-actions">
+        <span class="ffbtn" onclick="resetFinFilters()">초기화</span>
+        <span class="ffbtn primary" onclick="applyFinFilters()">적용</span>
+      </div>
+    </div>
+    ${!scrIsUS ? '<div class="ffnote">국내 종목은 안정성·컨센서스·EV/EBITDA 등 일부 지표가 제공되지 않습니다.</div>' : ''}
+    <div class="ffcat-list">${catsHtml}${ratingHtml}</div>`;
+}
+
+function toggleFinFilterPanel() {
+  const panel = document.getElementById('scr-filter-panel');
+  const btn = document.getElementById('scr-filter-btn');
+  const show = panel.style.display === 'none';
+  panel.style.display = show ? 'block' : 'none';
+  btn.classList.toggle('active', show);
+}
+
+function toggleFinFilterCat(headEl) {
+  headEl.parentElement.classList.toggle('open');
+}
+
+function toggleFinFilterRating(label) {
+  if (scrActiveRatings.has(label)) scrActiveRatings.delete(label);
+  else scrActiveRatings.add(label);
+  document.querySelectorAll('.ffchip').forEach(chip => {
+    chip.classList.toggle('selected', scrActiveRatings.has(chip.textContent.trim()));
+  });
+}
+
+function applyFinFilters() {
+  const next = {};
+  document.querySelectorAll('#scr-filter-panel input[data-fkey]').forEach(input => {
+    const key = input.dataset.fkey;
+    const bound = input.dataset.bound;
+    const raw = input.value.trim();
+    if (!raw) return;
+    const v = Number(raw);
+    if (Number.isNaN(v)) return;
+    next[key] = next[key] || {};
+    next[key][bound] = v;
+  });
+  scrActiveFilters = next;
+  updateFinFilterCount();
+  renderFilteredScreenerRows();
+}
+
+function resetFinFilters() {
+  scrActiveFilters = {};
+  scrActiveRatings = new Set();
+  buildFinFilterPanel();
+  updateFinFilterCount();
+  renderFilteredScreenerRows();
+}
+
+function updateFinFilterCount() {
+  const n = Object.keys(scrActiveFilters).length + (scrActiveRatings.size ? 1 : 0);
+  const badge = document.getElementById('scr-filter-count');
+  if (!badge) return;
+  badge.textContent = n;
+  badge.style.display = n ? '' : 'none';
+}
+
+function passesFinFilters(r) {
+  const allItems = FIN_FILTER_CATEGORIES.flatMap(c => c.items);
+  for (const [key, range] of Object.entries(scrActiveFilters)) {
+    const item = allItems.find(it => it.key === key);
+    if (!item) continue;
+    let v = item.get(r);
+    if (v == null) return false;
+    if (item.abs) v = v / absScale();
+    if (range.min != null && v < range.min) return false;
+    if (range.max != null && v > range.max) return false;
+  }
+  if (scrActiveRatings.size && !scrActiveRatings.has(r.analystRating)) return false;
+  return true;
 }
 
 function setScreenerPreset(preset) {
@@ -1620,6 +1802,7 @@ function renderFilteredScreenerRows() {
 
   const filtered = scrRawResults.filter(r => {
     if (!presetFn(r)) return false;
+    if (!passesFinFilters(r)) return false;
     if (!query) return true;
     return r.name.toLowerCase().includes(query) || r.code.toLowerCase().includes(query);
   });

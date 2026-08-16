@@ -472,7 +472,12 @@
             <button type="button" class="scr-pill" data-preset="freshBreakout" onclick="setScreenerPreset('freshBreakout')"><i class="ti ti-plant" aria-hidden="true"></i> 바닥 탈출 초기</button>
             <button type="button" class="scr-pill" data-preset="watchlist" onclick="setScreenerPreset('watchlist')"><i class="ti ti-star" aria-hidden="true"></i> 관심종목</button>
           </div>
+          <button type="button" class="scr-filter-btn" id="scr-filter-btn" onclick="toggleFinFilterPanel()">
+            <i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> 필터 <span class="scr-filter-count" id="scr-filter-count" style="display:none;">0</span>
+          </button>
         </div>
+
+        <div id="scr-filter-panel" class="scr-filter-panel" style="display:none;"></div>
 
         <div id="screener-result"></div>
 

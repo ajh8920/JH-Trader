@@ -546,6 +546,56 @@ input::placeholder { color: var(--text-muted); }
 .scr-fin-metric .label { color: var(--text-secondary); }
 .scr-fin-metric .value { font-weight: 700; font-variant-numeric: tabular-nums; }
 .scr-fin-empty { padding: 2px 13px 11px; font-size: 12px; color: var(--text-muted); }
+
+/* 스크리닝 재무 지표 필터 패널 */
+.scr-filter-btn {
+  display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: var(--radius-md);
+  background: var(--bg); border: 1px solid var(--border-strong); font-size: 13px; font-weight: 600;
+  color: var(--text-secondary); cursor: pointer; box-shadow: var(--shadow); flex: 0 0 auto;
+}
+.scr-filter-btn.active { border-color: var(--blue); color: var(--blue); }
+.scr-filter-count {
+  background: var(--blue); color: white; font-size: 10.5px; font-weight: 700; border-radius: 999px;
+  padding: 1px 6px; min-width: 16px; text-align: center; line-height: 1.4;
+}
+.scr-filter-panel {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow); padding: 16px 18px; margin-bottom: 14px;
+}
+.ffpanel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.ffpanel-title { font-size: 13.5px; font-weight: 700; }
+.ffpanel-actions { display: flex; gap: 8px; }
+.ffbtn {
+  font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: var(--radius-sm); cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-secondary);
+}
+.ffbtn.primary { background: var(--blue); color: white; border-color: var(--blue); }
+.ffnote { font-size: 11.5px; color: var(--text-muted); margin-bottom: 10px; }
+.ffcat-list { display: flex; flex-direction: column; gap: 6px; }
+.ffcat { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-secondary); overflow: hidden; }
+.ffcat-head { display: flex; align-items: center; gap: 8px; padding: 10px 13px; cursor: pointer; user-select: none; }
+.ffcat-head .name { font-size: 13px; font-weight: 700; }
+.ffcat-head .chev { font-size: 11px; color: var(--text-muted); transition: transform .15s ease; }
+.ffcat.open .chev { transform: rotate(90deg); }
+.ffcat-body { max-height: 0; overflow: hidden; transition: max-height .2s ease; }
+.ffcat.open .ffcat-body { max-height: 600px; }
+.ffcat-body-inner { padding: 2px 13px 12px; display: flex; flex-direction: column; gap: 2px; }
+.ffrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.ffrow:last-child { border-bottom: none; }
+.fflabel { font-size: 12.5px; color: var(--text-secondary); }
+.ffunit { color: var(--text-muted); font-size: 11px; }
+.ffrange { display: flex; align-items: center; gap: 5px; }
+.ffrange input[type="number"] {
+  width: 90px; padding: 5px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font-size: 12.5px; font-variant-numeric: tabular-nums;
+}
+.ffrange span { font-size: 11px; color: var(--text-muted); }
+.ffchips { display: flex; gap: 6px; }
+.ffchip {
+  font-size: 11.5px; font-weight: 600; padding: 3px 11px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text-secondary); cursor: pointer;
+}
+.ffchip.selected { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
 .scr-detail-cond-row.fail { color: var(--text-muted); }
 .scr-detail-cond-row i.pass { color: var(--green); }
 .scr-detail-cond-row i.fail { color: var(--text-muted); }

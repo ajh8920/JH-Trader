@@ -1029,6 +1029,7 @@ def screener_results():
         "volume": r.volume, "relVolume": r.rel_volume,
         "marketCap": r.market_cap, "peRatio": r.pe_ratio, "epsGrowth": r.eps_growth,
         "dividendYield": r.dividend_yield, "analystRating": r.analyst_rating,
+        "metrics": json.loads(r.metrics_json) if r.metrics_json else {},
     } for r in rows]
     return jsonify(sanitize_json({"market": market, "results": results}))
 
