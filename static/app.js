@@ -1478,14 +1478,14 @@ function resetKrQuantZoom() {
 // ─── 트렌드 템플릿(미너비니 스타일) 스크리닝 ──────────────────────────────────
 
 const TREND_CONDITION_LABELS = [
-  ['priceAboveMa150And200', '①현재가&gt;150·200일선'],
-  ['ma150AboveMa200', '②150일선&gt;200일선'],
-  ['ma200Rising', '③200일선 상승'],
-  ['ma50AboveMa150And200', '④50일선&gt;150·200일선'],
-  ['priceAboveMa50', '⑤현재가&gt;50일선'],
-  ['priceAbove52wLowBy30pct', '⑥52주 신저가+30%'],
-  ['priceWithin25pctOf52wHigh', '⑦52주 신고가 25%내'],
-  ['rsAboveThreshold', '⑧RS≥70'],
+  ['priceAboveMa150And200', '① 현재가 > 150·200일선'],
+  ['ma150AboveMa200', '② 150일선 > 200일선'],
+  ['ma200Rising', '③ 200일선 1개월+ 상승'],
+  ['ma50AboveMa150And200', '④ 50일선 > 150·200일선'],
+  ['priceAboveMa50', '⑤ 현재가 > 50일선'],
+  ['priceAbove52wLowBy30pct', '⑥ 52주 신저가 대비 +30%'],
+  ['priceWithin25pctOf52wHigh', '⑦ 52주 신고가 25% 이내'],
+  ['rsAboveThreshold', '⑧ RS Rating 70 이상'],
 ];
 
 function initScreenerTab() {
@@ -1496,16 +1496,16 @@ function initScreenerTab() {
 async function loadScreenerStatus() {
   const el = document.getElementById('screener-status');
   if (!el) return;
+  const market = document.getElementById('scr-market').value;
   try {
     const data = await api('GET', '/api/screener/status');
-    const parts = ['KR', 'US'].map(m => {
-      const s = data[m];
-      const label = m === 'KR' ? '국내' : '미국';
-      if (!s.ready) return `${label}: 준비 중`;
-      const ageMin = s.ageSeconds !== null ? Math.round(s.ageSeconds / 60) : null;
-      return `${label} ${s.count.toLocaleString('ko-KR')}종목${ageMin !== null ? '(' + ageMin + '분 전 갱신)' : ''}`;
-    });
-    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> ${parts.join(' · ')}`;
+    const s = data[market];
+    if (!s.ready) {
+      el.innerHTML = `<i class="ti ti-loader-2" aria-hidden="true"></i> 데이터 준비 중...`;
+      return;
+    }
+    const ageMin = s.ageSeconds !== null ? Math.round(s.ageSeconds / 60) : null;
+    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> ${s.count.toLocaleString('ko-KR')}종목${ageMin !== null ? ' · ' + ageMin + '분 전 갱신' : ''}`;
   } catch (e) {
     el.innerHTML = `<i class="ti ti-alert-circle" aria-hidden="true"></i> ${escapeHtml(e.message)}`;
   }
@@ -1514,8 +1514,9 @@ async function loadScreenerStatus() {
 async function loadScreenerResults() {
   const el = document.getElementById('screener-result');
   if (!el) return;
+  loadScreenerStatus();
   const market = document.getElementById('scr-market').value;
-  const onlyPass = document.getElementById('scr-only-pass').value;
+  const onlyPass = document.getElementById('scr-only-pass').checked;
 
   el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>불러오는 중...</div>`;
   try {
@@ -1526,6 +1527,13 @@ async function loadScreenerResults() {
   }
 }
 
+function rsBadgeClass(rs) {
+  if (rs == null) return 'weak';
+  if (rs >= 90) return 'strong';
+  if (rs >= 70) return 'mid';
+  return 'weak';
+}
+
 function renderScreenerResults(data) {
   const el = document.getElementById('screener-result');
   const results = data.results || [];
@@ -1533,33 +1541,41 @@ function renderScreenerResults(data) {
   const fmtPrice = v => v == null ? '-' : (isUS ? `$${Number(v).toFixed(2)}` : `${Math.round(v).toLocaleString('ko-KR')}원`);
 
   if (!results.length) {
-    el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>조건을 만족하는 종목이 없습니다</p></div>`;
+    el.innerHTML = `<div class="empty-state" style="padding:2.5rem 1.5rem;"><i class="ti ti-filter-off" aria-hidden="true"></i><p>조건을 만족하는 종목이 없습니다</p></div>`;
     return;
   }
 
   el.innerHTML = `
-    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">${results.length}개 종목</div>
-    <div class="pf-table-wrap">
-      <table class="pf-table">
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">${results.length.toLocaleString('ko-KR')}개 종목</div>
+    <div class="scr-table-wrap">
+      <table class="scr-table">
         <thead>
           <tr>
-            <th>종목명</th><th>코드</th><th>현재가</th><th>RS</th><th>통과</th>
-            <th>52주저 대비</th><th>52주고 대비</th>
-            ${TREND_CONDITION_LABELS.map(([, label]) => `<th style="font-size:11px;white-space:nowrap;">${label}</th>`).join('')}
+            <th>종목명</th><th>코드</th><th style="text-align:right;">현재가</th><th>RS</th><th>조건</th>
+            <th style="text-align:right;">52주저 대비</th><th style="text-align:right;">52주고 대비</th>
           </tr>
         </thead>
         <tbody>
-          ${results.map(r => `
+          ${results.map(r => {
+            const dotsTitle = TREND_CONDITION_LABELS
+              .map(([key, label]) => `${label.replace(/^[①-⑧]\s*/, '')}: ${r.conditions[key] ? 'O' : 'X'}`)
+              .join(' / ');
+            return `
             <tr>
-              <td>${escapeHtml(r.name)}</td>
-              <td>${escapeHtml(r.code)}</td>
-              <td>${fmtPrice(r.price)}</td>
-              <td>${r.rsRating ?? '-'}</td>
-              <td>${r.passCount}/8</td>
-              <td class="${r.pctAbove52wLow >= 30 ? 'positive' : ''}">${r.pctAbove52wLow != null ? '+' + r.pctAbove52wLow.toFixed(1) + '%' : '-'}</td>
-              <td class="${r.pctBelow52wHigh <= 25 ? 'positive' : ''}">${r.pctBelow52wHigh != null ? '-' + r.pctBelow52wHigh.toFixed(1) + '%' : '-'}</td>
-              ${TREND_CONDITION_LABELS.map(([key]) => `<td style="text-align:center;">${r.conditions[key] ? '<i class="ti ti-check" style="color:var(--green);"></i>' : '<i class="ti ti-x" style="color:var(--text-muted);"></i>'}</td>`).join('')}
-            </tr>`).join('')}
+              <td class="scr-name-cell" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</td>
+              <td class="scr-code-cell">${escapeHtml(r.code)}</td>
+              <td class="scr-num-cell">${fmtPrice(r.price)}</td>
+              <td><span class="scr-rs-badge ${rsBadgeClass(r.rsRating)}">${r.rsRating ?? '-'}</span></td>
+              <td>
+                <span class="scr-pass-badge ${r.passCount < 8 ? 'partial' : ''}">${r.passCount}/8</span>
+                <span class="scr-dots" title="${escapeHtml(dotsTitle)}">
+                  ${TREND_CONDITION_LABELS.map(([key]) => `<span class="scr-dot ${r.conditions[key] ? 'on' : ''}"></span>`).join('')}
+                </span>
+              </td>
+              <td class="scr-num-cell ${r.pctAbove52wLow >= 30 ? 'positive' : ''}">${r.pctAbove52wLow != null ? '+' + r.pctAbove52wLow.toFixed(1) + '%' : '-'}</td>
+              <td class="scr-num-cell ${r.pctBelow52wHigh <= 25 ? 'positive' : ''}">${r.pctBelow52wHigh != null ? '-' + r.pctBelow52wHigh.toFixed(1) + '%' : '-'}</td>
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>
     </div>`;

@@ -376,6 +376,46 @@ input::placeholder { color: var(--text-muted); }
 .toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 20px; border-radius: var(--radius-md); font-size: 14px; z-index: 9999; animation: fadeup 0.2s ease; }
 @keyframes fadeup { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
 
+/* 스크리닝 탭 */
+.scr-toolbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.scr-market-select { position: relative; flex: 0 0 auto; }
+.scr-market-select select {
+  appearance: none; -webkit-appearance: none; font-size: 14px; font-weight: 700;
+  padding: 10px 34px 10px 16px; border-radius: 999px; border: 1px solid var(--border-strong);
+  background: var(--bg); color: var(--text); cursor: pointer; box-shadow: var(--shadow);
+}
+.scr-select-arrow { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; color: var(--text-muted); pointer-events: none; }
+.scr-switch { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 13px; color: var(--text-secondary); }
+.scr-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.scr-switch-track { width: 36px; height: 21px; border-radius: 999px; background: var(--bg-tertiary); border: 1px solid var(--border-strong); position: relative; transition: background .15s ease, border-color .15s ease; flex: 0 0 auto; }
+.scr-switch-thumb { position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: var(--text-muted); transition: transform .15s ease, background .15s ease; }
+.scr-switch input:checked + .scr-switch-track { background: var(--green-bg); border-color: var(--green); }
+.scr-switch input:checked + .scr-switch-track .scr-switch-thumb { transform: translateX(15px); background: var(--green); }
+.scr-status-bar { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+
+.scr-table-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: auto; box-shadow: var(--shadow); max-height: 70vh; }
+.scr-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.scr-table thead th {
+  position: sticky; top: 0; z-index: 2; font-weight: 600; font-size: 11px; color: var(--text-secondary);
+  text-align: left; padding: 10px 14px; background: var(--bg-secondary); text-transform: uppercase;
+  letter-spacing: 0.04em; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.scr-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+.scr-table tr:last-child td { border-bottom: none; }
+.scr-table tr:hover td { background: var(--bg-secondary); }
+.scr-name-cell { max-width: 160px; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.scr-code-cell { color: var(--text-muted); font-size: 12px; }
+.scr-num-cell { text-align: right; font-variant-numeric: tabular-nums; }
+.scr-rs-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.scr-rs-badge.strong { background: var(--green-bg); color: var(--green); }
+.scr-rs-badge.mid { background: var(--blue-bg); color: var(--blue); }
+.scr-rs-badge.weak { background: var(--bg-tertiary); color: var(--text-muted); }
+.scr-pass-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--green-bg); color: var(--green); }
+.scr-pass-badge.partial { background: var(--bg-tertiary); color: var(--text-secondary); }
+.scr-dots { display: inline-flex; gap: 3px; vertical-align: middle; }
+.scr-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--bg-tertiary); border: 1px solid var(--border-strong); }
+.scr-dot.on { background: var(--green); border-color: var(--green); }
+
 @media (max-width: 620px) {
   .app { padding: 1rem; }
   .header { flex-wrap: wrap; row-gap: 10px; }

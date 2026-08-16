@@ -439,33 +439,27 @@
 
       <!-- 트렌드 템플릿(미너비니 스타일) 스크리닝 -->
       <section id="sec-screener" class="section">
-        <div id="screener-status" class="info-box" style="margin-bottom:1rem;">
-          <i class="ti ti-loader-2" aria-hidden="true"></i> 스크리닝 데이터 준비 상태 확인 중...
+        <div class="scr-toolbar">
+          <div class="scr-market-select">
+            <select id="scr-market" onchange="loadScreenerResults()">
+              <option value="KR">🇰🇷 국내 · 코스피/코스닥</option>
+              <option value="US">🇺🇸 미국 · S&amp;P500+나스닥</option>
+            </select>
+            <i class="ti ti-chevron-down scr-select-arrow" aria-hidden="true"></i>
+          </div>
+          <label class="scr-switch">
+            <input type="checkbox" id="scr-only-pass" checked onchange="loadScreenerResults()" />
+            <span class="scr-switch-track"><span class="scr-switch-thumb"></span></span>
+            <span>8개 조건 모두 통과만</span>
+          </label>
+          <div id="screener-status" class="scr-status-bar"></div>
+          <button class="btn-secondary" onclick="loadScreenerResults()" style="margin-left:auto;flex:0 0 auto;"><i class="ti ti-refresh" aria-hidden="true"></i> 새로고침</button>
         </div>
 
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-            <div style="font-size:13px;font-weight:600;">트렌드 템플릿 스크리닝</div>
-            <button class="btn-secondary" onclick="loadScreenerResults()"><i class="ti ti-refresh" aria-hidden="true"></i> 새로고침</button>
-          </div>
-          <div class="bt-form-grid" style="margin-bottom:10px;">
-            <div class="bt-field">
-              <label for="scr-market">시장</label>
-              <select id="scr-market" onchange="loadScreenerResults()">
-                <option value="KR">국내(코스피/코스닥)</option>
-                <option value="US">미국(S&amp;P500+나스닥 상위)</option>
-              </select>
-            </div>
-            <div class="bt-field">
-              <label for="scr-only-pass">표시 범위</label>
-              <select id="scr-only-pass" onchange="loadScreenerResults()">
-                <option value="true">8개 조건 모두 통과만</option>
-                <option value="false">전체(통과 개수순 정렬)</option>
-              </select>
-            </div>
-          </div>
-          <div id="screener-result"></div>
-          <div class="info-box" style="margin-top:12px;">
+        <div id="screener-result"></div>
+
+        <div class="card" style="margin-top:14px;">
+          <div class="info-box">
             <i class="ti ti-info-circle" aria-hidden="true"></i>
             마크 미너비니류 '트렌드 템플릿' 8개 조건을 스크리닝합니다: ①현재가&gt;150일선·200일선 ②150일선&gt;200일선 ③200일선 1개월 이상 상승 ④50일선&gt;150일선·200일선 ⑤현재가&gt;50일선 ⑥현재가가 52주 신저가보다 30%+ 위 ⑦현재가가 52주 신고가의 25% 이내 ⑧RS Rating(상대강도) 70 이상.
             RS Rating은 IBD 원본 데이터가 없어 최근 3/6/9/12개월 수익률에 가중치(40/20/20/20%)를 둔 값을 스크리닝 대상 종목 내 순위로 환산해 1~99로 직접 근사한 것으로, 전체 시장이 아닌 이 화면이 다루는 유니버스(국내 전종목 또는 미국 S&amp;P500+나스닥 상위) 안에서의 상대 순위입니다.
