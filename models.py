@@ -144,6 +144,22 @@ class KrFundamental(db.Model):
     total_equity = db.Column(db.Float)  # 자본총계
     net_income = db.Column(db.Float)  # 당기순이익
     revenue = db.Column(db.Float)  # 매출액
+    # 스크리닝 상세 "재무상태표"/"포괄손익계산서" 카테고리 및 안정성 비율(유동비율 등)
+    # 계산용으로 추가한 항목들. 전부 DART 응답에 이미 같이 오는 걸 더 뽑은 것뿐이라
+    # API 호출은 추가로 들지 않지만, 기존에 저장해둔 행들은 이 필드들이 비어 있어
+    # 한 번 재조회가 필요하다.
+    total_assets = db.Column(db.Float)  # 자산총계
+    current_assets = db.Column(db.Float)  # 유동자산
+    current_liabilities = db.Column(db.Float)  # 유동부채
+    total_liabilities = db.Column(db.Float)  # 부채총계
+    equity_attributable = db.Column(db.Float)  # 자본총계(지배)
+    issued_capital = db.Column(db.Float)  # 자본금
+    inventories = db.Column(db.Float)  # 재고자산 (당좌비율 계산용)
+    cash_and_equivalents = db.Column(db.Float)  # 현금및현금성자산 (순부채비율 계산용)
+    operating_income = db.Column(db.Float)  # 영업이익
+    net_income_attributable = db.Column(db.Float)  # 당기순이익(지배)
+    profit_before_tax = db.Column(db.Float)  # 세전계속사업이익
+    gross_profit = db.Column(db.Float)  # 매출총이익
     fetched_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     @property

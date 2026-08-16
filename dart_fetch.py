@@ -68,19 +68,40 @@ def _extract_fields(items):
     # 계정명(account_nm)은 "당기순이익" vs "당기순이익(손실)"처럼 같은 회사도 연도마다
     # 표기가 달라질 수 있어 매칭 기준으로 쓰기엔 불안정하다. 대신 DART가 부여하는
     # IFRS 표준 계정 ID(account_id)로 매칭한다 - 이건 표기와 무관하게 항상 고정이다.
-    ACCOUNT_ID_MAP = {
+    # 재무상태표 항목: sj_nm이 "재무상태표"인 것만 취급한다(같은 account_id가 다른
+    # 표(자본변동표 등)에도 나올 수 있어 값이 뒤섞이는 걸 막기 위함).
+    BS_ACCOUNT_ID_MAP = {
         "ifrs-full_Equity": "total_equity",
+        "ifrs-full_Assets": "total_assets",
+        "ifrs-full_CurrentAssets": "current_assets",
+        "ifrs-full_CurrentLiabilities": "current_liabilities",
+        "ifrs-full_Liabilities": "total_liabilities",
+        "ifrs-full_EquityAttributableToOwnersOfParent": "equity_attributable",
+        "ifrs-full_IssuedCapital": "issued_capital",
+        "ifrs-full_Inventories": "inventories",
+        "ifrs-full_CashAndCashEquivalents": "cash_and_equivalents",
+    }
+    # 손익계산서 항목: "당기순이익" 등은 현금흐름표·자본변동표에도 같은 account_id로
+    # 나오는데 그쪽 금액은 지배/비지배 배분이 다르게 섞여 있어 반드시 손익계산서·
+    # 포괄손익계산서 표에서만 취급한다(기존에도 이 이유로 이렇게 되어 있었음).
+    IC_ACCOUNT_ID_MAP = {
         "ifrs-full_ProfitLoss": "net_income",
         "ifrs-full_Revenue": "revenue",
+        "dart_OperatingIncomeLoss": "operating_income",
+        "ifrs-full_ProfitLossAttributableToOwnersOfParent": "net_income_attributable",
+        "ifrs-full_ProfitLossBeforeTax": "profit_before_tax",
+        "ifrs-full_GrossProfit": "gross_profit",
     }
     result = {}
     for it in items:
-        field = ACCOUNT_ID_MAP.get(it.get("account_id"))
+        sj_nm = it.get("sj_nm")
+        account_id = it.get("account_id")
+        field = None
+        if sj_nm == "재무상태표":
+            field = BS_ACCOUNT_ID_MAP.get(account_id)
+        elif sj_nm in ("손익계산서", "포괄손익계산서"):
+            field = IC_ACCOUNT_ID_MAP.get(account_id)
         if not field or field in result:
-            continue
-        if field == "total_equity" and it.get("sj_nm") != "재무상태표":
-            continue
-        if field in ("net_income", "revenue") and it.get("sj_nm") not in ("손익계산서", "포괄손익계산서"):
             continue
         raw = (it.get("thstrm_amount") or "").replace(",", "").strip()
         if not raw:
@@ -129,8 +150,17 @@ def fetch_company_year(corp_code, bsns_year):
     return None
 
 
+EXTRA_FIELDS = (
+    "total_assets", "current_assets", "current_liabilities", "total_liabilities",
+    "equity_attributable", "issued_capital", "inventories", "cash_and_equivalents",
+    "operating_income", "net_income_attributable", "profit_before_tax", "gross_profit",
+)
+
+
 def backfill(app, db, KrFundamental, stock_codes, years, max_requests=18000, progress_every=200):
-    """주어진 종목코드 목록 × 연도 목록에 대해 아직 없는 조합만 채워 넣는다.
+    """주어진 종목코드 목록 × 연도 목록에 대해 아직 없거나 확장 필드(EXTRA_FIELDS)가
+    비어 있는 조합만 채워 넣는다 - 기존에 기본 3개 필드만으로 저장해둔 행도 이번에
+    확장 필드까지 채워 업데이트한다(재무상태표/포괄손익계산서 확장분).
 
     max_requests: 이번 실행에서 소비할 최대 API 요청 수(대략치, 회사당 1~2회이므로
     실제 소비량은 이보다 적을 수 있음) - 일일 한도 근처에서 스스로 멈춰 다음 번
@@ -139,12 +169,14 @@ def backfill(app, db, KrFundamental, stock_codes, years, max_requests=18000, pro
     corp_map = fetch_corp_code_map()
 
     with app.app_context():
-        existing = {
-            (row.stock_code, row.bsns_year)
-            for row in KrFundamental.query.with_entities(
-                KrFundamental.stock_code, KrFundamental.bsns_year
-            ).all()
-        }
+        rows = KrFundamental.query.with_entities(
+            KrFundamental.id, KrFundamental.stock_code, KrFundamental.bsns_year,
+            KrFundamental.operating_income,
+        ).all()
+        # operating_income은 이번에 새로 추가한 필드라 값이 있으면 이미 확장 필드까지
+        # 채워진 행이라는 뜻이다(재무제표에 영업이익 자체가 없는 극소수 업종은
+        # 매번 재조회하게 되지만 안전한 쪽으로 판단하는 게 낫다).
+        existing = {(r.stock_code, r.bsns_year): (r.id, r.operating_income) for r in rows}
 
     requests_used = 0
     done = 0
@@ -160,7 +192,9 @@ def backfill(app, db, KrFundamental, stock_codes, years, max_requests=18000, pro
             continue
 
         for year in years:
-            if (code, str(year)) in existing:
+            key = (code, str(year))
+            existing_id, existing_op_income = existing.get(key, (None, None))
+            if existing_id is not None and existing_op_income is not None:
                 continue
             if requests_used >= max_requests:
                 print(f"[dart_fetch] 요청 한도({max_requests})에 도달해 중단합니다. "
@@ -173,13 +207,20 @@ def backfill(app, db, KrFundamental, stock_codes, years, max_requests=18000, pro
 
             if result:
                 with app.app_context():
-                    row = KrFundamental(
-                        stock_code=code, corp_code=info["corp_code"], corp_name=info["corp_name"],
-                        bsns_year=str(year), fs_div=result["fs_div"], rcept_no=result.get("rcept_no", ""),
-                        total_equity=result["total_equity"], net_income=result["net_income"],
-                        revenue=result.get("revenue"), fetched_at=datetime.utcnow(),
-                    )
-                    db.session.add(row)
+                    if existing_id is not None:
+                        row = KrFundamental.query.get(existing_id)
+                    else:
+                        row = KrFundamental(stock_code=code, corp_code=info["corp_code"],
+                                             corp_name=info["corp_name"], bsns_year=str(year))
+                        db.session.add(row)
+                    row.fs_div = result["fs_div"]
+                    row.rcept_no = result.get("rcept_no", "")
+                    row.total_equity = result["total_equity"]
+                    row.net_income = result["net_income"]
+                    row.revenue = result.get("revenue")
+                    for f in EXTRA_FIELDS:
+                        setattr(row, f, result.get(f))
+                    row.fetched_at = datetime.utcnow()
                     db.session.commit()
                 stored += 1
             else:
