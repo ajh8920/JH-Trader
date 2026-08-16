@@ -1658,7 +1658,8 @@ function renderFilteredScreenerRows() {
 
   el.innerHTML = `
     <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">${filtered.length.toLocaleString('ko-KR')}개 종목${filtered.length !== scrRawResults.length ? ` (전체 ${scrRawResults.length.toLocaleString('ko-KR')}개 중)` : ''}</div>
-    <div class="scr-table-wrap">
+    <div class="scr-table-outer">
+    <div class="scr-table-wrap" id="scr-table-wrap">
       <table class="scr-table">
         <thead>
           <tr>
@@ -1703,7 +1704,34 @@ function renderFilteredScreenerRows() {
             </tr>`).join('')}
         </tbody>
       </table>
+    </div>
+    <div class="scr-scrollbar-thumb" id="scr-scrollbar-thumb"></div>
     </div>`;
+
+  setupScrFloatingScrollbar();
+}
+
+function setupScrFloatingScrollbar() {
+  const wrap = document.getElementById('scr-table-wrap');
+  const thumb = document.getElementById('scr-scrollbar-thumb');
+  if (!wrap || !thumb) return;
+
+  const HEAD_H = 38; // thead 높이만큼 막대 시작 위치를 아래로 내려 헤더와 안 겹치게 함
+  function update() {
+    const trackH = wrap.clientHeight - HEAD_H;
+    const ratio = wrap.clientHeight / wrap.scrollHeight;
+    if (ratio >= 1 || trackH <= 0) {
+      thumb.style.height = '0px';
+      return;
+    }
+    const h = Math.max(24, trackH * ratio);
+    const maxTop = trackH - h;
+    const scrollRatio = wrap.scrollTop / (wrap.scrollHeight - wrap.clientHeight);
+    thumb.style.height = h + 'px';
+    thumb.style.top = (HEAD_H + maxTop * scrollRatio) + 'px';
+  }
+  wrap.addEventListener('scroll', update);
+  update();
 }
 
 let scrPopoverEl = null;
