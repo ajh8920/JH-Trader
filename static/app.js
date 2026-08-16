@@ -120,9 +120,8 @@ async function saveApiKey() {
 // ─── 탭 전환 ─────────────────────────────────────────────────────────────────
 
 function switchTab(name) {
-  document.querySelectorAll('.tab').forEach((btn, i) => {
-    const active = ['macro', 'search', 'portfolio', 'alerts', 'backtest', 'live', 'lab', 'krswing', 'krquant', 'screener'][i] === name;
-    btn.classList.toggle('active', active);
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === name);
   });
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById('sec-' + name).classList.add('active');

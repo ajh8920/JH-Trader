@@ -62,18 +62,20 @@
     </header>
 
     <nav class="tabs" role="tablist">
-      <button class="tab active" onclick="switchTab('macro')" role="tab"><i class="ti ti-world" aria-hidden="true"></i> 매크로</button>
+      <button class="tab active" data-tab="macro" onclick="switchTab('macro')" role="tab"><i class="ti ti-world" aria-hidden="true"></i> 매크로</button>
       <!-- 종목 검색/포트폴리오/알림 탭은 기능은 그대로 두고 화면에서만 숨김 처리했습니다.
            나중에 다시 노출하려면 아래 3개 버튼의 style="display:none;"만 지우면 됩니다. -->
-      <button class="tab" onclick="switchTab('search')" role="tab" style="display:none;"><i class="ti ti-search" aria-hidden="true"></i> 종목 검색</button>
-      <button class="tab" onclick="switchTab('portfolio')" role="tab" style="display:none;"><i class="ti ti-briefcase" aria-hidden="true"></i> 포트폴리오</button>
-      <button class="tab" onclick="switchTab('alerts')" role="tab" style="display:none;"><i class="ti ti-bell" aria-hidden="true"></i> 알림 <span id="alert-badge" class="badge" style="display:none;">0</span></button>
-      <button class="tab" onclick="switchTab('backtest')" role="tab"><i class="ti ti-history" aria-hidden="true"></i> 백테스트</button>
-      <button class="tab" onclick="switchTab('live')" role="tab"><i class="ti ti-infinity" aria-hidden="true"></i> 실전 현황</button>
-      <button class="tab" onclick="switchTab('lab')" role="tab"><i class="ti ti-flask" aria-hidden="true"></i> 실험실</button>
-      <button class="tab" onclick="switchTab('krswing')" role="tab"><i class="ti ti-chart-candle" aria-hidden="true"></i> 국내 스윙</button>
-      <button class="tab" onclick="switchTab('krquant')" role="tab"><i class="ti ti-filter" aria-hidden="true"></i> 국내 퀀트</button>
-      <button class="tab" onclick="switchTab('screener')" role="tab"><i class="ti ti-trending-up" aria-hidden="true"></i> 스크리닝</button>
+      <button class="tab" data-tab="search" onclick="switchTab('search')" role="tab" style="display:none;"><i class="ti ti-search" aria-hidden="true"></i> 종목 검색</button>
+      <button class="tab" data-tab="portfolio" onclick="switchTab('portfolio')" role="tab" style="display:none;"><i class="ti ti-briefcase" aria-hidden="true"></i> 포트폴리오</button>
+      <button class="tab" data-tab="alerts" onclick="switchTab('alerts')" role="tab" style="display:none;"><i class="ti ti-bell" aria-hidden="true"></i> 알림 <span id="alert-badge" class="badge" style="display:none;">0</span></button>
+      {% if show_all_tabs %}
+      <button class="tab" data-tab="backtest" onclick="switchTab('backtest')" role="tab"><i class="ti ti-history" aria-hidden="true"></i> 백테스트</button>
+      <button class="tab" data-tab="live" onclick="switchTab('live')" role="tab"><i class="ti ti-infinity" aria-hidden="true"></i> 실전 현황</button>
+      <button class="tab" data-tab="lab" onclick="switchTab('lab')" role="tab"><i class="ti ti-flask" aria-hidden="true"></i> 실험실</button>
+      <button class="tab" data-tab="krswing" onclick="switchTab('krswing')" role="tab"><i class="ti ti-chart-candle" aria-hidden="true"></i> 국내 스윙</button>
+      <button class="tab" data-tab="krquant" onclick="switchTab('krquant')" role="tab"><i class="ti ti-filter" aria-hidden="true"></i> 국내 퀀트</button>
+      {% endif %}
+      <button class="tab" data-tab="screener" onclick="switchTab('screener')" role="tab"><i class="ti ti-trending-up" aria-hidden="true"></i> 스크리닝</button>
     </nav>
 
     <main>
@@ -132,6 +134,7 @@
         </div>
       </section>
 
+      {% if show_all_tabs %}
       <!-- 무한매수법 백테스트 -->
       <section id="sec-backtest" class="section">
         <div class="card">
@@ -436,6 +439,7 @@
         </div>
         <div id="krquant-result"></div>
       </section>
+      {% endif %}
 
       <!-- 트렌드 템플릿(미너비니 스타일) 스크리닝 -->
       <section id="sec-screener" class="section">

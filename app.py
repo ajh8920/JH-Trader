@@ -273,7 +273,11 @@ def logout():
 @app.route("/")
 @login_required
 def index():
-    return render_template("index.html", has_key=bool(get_effective_api_key(current_user)))
+    return render_template(
+        "index.html",
+        has_key=bool(get_effective_api_key(current_user)),
+        show_all_tabs=current_user.is_admin,
+    )
 
 
 @app.route("/admin")
