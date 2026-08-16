@@ -100,6 +100,10 @@ if _database_url.startswith("postgres://"):
     _database_url = _database_url.replace("postgres://", "postgresql://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = _database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# 커넥션 풀에 남아있던 죽은 연결(DB 재시작, idle timeout 등으로 끊긴 연결)을 쓰려다
+# 요청이 그대로 실패하는 걸 막는다 - 매 체크아웃 시 가벼운 SELECT 1로 살아있는지
+# 확인하고, 죽어있으면 자동으로 새 연결을 만든다.
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
