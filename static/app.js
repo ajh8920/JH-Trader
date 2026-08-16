@@ -1812,8 +1812,47 @@ function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
   const fmtPct = v => v == null ? null : `${v > 0 ? '+' : ''}${Number(v).toFixed(1)}%`;
   const fmtPctPlain = v => v == null ? null : `${Number(v).toFixed(1)}%`;
   const fmtMult = v => v == null ? null : `${Number(v).toFixed(1)}배`;
+  // 재무상태표/포괄손익계산서 절대금액 포맷 - 시가총액과 달리 Finnhub
+  // financials-reported는 "백만 달러"가 아니라 달러 원단위 그대로 온다.
+  const fmtAbs = v => {
+    if (v == null) return null;
+    const neg = v < 0;
+    const av = Math.abs(v);
+    let s;
+    if (isUS) {
+      if (av >= 1e12) s = `$${(av / 1e12).toFixed(2)}T`;
+      else if (av >= 1e9) s = `$${(av / 1e9).toFixed(2)}B`;
+      else if (av >= 1e6) s = `$${(av / 1e6).toFixed(0)}M`;
+      else s = `$${Math.round(av).toLocaleString('en-US')}`;
+    } else {
+      const jo = av / 1e12;
+      s = jo >= 1 ? `${jo.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}조` : `${(av / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 0 })}억`;
+    }
+    return neg ? `-${s}` : s;
+  };
 
   const categories = [
+    {
+      key: 'bs', icon: '🧾', title: '재무상태표',
+      items: [
+        ['자산총계', fmtAbs(m.totalAssets)],
+        ['부채총계', fmtAbs(m.totalLiabilities)],
+        ['자본총계', fmtAbs(m.totalEquity)],
+        ['자본총계(지배)', fmtAbs(m.equityAttributable)],
+        ['자본금', fmtAbs(m.issuedCapital)],
+      ],
+    },
+    {
+      key: 'ic', icon: '📄', title: '포괄손익계산서',
+      items: [
+        ['매출액', fmtAbs(m.revenue)],
+        ['매출총이익', fmtAbs(m.grossProfit)],
+        ['영업이익', fmtAbs(m.operatingIncome)],
+        ['세전계속사업이익', fmtAbs(m.profitBeforeTax)],
+        ['당기순이익', fmtAbs(m.netIncome)],
+        ['당기순이익(지배)', fmtAbs(m.netIncomeAttributable)],
+      ],
+    },
     {
       key: 'profit', icon: '📈', title: '수익성',
       items: [
@@ -1828,7 +1867,8 @@ function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
       key: 'growth', icon: '🌱', title: '성장성 (전년동기대비)',
       items: [
         ['매출액증가율', fmtPct(m.revenueGrowth)],
-        ['EPS성장률', fmtPct(d.epsGrowth)],
+        ['영업이익증가율', fmtPct(m.opIncomeGrowth)],
+        ['EPS(순이익)증가율', fmtPct(d.epsGrowth)],
       ],
     },
     {
@@ -1837,6 +1877,7 @@ function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
         ['유동비율', fmtPctPlain(m.currentRatio)],
         ['당좌비율', fmtPctPlain(m.quickRatio)],
         ['부채비율', fmtPctPlain(m.debtRatio)],
+        ['순부채비율', fmtPctPlain(m.netDebtRatio)],
       ],
     },
     {
@@ -1848,6 +1889,12 @@ function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
         ['PSR', fmtMult(m.psr)],
         ['EV/EBITDA', fmtMult(m.evEbitda)],
         ['배당수익률', d.dividendYield != null ? Number(d.dividendYield).toFixed(2) + '%' : null],
+      ],
+    },
+    {
+      key: 'consensus', icon: '🎯', title: '컨센서스',
+      items: [
+        ['투자의견', d.analystRating || null],
       ],
     },
   ];

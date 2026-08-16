@@ -1432,9 +1432,9 @@ def kr_quant_price_cache_refresher():
 # 일봉 기준 지표라 하루 한두 번이면 충분해 12시간 주기로 돌린다.
 
 TREND_SCREEN_MIN_INTERVAL_SECONDS = 12 * 3600
-# 미국 재무 보강(시가총액/PE/EPS성장률/배당수익률/애널리스트 레이팅)은 Finnhub
-# 무료 API 호출 한도(분당 60회) 때문에 종목당 2회 호출×약 600종목이면 한 바퀴에
-# 20분 넘게 걸린다 - 가격 갱신(12시간)보다 더 느슨한 주기로 돌린다.
+# 미국 재무 보강(시가총액/PE/EPS성장률/배당수익률/애널리스트 레이팅/재무제표
+# 절대금액)은 Finnhub 무료 API 호출 한도(분당 60회) 때문에 종목당 3회 호출×약
+# 600종목이면 한 바퀴에 30분 넘게 걸린다 - 가격 갱신(12시간)보다 더 느슨한 주기로 돈다.
 US_FUND_MIN_INTERVAL_SECONDS = 20 * 3600
 
 
@@ -1474,10 +1474,9 @@ def _enrich_kr_fundamentals(results):
         r["dividendYield"] = None  # 국내는 배당 데이터 소스가 없어 항상 비움
         r["analystRating"] = None  # 국내는 애널리스트 레이팅 소스가 없어 항상 비움
 
-        # 상세 모달 아코디언용 확장 지표 - DART에서 받아둔 자본총계/순이익/매출액
-        # 3개 항목만으로 계산 가능한 것만 채운다. 영업이익률/ROA/유동비율/부채비율 등은
-        # DART에서 재무상태표·손익계산서 항목을 더 받아와야 해서 지금은 비워둔다
-        # (프런트에서 "제공되지 않음"으로 표시됨).
+        # 상세 모달 아코디언·필터용 확장 지표. DART 확장 필드(재무상태표/손익계산서)가
+        # 채워진 종목은 비율까지 전부 계산하고, 아직 옛 3개 필드만 있는 종목(재조회
+        # 전이거나 DART에 해당 계정이 없는 업종)은 계산 가능한 것만 채운다.
         metrics = {}
         if latest_f and latest_f.revenue and latest_f.net_income is not None:
             metrics["netMargin"] = round(latest_f.net_income / latest_f.revenue * 100, 1)
@@ -1490,6 +1489,44 @@ def _enrich_kr_fundamentals(results):
             metrics["psr"] = round(market_cap / latest_f.revenue, 2)
         if latest_f and prev_f and latest_f.revenue and prev_f.revenue:
             metrics["revenueGrowth"] = round((latest_f.revenue - prev_f.revenue) / abs(prev_f.revenue) * 100, 1)
+
+        if latest_f and latest_f.revenue and latest_f.operating_income is not None:
+            metrics["operatingMargin"] = round(latest_f.operating_income / latest_f.revenue * 100, 1)
+        if latest_f and latest_f.revenue and latest_f.gross_profit is not None:
+            metrics["grossMargin"] = round(latest_f.gross_profit / latest_f.revenue * 100, 1)
+        if latest_f and latest_f.total_assets and latest_f.net_income is not None:
+            metrics["roa"] = round(latest_f.net_income / latest_f.total_assets * 100, 1)
+        if latest_f and latest_f.current_liabilities:
+            if latest_f.current_assets is not None:
+                metrics["currentRatio"] = round(latest_f.current_assets / latest_f.current_liabilities * 100, 1)
+            if latest_f.current_assets is not None and latest_f.inventories is not None:
+                metrics["quickRatio"] = round(
+                    (latest_f.current_assets - latest_f.inventories) / latest_f.current_liabilities * 100, 1
+                )
+        if latest_f and latest_f.total_equity and latest_f.total_liabilities is not None:
+            metrics["debtRatio"] = round(latest_f.total_liabilities / latest_f.total_equity * 100, 1)
+            if latest_f.cash_and_equivalents is not None:
+                net_debt = latest_f.total_liabilities - latest_f.cash_and_equivalents
+                metrics["netDebtRatio"] = round(net_debt / latest_f.total_equity * 100, 1)
+        if latest_f and prev_f and latest_f.operating_income is not None and prev_f.operating_income:
+            metrics["opIncomeGrowth"] = round(
+                (latest_f.operating_income - prev_f.operating_income) / abs(prev_f.operating_income) * 100, 1
+            )
+
+        # 재무상태표/포괄손익계산서 카테고리용 절대금액(원 단위 그대로).
+        if latest_f:
+            for key, val in (
+                ("totalAssets", latest_f.total_assets), ("currentAssets", latest_f.current_assets),
+                ("totalLiabilities", latest_f.total_liabilities), ("currentLiabilities", latest_f.current_liabilities),
+                ("totalEquity", latest_f.total_equity), ("equityAttributable", latest_f.equity_attributable),
+                ("issuedCapital", latest_f.issued_capital), ("revenue", latest_f.revenue),
+                ("grossProfit", latest_f.gross_profit), ("operatingIncome", latest_f.operating_income),
+                ("profitBeforeTax", latest_f.profit_before_tax), ("netIncome", latest_f.net_income),
+                ("netIncomeAttributable", latest_f.net_income_attributable),
+            ):
+                if val is not None:
+                    metrics[key] = val
+
         r["metrics"] = metrics
 
 
@@ -1597,6 +1634,59 @@ def _extract_us_metrics(m):
     return {k: v for k, v in metrics.items() if v is not None}
 
 
+# Finnhub /stock/financials-reported는 SEC XBRL 원문을 그대로 넘겨주는데, 같은
+# 항목이라도 회사마다 태그(concept)가 조금씩 다르게 붙는다(예: 매출액이
+# RevenueFromContractWithCustomerExcludingAssessedTax vs ...IncludingAssessedTax).
+# 흔한 변형을 우선순위 순으로 나열해 첫 매칭을 쓴다. 은행/금융업은 재무제표
+# 구조 자체가 달라(매출/매출원가 개념이 없음) 상당수 항목이 비게 되는데,
+# 이건 데이터 자체의 한계라 국내 종목처럼 "-"로 표시된다.
+US_CONCEPT_CANDIDATES = {
+    "totalAssets": ["us-gaap_Assets"],
+    "currentAssets": ["us-gaap_AssetsCurrent"],
+    "totalLiabilities": ["us-gaap_Liabilities"],
+    "currentLiabilities": ["us-gaap_LiabilitiesCurrent"],
+    "totalEquity": ["us-gaap_StockholdersEquity", "us-gaap_StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
+    "inventories": ["us-gaap_InventoryNet"],
+    "cash": ["us-gaap_CashAndCashEquivalentsAtCarryingValue", "us-gaap_CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"],
+    "revenue": [
+        "us-gaap_RevenueFromContractWithCustomerExcludingAssessedTax",
+        "us-gaap_RevenueFromContractWithCustomerIncludingAssessedTax",
+        "us-gaap_Revenues", "us-gaap_RevenuesNetOfInterestExpense",
+    ],
+    "grossProfit": ["us-gaap_GrossProfit"],
+    "operatingIncome": ["us-gaap_OperatingIncomeLoss"],
+    "profitBeforeTax": [
+        "us-gaap_IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+        "us-gaap_IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+    ],
+    "netIncome": ["us-gaap_NetIncomeLoss", "us-gaap_ProfitLoss"],
+}
+
+
+def _extract_us_financials(financials_data):
+    """Finnhub /stock/financials-reported 응답에서 재무상태표(bs)·손익계산서(ic)
+    절대금액을 뽑는다. 가장 최근 연간 보고서 하나만 쓴다."""
+    data = (financials_data or {}).get("data") or []
+    if not data:
+        return {}
+    report = data[0].get("report") or {}
+    by_concept = {}
+    for section in ("bs", "ic"):
+        for item in report.get(section, []) or []:
+            c = item.get("concept")
+            v = item.get("value")
+            if c and c not in by_concept and isinstance(v, (int, float)):
+                by_concept[c] = v
+
+    out = {}
+    for field, candidates in US_CONCEPT_CANDIDATES.items():
+        for c in candidates:
+            if c in by_concept:
+                out[field] = by_concept[c]
+                break
+    return out
+
+
 def _analyst_rating_label(rec):
     if not rec:
         return None
@@ -1614,10 +1704,11 @@ def _analyst_rating_label(rec):
 
 
 def us_fundamentals_refresher():
-    """미국 스크리닝 종목의 시가총액/PE/EPS성장률/배당수익률/애널리스트 레이팅을
-    Finnhub(서버 공용 기본 키)로 보강한다. 무료 API 호출 한도(분당 60회) 안에서
-    종목당 2회(metric, recommendation) 호출하며 천천히 도는 별도 백그라운드 작업이라
-    가격/조건 갱신(trend_screen_refresher)과 주기·리듬을 분리했다.
+    """미국 스크리닝 종목의 시가총액/PE/EPS성장률/배당수익률/애널리스트 레이팅/
+    재무제표 절대금액을 Finnhub(서버 공용 기본 키)로 보강한다. 무료 API 호출
+    한도(분당 60회) 안에서 종목당 3회(metric, recommendation, financials-reported)
+    호출하며 천천히 도는 별도 백그라운드 작업이라 가격/조건 갱신(trend_screen_refresher)과
+    주기·리듬을 분리했다.
 
     gunicorn --workers 2라 이 스레드가 워커마다 하나씩 독립적으로 돈다(의도된
     설계). 종목 하나씩 "SELECT ... FOR UPDATE SKIP LOCKED"로 원자적으로 선점한
@@ -1664,6 +1755,8 @@ def us_fundamentals_refresher():
                     time.sleep(1.1)
                     rec_data, _ = fh_get("/stock/recommendation", key, {"symbol": code})
                     time.sleep(1.1)
+                    financials_data, _ = fh_get("/stock/financials-reported", key, {"symbol": code, "freq": "annual"})
+                    time.sleep(1.1)
 
                     with app.app_context():
                         row = TrendScreenCache.query.get(row_id)
@@ -1675,7 +1768,13 @@ def us_fundamentals_refresher():
                             row.dividend_yield = m.get("dividendYieldIndicatedAnnual")
                             latest_rec = rec_data[0] if isinstance(rec_data, list) and rec_data else {}
                             row.analyst_rating = _analyst_rating_label(latest_rec)
-                            row.metrics_json = json.dumps(_extract_us_metrics(m))
+                            metrics = _extract_us_metrics(m)
+                            metrics.update(_extract_us_financials(financials_data))
+                            if metrics.get("totalLiabilities") is not None and metrics.get("cash") is not None and metrics.get("totalEquity"):
+                                metrics["netDebtRatio"] = round(
+                                    (metrics["totalLiabilities"] - metrics["cash"]) / metrics["totalEquity"] * 100, 1
+                                )
+                            row.metrics_json = json.dumps(metrics)
                             row.fund_updated_at = datetime.utcnow()
                             db.session.commit()
                     processed += 1
