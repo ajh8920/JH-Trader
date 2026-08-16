@@ -48,8 +48,15 @@ def load_universe(market):
     return tickers
 
 
-def fetch_ohlc_history_batch(tickers, start_date, end_date):
+def fetch_ohlc_history_batch(tickers, start_date, end_date, max_attempts=3, dl_timeout=30, backoff_base=1.5):
     """여러 종목의 전체 기간 OHLC 히스토리를 배치로 가져온다.
+
+    max_attempts/dl_timeout/backoff_base로 재시도 강도를 조절할 수 있다 - 백그라운드
+    스크리닝(전체 유니버스)처럼 실패해도 다음 주기에 다시 채우면 되는 경우는 기본값
+    (넉넉한 재시도)을 쓰고, 종목 상세 모달처럼 사용자가 요청 중에 기다리는 경우는
+    호출부에서 더 가벼운 값을 넘겨 Render 요청 타임아웃(30초)에 걸리지 않게 한다
+    (재시도 3회×30초 타임아웃이면 최악의 경우 요청 하나가 90초 넘게 걸려 그 자체로
+    요청이 죽는 문제가 있었다).
 
     반환: {ticker: [{"date":..., "close":..., "high":..., "low":...}, ...]} (날짜 오름차순)
     """
@@ -63,17 +70,17 @@ def fetch_ohlc_history_batch(tickers, start_date, end_date):
     for i in range(0, len(tickers), CHUNK):
         chunk = tickers[i:i + CHUNK]
         df = None
-        for attempt in range(3):
+        for attempt in range(max_attempts):
             try:
                 df = yf.download(
                     chunk, start=start_date, end=end_date,
-                    progress=False, auto_adjust=False, timeout=30, group_by="ticker", threads=False,
+                    progress=False, auto_adjust=False, timeout=dl_timeout, group_by="ticker", threads=False,
                 )
                 if df is not None and not df.empty:
                     break
             except Exception:
                 df = None
-            time.sleep(1.5 * (attempt + 1))
+            time.sleep(backoff_base * (attempt + 1))
         else:
             continue
         time.sleep(0.5)

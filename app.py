@@ -1046,8 +1046,12 @@ def screener_detail():
         ticker = code
     end = datetime.today()
     start = end - timedelta(days=450)
+    # 사용자가 클릭해서 기다리는 요청이라 재시도를 가볍게(최악의 경우에도 30초
+    # 요청 타임아웃 안에 끝나도록) 해서, 못 받아오면 그냥 차트만 빈 채로 나머지
+    # 정보(재무/조건 등)는 보여준다 - 요청 자체가 죽는 것보다는 낫다.
     history = ts.fetch_ohlc_history_batch(
-        [ticker], start.strftime("%Y-%m-%d"), (end + timedelta(days=1)).strftime("%Y-%m-%d")
+        [ticker], start.strftime("%Y-%m-%d"), (end + timedelta(days=1)).strftime("%Y-%m-%d"),
+        max_attempts=2, dl_timeout=8, backoff_base=1.0,
     )
     bars = history.get(ticker, [])
 
