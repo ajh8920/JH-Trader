@@ -1640,39 +1640,48 @@ def us_fundamentals_refresher():
             cutoff = datetime.utcnow() - timedelta(seconds=US_FUND_MIN_INTERVAL_SECONDS)
             processed = 0
             while True:
-                with app.app_context():
-                    row = (
-                        TrendScreenCache.query.filter_by(market="US")
-                        .filter(db.or_(TrendScreenCache.fund_updated_at.is_(None), TrendScreenCache.fund_updated_at < cutoff))
-                        .order_by(TrendScreenCache.fund_updated_at.is_(None).desc(), TrendScreenCache.fund_updated_at.asc())
-                        .with_for_update(skip_locked=True)
-                        .first()
-                    )
-                    if row is None:
-                        break
-                    row.fund_updated_at = datetime.utcnow()  # 먼저 선점 표시부터 남겨 다른 워커가 못 집어가게 함
-                    db.session.commit()
-                    code, row_id = row.code, row.id
-
-                metric_data, _ = fh_get("/stock/metric", key, {"symbol": code, "metric": "all"})
-                time.sleep(1.1)
-                rec_data, _ = fh_get("/stock/recommendation", key, {"symbol": code})
-                time.sleep(1.1)
-
-                with app.app_context():
-                    row = TrendScreenCache.query.get(row_id)
-                    if row is not None:
-                        m = (metric_data or {}).get("metric") or {}
-                        row.market_cap = m.get("marketCapitalization")
-                        row.pe_ratio = m.get("peTTM")
-                        row.eps_growth = m.get("epsGrowthTTMYoy")
-                        row.dividend_yield = m.get("dividendYieldIndicatedAnnual")
-                        latest_rec = rec_data[0] if isinstance(rec_data, list) and rec_data else {}
-                        row.analyst_rating = _analyst_rating_label(latest_rec)
-                        row.metrics_json = json.dumps(_extract_us_metrics(m))
-                        row.fund_updated_at = datetime.utcnow()
+                # 종목 하나 처리 중 생기는 예외(잘못된 응답 형식 등)를 여기서 잡아야
+                # 한다 - 이 안에서 처리 안 하면 바깥쪽 try/except까지 튀어서 남은
+                # 수백 종목을 통째로 포기하고 30분을 쉬어버린다(실제로 겪은 버그:
+                # 종목 하나가 실패하자 나머지 400여 종목이 전혀 처리되지 않았다).
+                code = None
+                try:
+                    with app.app_context():
+                        row = (
+                            TrendScreenCache.query.filter_by(market="US")
+                            .filter(db.or_(TrendScreenCache.fund_updated_at.is_(None), TrendScreenCache.fund_updated_at < cutoff))
+                            .order_by(TrendScreenCache.fund_updated_at.is_(None).desc(), TrendScreenCache.fund_updated_at.asc())
+                            .with_for_update(skip_locked=True)
+                            .first()
+                        )
+                        if row is None:
+                            break
+                        row.fund_updated_at = datetime.utcnow()  # 먼저 선점 표시부터 남겨 다른 워커가 못 집어가게 함
                         db.session.commit()
-                processed += 1
+                        code, row_id = row.code, row.id
+
+                    metric_data, _ = fh_get("/stock/metric", key, {"symbol": code, "metric": "all"})
+                    time.sleep(1.1)
+                    rec_data, _ = fh_get("/stock/recommendation", key, {"symbol": code})
+                    time.sleep(1.1)
+
+                    with app.app_context():
+                        row = TrendScreenCache.query.get(row_id)
+                        if row is not None:
+                            m = (metric_data or {}).get("metric") or {}
+                            row.market_cap = m.get("marketCapitalization")
+                            row.pe_ratio = m.get("peTTM")
+                            row.eps_growth = m.get("epsGrowthTTMYoy")
+                            row.dividend_yield = m.get("dividendYieldIndicatedAnnual")
+                            latest_rec = rec_data[0] if isinstance(rec_data, list) and rec_data else {}
+                            row.analyst_rating = _analyst_rating_label(latest_rec)
+                            row.metrics_json = json.dumps(_extract_us_metrics(m))
+                            row.fund_updated_at = datetime.utcnow()
+                            db.session.commit()
+                    processed += 1
+                except Exception:
+                    app.logger.exception(f"미국 재무 보강 - 종목 처리 실패, 다음 종목으로 계속 진행: {code}")
+                    time.sleep(1)
             if processed:
                 print(f"[미국 재무 보강] {processed}개 종목 갱신 완료")
         except Exception:
