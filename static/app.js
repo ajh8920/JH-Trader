@@ -1534,19 +1534,56 @@ function rsBadgeClass(rs) {
   return 'weak';
 }
 
-function renderScreenerResults(data) {
-  const el = document.getElementById('screener-result');
-  const results = data.results || [];
-  const isUS = data.market === 'US';
-  const fmtPrice = v => v == null ? '-' : (isUS ? `$${Number(v).toFixed(2)}` : `${Math.round(v).toLocaleString('ko-KR')}원`);
+let scrRawResults = [];
+let scrIsUS = false;
+let scrPreset = 'all';
 
-  if (!results.length) {
+const SCR_PRESETS = {
+  all: () => true,
+  rsStrong: r => r.rsRating != null && r.rsRating >= 90,
+  nearHigh: r => r.pctBelow52wHigh != null && r.pctBelow52wHigh <= 10,
+  freshBreakout: r => r.pctAbove52wLow != null && r.pctAbove52wLow >= 30 && r.pctAbove52wLow <= 60,
+};
+
+function renderScreenerResults(data) {
+  scrRawResults = data.results || [];
+  scrIsUS = data.market === 'US';
+  renderFilteredScreenerRows();
+}
+
+function setScreenerPreset(preset) {
+  scrPreset = preset;
+  document.querySelectorAll('#scr-pills .scr-pill').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.preset === preset);
+  });
+  renderFilteredScreenerRows();
+}
+
+function renderFilteredScreenerRows() {
+  const el = document.getElementById('screener-result');
+  if (!el) return;
+  const query = (document.getElementById('scr-search')?.value || '').trim().toLowerCase();
+  const presetFn = SCR_PRESETS[scrPreset] || SCR_PRESETS.all;
+
+  const filtered = scrRawResults.filter(r => {
+    if (!presetFn(r)) return false;
+    if (!query) return true;
+    return r.name.toLowerCase().includes(query) || r.code.toLowerCase().includes(query);
+  });
+
+  const fmtPrice = v => v == null ? '-' : (scrIsUS ? `$${Number(v).toFixed(2)}` : `${Math.round(v).toLocaleString('ko-KR')}원`);
+
+  if (!scrRawResults.length) {
     el.innerHTML = `<div class="empty-state" style="padding:2.5rem 1.5rem;"><i class="ti ti-filter-off" aria-hidden="true"></i><p>조건을 만족하는 종목이 없습니다</p></div>`;
+    return;
+  }
+  if (!filtered.length) {
+    el.innerHTML = `<div class="empty-state" style="padding:2.5rem 1.5rem;"><i class="ti ti-search-off" aria-hidden="true"></i><p>검색/필터 조건에 맞는 종목이 없습니다</p></div>`;
     return;
   }
 
   el.innerHTML = `
-    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">${results.length.toLocaleString('ko-KR')}개 종목</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">${filtered.length.toLocaleString('ko-KR')}개 종목${filtered.length !== scrRawResults.length ? ` (전체 ${scrRawResults.length.toLocaleString('ko-KR')}개 중)` : ''}</div>
     <div class="scr-table-wrap">
       <table class="scr-table">
         <thead>
@@ -1556,11 +1593,7 @@ function renderScreenerResults(data) {
           </tr>
         </thead>
         <tbody>
-          ${results.map(r => {
-            const dotsTitle = TREND_CONDITION_LABELS
-              .map(([key, label]) => `${label.replace(/^[①-⑧]\s*/, '')}: ${r.conditions[key] ? 'O' : 'X'}`)
-              .join(' / ');
-            return `
+          ${filtered.map(r => `
             <tr>
               <td class="scr-name-cell" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</td>
               <td class="scr-code-cell">${escapeHtml(r.code)}</td>
@@ -1568,17 +1601,47 @@ function renderScreenerResults(data) {
               <td><span class="scr-rs-badge ${rsBadgeClass(r.rsRating)}">${r.rsRating ?? '-'}</span></td>
               <td>
                 <span class="scr-pass-badge ${r.passCount < 8 ? 'partial' : ''}">${r.passCount}/8</span>
-                <span class="scr-dots" title="${escapeHtml(dotsTitle)}">
+                <span class="scr-dots" onmouseenter="showScrPopover(this, '${escapeHtml(r.code)}')" onmouseleave="hideScrPopover()">
                   ${TREND_CONDITION_LABELS.map(([key]) => `<span class="scr-dot ${r.conditions[key] ? 'on' : ''}"></span>`).join('')}
                 </span>
               </td>
               <td class="scr-num-cell ${r.pctAbove52wLow >= 30 ? 'positive' : ''}">${r.pctAbove52wLow != null ? '+' + r.pctAbove52wLow.toFixed(1) + '%' : '-'}</td>
               <td class="scr-num-cell ${r.pctBelow52wHigh <= 25 ? 'positive' : ''}">${r.pctBelow52wHigh != null ? '-' + r.pctBelow52wHigh.toFixed(1) + '%' : '-'}</td>
-            </tr>`;
-          }).join('')}
+            </tr>`).join('')}
         </tbody>
       </table>
     </div>`;
+}
+
+let scrPopoverEl = null;
+
+function showScrPopover(anchorEl, code) {
+  hideScrPopover();
+  const r = scrRawResults.find(x => x.code === code);
+  if (!r) return;
+
+  const pop = document.createElement('div');
+  pop.className = 'scr-popover';
+  pop.innerHTML = TREND_CONDITION_LABELS.map(([key, label]) => `
+    <div class="scr-popover-row ${r.conditions[key] ? 'pass' : 'fail'}">
+      <i class="ti ${r.conditions[key] ? 'ti-check' : 'ti-x'}" aria-hidden="true"></i>
+      <span>${label}</span>
+    </div>`).join('');
+  document.body.appendChild(pop);
+
+  const rect = anchorEl.getBoundingClientRect();
+  const popRect = pop.getBoundingClientRect();
+  let top = rect.top - popRect.height - 8;
+  if (top + window.scrollY < 8) top = rect.bottom + 8;
+  let left = rect.left + rect.width / 2 - popRect.width / 2;
+  left = Math.max(8, Math.min(left, window.innerWidth - popRect.width - 8));
+  pop.style.top = `${top + window.scrollY}px`;
+  pop.style.left = `${left + window.scrollX}px`;
+  scrPopoverEl = pop;
+}
+
+function hideScrPopover() {
+  if (scrPopoverEl) { scrPopoverEl.remove(); scrPopoverEl = null; }
 }
 
 // ─── 무한매수법 실전 현황 ────────────────────────────────────────────────────

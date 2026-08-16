@@ -456,6 +456,19 @@
           <button class="btn-secondary" onclick="loadScreenerResults()" style="margin-left:auto;flex:0 0 auto;"><i class="ti ti-refresh" aria-hidden="true"></i> 새로고침</button>
         </div>
 
+        <div class="scr-search-row">
+          <div class="scr-search-box">
+            <i class="ti ti-search" aria-hidden="true"></i>
+            <input type="text" id="scr-search" placeholder="종목명 또는 코드로 검색" oninput="renderFilteredScreenerRows()" />
+          </div>
+          <div class="scr-pills" id="scr-pills">
+            <button type="button" class="scr-pill active" data-preset="all" onclick="setScreenerPreset('all')"><i class="ti ti-list" aria-hidden="true"></i> 전체</button>
+            <button type="button" class="scr-pill" data-preset="rsStrong" onclick="setScreenerPreset('rsStrong')"><i class="ti ti-bolt" aria-hidden="true"></i> RS 90+ 강세주</button>
+            <button type="button" class="scr-pill" data-preset="nearHigh" onclick="setScreenerPreset('nearHigh')"><i class="ti ti-arrow-up-right" aria-hidden="true"></i> 신고가 근접(10%내)</button>
+            <button type="button" class="scr-pill" data-preset="freshBreakout" onclick="setScreenerPreset('freshBreakout')"><i class="ti ti-plant" aria-hidden="true"></i> 바닥 탈출 초기</button>
+          </div>
+        </div>
+
         <div id="screener-result"></div>
 
         <div class="card" style="margin-top:14px;">
