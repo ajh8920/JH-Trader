@@ -407,6 +407,13 @@ input::placeholder { color: var(--text-muted); }
 @keyframes fadeup { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
 
 /* 스크리닝 탭 */
+/* 컬럼이 많아(섹터/거래량/시가총액/PE 등) .app의 1240px 폭 안에 있으면 항상 가로
+   스크롤이 생긴다 - 이 섹션만 .app 폭 제약을 벗어나 뷰포트 기준으로 더 넓게
+   중앙 정렬한다(부모(.app)가 이미 뷰포트 중앙에 있으므로 margin-left:50% +
+   translateX(-50%)로 자신도 뷰포트 중앙에 맞춘다 - 부모의 max-width와 무관하게 동작). */
+@media (min-width: 900px) {
+  #sec-screener { width: 94vw; max-width: 1760px; margin-left: 50%; transform: translateX(-50%); }
+}
 .scr-toolbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
 .scr-market-select { position: relative; flex: 0 0 auto; }
 .scr-market-select select {
