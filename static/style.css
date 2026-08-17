@@ -360,7 +360,15 @@ input::placeholder { color: var(--text-muted); }
 }
 .fg-score-text { font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: no-preference) {
-  .fg-needle { transition: transform 1.05s cubic-bezier(.2,.8,.2,1); }
+  .fg-ring { transition: stroke-dashoffset 1.1s cubic-bezier(.2,.8,.2,1); }
+}
+.fg-live-badge {
+  display: inline-flex; align-items: center; gap: 5px; margin-bottom: 6px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--green);
+}
+.fg-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex: 0 0 auto; }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-live-dot { animation: ticker-pulse 1.6s ease-in-out infinite; }
 }
 
 /* Upside bar */

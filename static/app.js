@@ -228,7 +228,7 @@ function renderMacro(data) {
       </div>`).join('')}
   `;
 
-  animateFearGreedNeedle(el);
+  animateFearGreedRing(el);
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       el.querySelectorAll('.macro-sparkline').forEach(svg => svg.classList.add('in'));
@@ -284,56 +284,51 @@ function fearGreedRatingInfo(rating) {
   return FEAR_GREED_RATING_KO[(rating || '').toLowerCase()] || { label: rating || '-', color: 'var(--text-muted)' };
 }
 
-// 바늘을 좌표 재계산이 아니라 CSS transform: rotate()로 그려서, 최초 렌더 시
-// -90deg(0점 위치)에서 실제 점수 각도로 부드럽게 스윕하는 애니메이션을 걸 수 있게 한다
-// (좌표 기반이면 매 프레임 path를 다시 그려야 해서 transition을 못 쓴다).
+// 원형 링을 stroke-dasharray/dashoffset으로 그려서, 최초 렌더 시 0%에서 실제
+// 점수만큼 부드럽게 채워지는 애니메이션을 CSS transition만으로 건다(매 프레임
+// path를 다시 그릴 필요가 없다). 링 색상은 등급별 의미(공포=빨강~탐욕=초록)를
+// 그대로 유지해 정보량이 줄지 않게 한다. feGaussianBlur로 채워진 부분에만
+// 은은한 글로우를 준다.
 function buildFearGreedGaugeSvg(score) {
-  const cx = 110, cy = 100, rOuter = 88, rInner = 62;
-  const angleForScore = s => Math.PI - (s / 100) * Math.PI;
-  const pt = (r, s) => {
-    const a = angleForScore(s);
-    return [cx + r * Math.cos(a), cy - r * Math.sin(a)];
-  };
-  const arcPath = (from, to) => {
-    const [x1, y1] = pt(rOuter, from);
-    const [x2, y2] = pt(rOuter, to);
-    const [x3, y3] = pt(rInner, to);
-    const [x4, y4] = pt(rInner, from);
-    return `M ${x1} ${y1} A ${rOuter} ${rOuter} 0 0 1 ${x2} ${y2} L ${x3} ${y3} A ${rInner} ${rInner} 0 0 0 ${x4} ${y4} Z`;
-  };
-  const segments = FEAR_GREED_SEGMENTS.map(s => `<path d="${arcPath(s.from, s.to)}" fill="${s.color}"></path>`).join('');
-
+  const size = 172, cx = size / 2, cy = size / 2, r = 66, sw = 14;
+  const circumference = 2 * Math.PI * r;
   const clampedScore = Math.max(0, Math.min(100, score));
-  const targetDeg = (clampedScore / 100) * 180 - 90;
-  const needleLen = rInner - 12;
+  const rating = fearGreedRatingInfo(fearGreedScoreToRating(clampedScore));
+  const targetOffset = circumference * (1 - clampedScore / 100);
+  const glowId = 'fg-glow-' + Math.random().toString(36).slice(2, 8);
 
   return `
-    <svg viewBox="0 0 220 156" role="img" aria-label="공포탐욕지수 ${Math.round(clampedScore)}">
-      ${segments}
-      <circle cx="${cx}" cy="${cy}" r="${rInner - 4}" fill="var(--bg)" opacity="0.55"></circle>
-      <g class="fg-needle" data-target-deg="${targetDeg.toFixed(2)}" style="transform-origin:${cx}px ${cy}px; transform:rotate(-90deg);">
-        <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - needleLen}" stroke="var(--text)" stroke-width="3" stroke-linecap="round"></line>
-        <circle cx="${cx}" cy="${cy}" r="6.5" fill="var(--blue)"></circle>
-      </g>
-      <text x="${cx}" y="${cy + 40}" text-anchor="middle" font-size="26" font-weight="800" fill="var(--text)" class="fg-score-text">${Math.round(clampedScore)}</text>
+    <svg viewBox="0 0 ${size} ${size}" role="img" aria-label="공포탐욕지수 ${Math.round(clampedScore)}, ${rating.label}">
+      <defs>
+        <filter id="${glowId}" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="4.5" result="blur"></feGaussianBlur>
+          <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+        </filter>
+      </defs>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--bg-tertiary)" stroke-width="${sw}"></circle>
+      <circle class="fg-ring" cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${rating.color}" stroke-width="${sw}"
+        stroke-linecap="round" stroke-dasharray="${circumference.toFixed(1)}"
+        stroke-dashoffset="${circumference.toFixed(1)}" data-target-offset="${targetOffset.toFixed(1)}"
+        transform="rotate(-90 ${cx} ${cy})" filter="url(#${glowId})"></circle>
+      <text x="${cx}" y="${cy - 1}" text-anchor="middle" font-size="34" font-weight="800" fill="var(--text)" class="fg-score-text">${Math.round(clampedScore)}</text>
+      <text x="${cx}" y="${cy + 21}" text-anchor="middle" font-size="12.5" font-weight="700" fill="${rating.color}">${escapeHtml(rating.label)}</text>
     </svg>`;
 }
 
-// 최초 렌더 직후 -90deg(0점)에서 실제 각도로 CSS transition이 걸리도록, 삽입된
-// 다음 프레임에 목표 각도를 적용한다(같은 프레임에서 하면 transition이 씹힌다).
-function animateFearGreedNeedle(root) {
-  const needle = (root || document).querySelector('.fg-needle');
-  if (!needle) return;
-  const target = needle.dataset.targetDeg;
+// 최초 렌더 직후 dashoffset을 원둘레 전체(빈 링)에서 실제 목표치로 CSS
+// transition이 걸리도록, 삽입된 다음 프레임에 적용한다(같은 프레임이면 씹힌다).
+function animateFearGreedRing(root) {
+  const ring = (root || document).querySelector('.fg-ring');
+  if (!ring) return;
+  const target = ring.dataset.targetOffset;
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      needle.style.transform = `rotate(${target}deg)`;
+      ring.style.strokeDashoffset = target;
     });
   });
 }
 
 function renderFearGreedCard(fg) {
-  const rating = fearGreedRatingInfo(fg.rating);
   const history = [
     { label: '전일 종가', value: fg.previousClose },
     { label: '1주일 전', value: fg.previousWeek },
@@ -345,8 +340,8 @@ function renderFearGreedCard(fg) {
       <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">공포 탐욕 지수 (CNN Fear &amp; Greed Index)</div>
       <div class="fear-greed-body">
         <div class="fear-greed-gauge">
+          <div class="fg-live-badge"><span class="fg-live-dot" aria-hidden="true"></span>LIVE</div>
           ${buildFearGreedGaugeSvg(fg.score)}
-          <div class="fear-greed-rating" style="color:${rating.color};">${escapeHtml(rating.label)}</div>
           <div class="fear-greed-legend">
             ${Object.values(FEAR_GREED_RATING_KO).map(r => `<span class="fear-greed-legend-item"><span class="fear-greed-dot" style="background:${r.color};"></span>${escapeHtml(r.label)}</span>`).join('')}
           </div>
