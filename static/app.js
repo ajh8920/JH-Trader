@@ -195,6 +195,7 @@ function renderMacro(data) {
             const isPos = hasPrice && m.change >= 0;
             const priceText = hasPrice ? formatMacroPrice(m.price, m.unit) : null;
             const changeText = hasPrice ? formatMacroChange(m.change, m.changePct, m.unit) : null;
+            const hasSeries = hasPrice && Array.isArray(m.series) && m.series.length > 1;
             return `
             <div class="macro-item">
               <div class="macro-name">${escapeHtml(m.name)}</div>
@@ -205,6 +206,7 @@ function renderMacro(data) {
                   <i class="ti ti-trending-${isPos ? 'up' : 'down'}" aria-hidden="true"></i>
                   ${changeText}
                 </div>
+                ${hasSeries ? buildMacroSparklineSvg(m.series, isPos) : ''}
               ` : `<div class="macro-price" style="color:var(--text-muted);font-size:13px;">데이터 없음</div>`}
             </div>`;
           }).join('')}
@@ -306,6 +308,32 @@ function fearGreedScoreToRating(score) {
   if (score < 60) return 'neutral';
   if (score < 80) return 'greed';
   return 'extreme greed';
+}
+
+// 1개월 종가 시계열로 작은 영역 스파크라인을 그린다. 절대 레벨이 아니라 추세가
+// 목적이라 min~max를 뷰박스에 꽉 채워서(정규화) 미세한 변동도 잘 보이게 한다.
+function buildMacroSparklineSvg(series, isPos) {
+  const w = 100, h = 32, pad = 2;
+  const min = Math.min(...series), max = Math.max(...series);
+  const range = (max - min) || 1;
+  const stepX = (w - pad * 2) / (series.length - 1);
+  const xy = (v, i) => [pad + i * stepX, h - pad - ((v - min) / range) * (h - pad * 2)];
+  const pts = series.map((v, i) => xy(v, i));
+  const line = pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const area = `${pad},${h - pad} ${line} ${w - pad},${h - pad}`;
+  const gid = 'spark-' + Math.random().toString(36).slice(2, 9);
+  const color = isPos ? 'var(--green)' : 'var(--red)';
+  return `
+    <svg class="macro-sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${color}" stop-opacity="0.35"></stop>
+          <stop offset="100%" stop-color="${color}" stop-opacity="0"></stop>
+        </linearGradient>
+      </defs>
+      <polygon points="${area}" fill="url(#${gid})"></polygon>
+      <polyline points="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+    </svg>`;
 }
 
 function formatMacroPrice(price, unit) {

@@ -326,7 +326,12 @@ MACRO_INSTRUMENTS = [
     {"ticker": "^DJI", "name": "다우존스", "group": "지수", "unit": "pt"},
     {"ticker": "^RUT", "name": "러셀 2000", "group": "지수", "unit": "pt"},
     {"ticker": "^VIX", "name": "변동성지수(VIX)", "group": "변동성", "unit": "pt"},
+    # 국채 금리: 2년물은 CBOE 지수 티커가 따로 없어 ICE 2년물 금리 선물(2YY=F)로 대체한다
+    # (실제 트레이더들도 흔히 쓰는 대체 지표). 5/10/30년물은 CBOE 금리 지수를 그대로 쓴다.
+    {"ticker": "2YY=F", "name": "美 2년물 국채금리", "group": "금리", "unit": "pct"},
+    {"ticker": "^FVX", "name": "美 5년물 국채금리", "group": "금리", "unit": "pct"},
     {"ticker": "^TNX", "name": "美 10년물 국채금리", "group": "금리", "unit": "pct"},
+    {"ticker": "^TYX", "name": "美 30년물 국채금리", "group": "금리", "unit": "pct"},
     {"ticker": "DX-Y.NYB", "name": "달러 인덱스", "group": "환율", "unit": "pt"},
     {"ticker": "GC=F", "name": "금 선물", "group": "원자재", "unit": "usd"},
     {"ticker": "CL=F", "name": "WTI 원유 선물", "group": "원자재", "unit": "usd"},
@@ -334,11 +339,12 @@ MACRO_INSTRUMENTS = [
 
 
 def _fetch_macro_quote(ticker, attempts=3):
+    """최근가/전일가와 함께 최근 1개월 종가 시계열(미니차트용)을 반환한다."""
     import yfinance as yf
 
     for attempt in range(attempts):
         try:
-            df = yf.download(ticker, period="5d", interval="1d", progress=False, auto_adjust=False, timeout=8)
+            df = yf.download(ticker, period="1mo", interval="1d", progress=False, auto_adjust=False, timeout=8)
         except Exception:
             df = None
         if df is not None and not df.empty:
@@ -346,9 +352,10 @@ def _fetch_macro_quote(ticker, attempts=3):
                 df.columns = df.columns.get_level_values(0)
             df = df.dropna(subset=["Close"])
             if not df.empty:
-                last = float(df.iloc[-1]["Close"])
-                prev = float(df.iloc[-2]["Close"]) if len(df) > 1 else last
-                return last, prev
+                series = [round(float(c), 4) for c in df["Close"].tolist()]
+                last = series[-1]
+                prev = series[-2] if len(series) > 1 else last
+                return last, prev, series
         if attempt < attempts - 1:
             time.sleep(0.5)
     return None
@@ -421,10 +428,10 @@ def get_macro():
         if q is None:
             out.append({
                 "ticker": item["ticker"], "name": item["name"], "group": item["group"],
-                "unit": item["unit"], "price": None, "change": None, "changePct": None,
+                "unit": item["unit"], "price": None, "change": None, "changePct": None, "series": [],
             })
             continue
-        last, prev = q
+        last, prev, series = q
         out.append({
             "ticker": item["ticker"],
             "name": item["name"],
@@ -433,6 +440,7 @@ def get_macro():
             "price": round(last, 2),
             "change": round(last - prev, 4),
             "changePct": round((last - prev) / prev * 100, 2) if prev else 0.0,
+            "series": series,
         })
 
     result = sanitize_json({"instruments": out, "fearGreed": fear_greed})
