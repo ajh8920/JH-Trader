@@ -24,12 +24,12 @@
     <div class="api-banner" id="api-key-banner">
       <div class="api-banner-inner">
         <div>
-          <strong>Finnhub API Key Required</strong>
+          <strong data-i18n="apiKeyTitle">Finnhub API Key Required</strong>
           <p>Sign up free at <a href="https://finnhub.io/register" target="_blank" rel="noopener">finnhub.io</a> and enter your API key (free, 60 req/min)</p>
         </div>
         <div class="api-key-row">
-          <input type="text" id="api-key-input" placeholder="Paste API key" style="width:280px;" />
-          <button class="btn-primary" onclick="saveApiKey()">Save &amp; Verify</button>
+          <input type="text" id="api-key-input" data-i18n-placeholder="apiKeyPlaceholder" placeholder="Paste API key" style="width:280px;" />
+          <button class="btn-primary" onclick="saveApiKey()" data-i18n="saveVerify">Save &amp; Verify</button>
         </div>
         <div id="key-error" class="key-error" style="display:none;"></div>
       </div>
@@ -46,42 +46,43 @@
           {{ current_user.username }}{% if current_user.is_admin %} <span class="pill pill-rec">admin</span>{% endif %}
         </span>
         {% if current_user.is_admin %}
-        <a href="/admin" class="settings-btn" title="Manage Users" aria-label="Manage Users">
+        <a href="/admin" class="settings-btn" data-i18n-title="manageUsers" title="Manage Users" aria-label="Manage Users">
           <i class="ti ti-users" aria-hidden="true"></i>
         </a>
         {% endif %}
-        <button class="settings-btn" id="theme-toggle-btn" onclick="cycleTheme()" title="Change theme" aria-label="Change theme">
+        <button class="settings-btn" id="theme-toggle-btn" onclick="cycleTheme()" data-i18n-title="changeTheme" title="Change theme" aria-label="Change theme">
           <i class="ti ti-sun" id="theme-icon" aria-hidden="true"></i>
         </button>
-        <button class="settings-btn" onclick="showKeyBanner()" title="API Key" aria-label="API Key">
+        <button class="settings-btn" id="lang-toggle-btn" onclick="cycleLang()" title="Switch language" aria-label="Switch language">EN</button>
+        <button class="settings-btn" onclick="showKeyBanner()" data-i18n-title="apiKeySettings" title="API Key" aria-label="API Key">
           <i class="ti ti-settings" aria-hidden="true"></i>
         </button>
-        <a href="/logout" class="settings-btn" title="Log out" aria-label="Log out">
+        <a href="/logout" class="settings-btn" data-i18n-title="logOut" title="Log out" aria-label="Log out">
           <i class="ti ti-logout" aria-hidden="true"></i>
         </a>
       </div>
     </header>
 
     <div class="ticker-tape" id="ticker-tape">
-      <div class="ticker-tape-label"><span class="ticker-dot" aria-hidden="true"></span>MARKET<span class="ticker-tape-asof" id="ticker-asof"></span></div>
+      <div class="ticker-tape-label"><span class="ticker-dot" aria-hidden="true"></span><span data-i18n="marketLabel">MARKET</span><span class="ticker-tape-asof" id="ticker-asof"></span></div>
       <div class="ticker-viewport"><div class="ticker-track" id="ticker-track"></div></div>
     </div>
 
     <nav class="tabs" role="tablist">
-      <button class="tab active" data-tab="macro" onclick="switchTab('macro')" role="tab"><i class="ti ti-world" aria-hidden="true"></i> Macro</button>
+      <button class="tab active" data-tab="macro" onclick="switchTab('macro')" role="tab"><i class="ti ti-world" aria-hidden="true"></i> <span data-i18n="tabMacro">Macro</span></button>
       <!-- 종목 검색/포트폴리오/알림 탭은 기능은 그대로 두고 화면에서만 숨김 처리했습니다.
            나중에 다시 노출하려면 아래 3개 버튼의 style="display:none;"만 지우면 됩니다. -->
-      <button class="tab" data-tab="search" onclick="switchTab('search')" role="tab" style="display:none;"><i class="ti ti-search" aria-hidden="true"></i> Search</button>
-      <button class="tab" data-tab="portfolio" onclick="switchTab('portfolio')" role="tab" style="display:none;"><i class="ti ti-briefcase" aria-hidden="true"></i> Portfolio</button>
-      <button class="tab" data-tab="alerts" onclick="switchTab('alerts')" role="tab" style="display:none;"><i class="ti ti-bell" aria-hidden="true"></i> Alerts <span id="alert-badge" class="badge" style="display:none;">0</span></button>
+      <button class="tab" data-tab="search" onclick="switchTab('search')" role="tab" style="display:none;"><i class="ti ti-search" aria-hidden="true"></i> <span data-i18n="tabSearch">Search</span></button>
+      <button class="tab" data-tab="portfolio" onclick="switchTab('portfolio')" role="tab" style="display:none;"><i class="ti ti-briefcase" aria-hidden="true"></i> <span data-i18n="tabPortfolio">Portfolio</span></button>
+      <button class="tab" data-tab="alerts" onclick="switchTab('alerts')" role="tab" style="display:none;"><i class="ti ti-bell" aria-hidden="true"></i> <span data-i18n="tabAlerts">Alerts</span> <span id="alert-badge" class="badge" style="display:none;">0</span></button>
       {% if show_all_tabs %}
-      <button class="tab" data-tab="backtest" onclick="switchTab('backtest')" role="tab"><i class="ti ti-history" aria-hidden="true"></i> Backtest</button>
-      <button class="tab" data-tab="live" onclick="switchTab('live')" role="tab"><i class="ti ti-infinity" aria-hidden="true"></i> Live</button>
-      <button class="tab" data-tab="lab" onclick="switchTab('lab')" role="tab"><i class="ti ti-flask" aria-hidden="true"></i> Lab</button>
-      <button class="tab" data-tab="krswing" onclick="switchTab('krswing')" role="tab"><i class="ti ti-chart-candle" aria-hidden="true"></i> KR Swing</button>
-      <button class="tab" data-tab="krquant" onclick="switchTab('krquant')" role="tab"><i class="ti ti-filter" aria-hidden="true"></i> KR Quant</button>
+      <button class="tab" data-tab="backtest" onclick="switchTab('backtest')" role="tab"><i class="ti ti-history" aria-hidden="true"></i> <span data-i18n="tabBacktest">Backtest</span></button>
+      <button class="tab" data-tab="live" onclick="switchTab('live')" role="tab"><i class="ti ti-infinity" aria-hidden="true"></i> <span data-i18n="tabLive">Live</span></button>
+      <button class="tab" data-tab="lab" onclick="switchTab('lab')" role="tab"><i class="ti ti-flask" aria-hidden="true"></i> <span data-i18n="tabLab">Lab</span></button>
+      <button class="tab" data-tab="krswing" onclick="switchTab('krswing')" role="tab"><i class="ti ti-chart-candle" aria-hidden="true"></i> <span data-i18n="tabKrSwing">KR Swing</span></button>
+      <button class="tab" data-tab="krquant" onclick="switchTab('krquant')" role="tab"><i class="ti ti-filter" aria-hidden="true"></i> <span data-i18n="tabKrQuant">KR Quant</span></button>
       {% endif %}
-      <button class="tab" data-tab="screener" onclick="switchTab('screener')" role="tab"><i class="ti ti-trending-up" aria-hidden="true"></i> Screener</button>
+      <button class="tab" data-tab="screener" onclick="switchTab('screener')" role="tab"><i class="ti ti-trending-up" aria-hidden="true"></i> <span data-i18n="tabScreener">Screener</span></button>
     </nav>
 
     <main>
@@ -93,11 +94,11 @@
       <!-- 종목 검색 -->
       <section id="sec-search" class="section">
         <div class="search-row">
-          <input type="text" id="ticker-input" placeholder="Enter ticker (e.g. AAPL, TSLA, NVDA)" onkeydown="if(event.key==='Enter') searchStock()" />
-          <button class="btn-primary" onclick="searchStock()"><i class="ti ti-search" aria-hidden="true"></i> Search</button>
+          <input type="text" id="ticker-input" data-i18n-placeholder="searchTickerPlaceholder" placeholder="Enter ticker (e.g. AAPL, TSLA, NVDA)" onkeydown="if(event.key==='Enter') searchStock()" />
+          <button class="btn-primary" onclick="searchStock()"><i class="ti ti-search" aria-hidden="true"></i> <span data-i18n="tabSearch">Search</span></button>
         </div>
         <div class="quick-btns">
-          <span class="quick-label">Quick picks:</span>
+          <span class="quick-label" data-i18n="quickPicks">Quick picks:</span>
           <button onclick="quickSearch('AAPL')">AAPL</button>
           <button onclick="quickSearch('MSFT')">MSFT</button>
           <button onclick="quickSearch('NVDA')">NVDA</button>
@@ -113,11 +114,11 @@
       <!-- 포트폴리오 -->
       <section id="sec-portfolio" class="section">
         <div class="add-form">
-          <input type="text" id="pf-ticker" placeholder="Ticker (AAPL)" style="width:110px;" onkeydown="if(event.key==='Enter') addPortfolioItem()" />
-          <input type="number" id="pf-qty" placeholder="Qty" style="width:90px;" min="0" step="1" />
-          <input type="number" id="pf-price" placeholder="Cost basis ($)" style="width:120px;" step="0.01" />
-          <button class="btn-primary" onclick="addPortfolioItem()"><i class="ti ti-plus" aria-hidden="true"></i> Add</button>
-          <button class="btn-secondary" onclick="refreshPortfolio()"><i class="ti ti-refresh" aria-hidden="true"></i> Refresh</button>
+          <input type="text" id="pf-ticker" data-i18n-placeholder="tickerExamplePlaceholder" placeholder="Ticker (AAPL)" style="width:110px;" onkeydown="if(event.key==='Enter') addPortfolioItem()" />
+          <input type="number" id="pf-qty" data-i18n-placeholder="qty" placeholder="Qty" style="width:90px;" min="0" step="1" />
+          <input type="number" id="pf-price" data-i18n-placeholder="costBasisPlaceholder" placeholder="Cost basis ($)" style="width:120px;" step="0.01" />
+          <button class="btn-primary" onclick="addPortfolioItem()"><i class="ti ti-plus" aria-hidden="true"></i> <span data-i18n="add">Add</span></button>
+          <button class="btn-secondary" onclick="refreshPortfolio()"><i class="ti ti-refresh" aria-hidden="true"></i> <span data-i18n="refresh">Refresh</span></button>
         </div>
         <div id="portfolio-content"></div>
       </section>
@@ -125,13 +126,13 @@
       <!-- 알림 -->
       <section id="sec-alerts" class="section">
         <div class="add-form">
-          <input type="text" id="al-ticker" placeholder="Ticker" style="width:100px;" />
-          <input type="number" id="al-price" placeholder="Price threshold ($)" style="width:140px;" step="0.01" />
+          <input type="text" id="al-ticker" data-i18n-placeholder="tickerLabel" placeholder="Ticker" style="width:100px;" />
+          <input type="number" id="al-price" data-i18n-placeholder="priceThresholdPlaceholder" placeholder="Price threshold ($)" style="width:140px;" step="0.01" />
           <select id="al-type">
-            <option value="above">Rises above</option>
-            <option value="below">Falls below</option>
+            <option value="above" data-i18n="optionRisesAbove">Rises above</option>
+            <option value="below" data-i18n="optionFallsBelow">Falls below</option>
           </select>
-          <button class="btn-primary" onclick="addAlert()"><i class="ti ti-bell" aria-hidden="true"></i> Add alert</button>
+          <button class="btn-primary" onclick="addAlert()"><i class="ti ti-bell" aria-hidden="true"></i> <span data-i18n="addAlertBtn">Add alert</span></button>
         </div>
         <div id="alerts-content"></div>
         <div class="info-box">
@@ -146,7 +147,7 @@
         <div class="card">
           <div class="bt-form-grid">
             <div class="bt-field">
-              <label for="bt-version">Version</label>
+              <label for="bt-version" data-i18n="version">Version</label>
               <select id="bt-version" onchange="applyBacktestVersionDefaults()">
                 <option value="v2">v2.2 (40 splits)</option>
                 <option value="v3">v3.0 (20 splits, mid-compound)</option>
@@ -154,32 +155,32 @@
               </select>
             </div>
             <div class="bt-field">
-              <label for="bt-ticker">Ticker</label>
+              <label for="bt-ticker" data-i18n="tickerLabel">Ticker</label>
               <input type="text" id="bt-ticker" placeholder="SOXL" value="SOXL" onchange="applyTickerTargetDefault()" />
             </div>
             <div class="bt-field">
-              <label for="bt-start">Start date</label>
+              <label for="bt-start" data-i18n="startDate">Start date</label>
               <input type="date" id="bt-start" />
             </div>
             <div class="bt-field">
-              <label for="bt-end">End date</label>
+              <label for="bt-end" data-i18n="endDate">End date</label>
               <input type="date" id="bt-end" />
             </div>
             <div class="bt-field">
-              <label for="bt-seed">Capital ($)</label>
+              <label for="bt-seed" data-i18n="capitalUsdLabel">Capital ($)</label>
               <input type="number" id="bt-seed" placeholder="10000" step="0.01" value="10000" />
             </div>
             <div class="bt-field">
-              <label for="bt-splits">Splits</label>
+              <label for="bt-splits" data-i18n="splits">Splits</label>
               <input type="number" id="bt-splits" min="2" max="100" value="40" />
             </div>
             <div class="bt-field">
-              <label for="bt-target">Target return (%)</label>
+              <label for="bt-target" data-i18n="targetReturnPctLabel">Target return (%)</label>
               <input type="number" id="bt-target" step="0.1" value="12" />
             </div>
           </div>
           <button class="btn-primary" style="margin-top:12px;" onclick="runBacktest()">
-            <i class="ti ti-player-play" aria-hidden="true"></i> Run backtest
+            <i class="ti ti-player-play" aria-hidden="true"></i> <span data-i18n="runBacktestBtn">Run backtest</span>
           </button>
           <div class="info-box" style="margin-top:12px;">
             <i class="ti ti-info-circle" aria-hidden="true"></i>
@@ -194,11 +195,11 @@
         <div class="card">
           <div class="bt-form-grid">
             <div class="bt-field">
-              <label for="live-ticker">Ticker</label>
+              <label for="live-ticker" data-i18n="tickerLabel">Ticker</label>
               <input type="text" id="live-ticker" placeholder="SOXL" onchange="applyLiveTickerTargetDefault()" />
             </div>
             <div class="bt-field">
-              <label for="live-version">Version</label>
+              <label for="live-version" data-i18n="version">Version</label>
               <select id="live-version">
                 <option value="v2">v2.2 (40 splits)</option>
                 <option value="v3">v3.0 (20 splits)</option>
@@ -206,20 +207,20 @@
               </select>
             </div>
             <div class="bt-field">
-              <label for="live-splits">Splits</label>
+              <label for="live-splits" data-i18n="splits">Splits</label>
               <input type="number" id="live-splits" min="2" max="100" value="40" />
             </div>
             <div class="bt-field">
-              <label for="live-target">Target return (%)</label>
+              <label for="live-target" data-i18n="targetReturnPctLabel">Target return (%)</label>
               <input type="number" id="live-target" step="0.1" value="10" />
             </div>
             <div class="bt-field">
-              <label for="live-seed">Capital ($)</label>
+              <label for="live-seed" data-i18n="capitalUsdLabel">Capital ($)</label>
               <input type="number" id="live-seed" placeholder="10000" step="0.01" value="10000" />
             </div>
           </div>
           <button class="btn-primary" style="margin-top:12px;" onclick="addInfinitePosition()">
-            <i class="ti ti-plus" aria-hidden="true"></i> Start new position
+            <i class="ti ti-plus" aria-hidden="true"></i> <span data-i18n="startNewPosition">Start new position</span>
           </button>
         </div>
         <div id="live-positions"></div>
@@ -229,23 +230,23 @@
       <section id="sec-lab" class="section">
         <div class="card">
           <div class="add-form">
-            <input type="text" id="lab-ticker-input" placeholder="Enter ticker/index (e.g. ^IXIC, SOXL, ^TNX)" style="width:220px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addLabTicker();}" />
-            <button class="btn-secondary" onclick="addLabTicker()"><i class="ti ti-plus" aria-hidden="true"></i> Add</button>
+            <input type="text" id="lab-ticker-input" data-i18n-placeholder="labTickerPlaceholder" placeholder="Enter ticker/index (e.g. ^IXIC, SOXL, ^TNX)" style="width:220px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addLabTicker();}" />
+            <button class="btn-secondary" onclick="addLabTicker()"><i class="ti ti-plus" aria-hidden="true"></i> <span data-i18n="add">Add</span></button>
           </div>
           <div id="lab-ticker-chips" class="lab-chips"></div>
 
           <div class="bt-form-grid live-info-grid" style="margin-top:12px;">
             <div class="bt-field">
-              <label for="lab-start">Start date</label>
+              <label for="lab-start" data-i18n="startDate">Start date</label>
               <input type="date" id="lab-start" />
             </div>
             <div class="bt-field">
-              <label for="lab-end">End date</label>
+              <label for="lab-end" data-i18n="endDate">End date</label>
               <input type="date" id="lab-end" />
             </div>
           </div>
           <button class="btn-primary" style="margin-top:12px;" onclick="runLabCompare()">
-            <i class="ti ti-chart-line" aria-hidden="true"></i> Compare
+            <i class="ti ti-chart-line" aria-hidden="true"></i> <span data-i18n="compareBtn">Compare</span>
           </button>
           <div class="info-box" style="margin-top:12px;">
             <i class="ti ti-info-circle" aria-hidden="true"></i>
@@ -260,16 +261,16 @@
         <div class="card">
           <div class="bt-form-grid">
             <div class="bt-field">
-              <label for="ks-strategy">Strategy</label>
+              <label for="ks-strategy" data-i18n="strategy">Strategy</label>
               <select id="ks-strategy" onchange="onKrSwingStrategyChange()">
-                <option value="volatility_breakout">Volatility Breakout</option>
-                <option value="box_breakout">Range Breakout</option>
-                <option value="ma_pullback">MA Pullback</option>
-                <option value="combo">Combo (Trend + Pullback + Momentum)</option>
+                <option value="volatility_breakout" data-i18n="stratVolBreakout">Volatility Breakout</option>
+                <option value="box_breakout" data-i18n="stratRangeBreakout">Range Breakout</option>
+                <option value="ma_pullback" data-i18n="stratMaPullback">MA Pullback</option>
+                <option value="combo" data-i18n="stratCombo">Combo (Trend + Pullback + Momentum)</option>
               </select>
             </div>
             <div class="bt-field ks-autocomplete">
-              <label for="ks-code-input">Stock name</label>
+              <label for="ks-code-input" data-i18n="stockNameLabel">Stock name</label>
               <input type="text" id="ks-code-input" placeholder="삼성전자" value="삼성전자" autocomplete="off"
                      oninput="onKrSwingCodeInput(this.value)"
                      onfocus="onKrSwingCodeInput(this.value)"
@@ -279,97 +280,97 @@
               <div id="ks-autocomplete-list" class="ks-autocomplete-list" style="display:none;"></div>
             </div>
             <div class="bt-field">
-              <label for="ks-start">Start date</label>
+              <label for="ks-start" data-i18n="startDate">Start date</label>
               <input type="date" id="ks-start" />
             </div>
             <div class="bt-field">
-              <label for="ks-end">End date</label>
+              <label for="ks-end" data-i18n="endDate">End date</label>
               <input type="date" id="ks-end" />
             </div>
             <div class="bt-field">
-              <label for="ks-seed">Capital (₩)</label>
+              <label for="ks-seed" data-i18n="capitalKrwLabel">Capital (₩)</label>
               <input type="number" id="ks-seed" placeholder="10000000" step="10000" value="10000000" />
             </div>
           </div>
 
           <div id="ks-params-volatility_breakout" class="bt-form-grid ks-params" style="margin-top:8px;">
             <div class="bt-field">
-              <label for="ks-vb-k">Volatility factor K</label>
+              <label for="ks-vb-k" data-i18n="volatilityFactorK">Volatility factor K</label>
               <input type="number" id="ks-vb-k" step="0.05" value="0.5" />
             </div>
             <div class="bt-field">
-              <label for="ks-vb-hold">Holding days</label>
+              <label for="ks-vb-hold" data-i18n="holdingDays">Holding days</label>
               <input type="number" id="ks-vb-hold" step="1" min="1" value="1" />
             </div>
             <div class="bt-field">
-              <label for="ks-vb-stop">Stop-loss (%)</label>
+              <label for="ks-vb-stop" data-i18n="stopLossPct">Stop-loss (%)</label>
               <input type="number" id="ks-vb-stop" step="0.5" value="-5" />
             </div>
           </div>
 
           <div id="ks-params-box_breakout" class="bt-form-grid ks-params" style="margin-top:8px;display:none;">
             <div class="bt-field">
-              <label for="ks-bb-entry">Breakout period (days)</label>
+              <label for="ks-bb-entry" data-i18n="breakoutPeriodDays">Breakout period (days)</label>
               <input type="number" id="ks-bb-entry" step="1" min="2" value="20" />
             </div>
             <div class="bt-field">
-              <label for="ks-bb-exit">Exit period (days)</label>
+              <label for="ks-bb-exit" data-i18n="exitPeriodDays">Exit period (days)</label>
               <input type="number" id="ks-bb-exit" step="1" min="2" value="10" />
             </div>
             <div class="bt-field">
-              <label for="ks-bb-stop">Stop-loss (%)</label>
+              <label for="ks-bb-stop" data-i18n="stopLossPct">Stop-loss (%)</label>
               <input type="number" id="ks-bb-stop" step="0.5" value="-7" />
             </div>
           </div>
 
           <div id="ks-params-ma_pullback" class="bt-form-grid ks-params" style="margin-top:8px;display:none;">
             <div class="bt-field">
-              <label for="ks-ma-long">Long MA (days)</label>
+              <label for="ks-ma-long" data-i18n="longMaDays">Long MA (days)</label>
               <input type="number" id="ks-ma-long" step="1" min="2" value="20" />
             </div>
             <div class="bt-field">
-              <label for="ks-ma-short">Short MA (days)</label>
+              <label for="ks-ma-short" data-i18n="shortMaDays">Short MA (days)</label>
               <input type="number" id="ks-ma-short" step="1" min="2" value="5" />
             </div>
             <div class="bt-field">
-              <label for="ks-ma-stop">Stop-loss (%)</label>
+              <label for="ks-ma-stop" data-i18n="stopLossPct">Stop-loss (%)</label>
               <input type="number" id="ks-ma-stop" step="0.5" value="-5" />
             </div>
             <div class="bt-field">
-              <label for="ks-ma-target">Target return (%)</label>
+              <label for="ks-ma-target" data-i18n="targetReturnPctLabel">Target return (%)</label>
               <input type="number" id="ks-ma-target" step="0.5" value="10" />
             </div>
           </div>
 
           <div id="ks-params-combo" class="bt-form-grid ks-params" style="margin-top:8px;display:none;">
             <div class="bt-field">
-              <label for="ks-combo-trend">Trend MA (days)</label>
+              <label for="ks-combo-trend" data-i18n="trendMaDays">Trend MA (days)</label>
               <input type="number" id="ks-combo-trend" step="1" min="5" value="60" />
             </div>
             <div class="bt-field">
-              <label for="ks-combo-pullback">Pullback MA (days)</label>
+              <label for="ks-combo-pullback" data-i18n="pullbackMaDays">Pullback MA (days)</label>
               <input type="number" id="ks-combo-pullback" step="1" min="2" value="20" />
             </div>
             <div class="bt-field">
-              <label for="ks-combo-k">Momentum factor K</label>
+              <label for="ks-combo-k" data-i18n="momentumFactorK">Momentum factor K</label>
               <input type="number" id="ks-combo-k" step="0.05" value="0.3" />
             </div>
             <div class="bt-field">
-              <label for="ks-combo-stop">Stop-loss (%)</label>
+              <label for="ks-combo-stop" data-i18n="stopLossPct">Stop-loss (%)</label>
               <input type="number" id="ks-combo-stop" step="0.5" value="-4" />
             </div>
             <div class="bt-field">
-              <label for="ks-combo-trailing">Trend-break window (days)</label>
+              <label for="ks-combo-trailing" data-i18n="trendBreakWindowDays">Trend-break window (days)</label>
               <input type="number" id="ks-combo-trailing" step="1" min="2" value="10" />
             </div>
             <div class="bt-field">
-              <label for="ks-combo-target">Target return (%)</label>
+              <label for="ks-combo-target" data-i18n="targetReturnPctLabel">Target return (%)</label>
               <input type="number" id="ks-combo-target" step="0.5" value="15" />
             </div>
           </div>
 
           <button class="btn-primary" style="margin-top:12px;" onclick="runKrSwingBacktest()">
-            <i class="ti ti-player-play" aria-hidden="true"></i> Run backtest
+            <i class="ti ti-player-play" aria-hidden="true"></i> <span data-i18n="runBacktestBtn">Run backtest</span>
           </button>
           <div class="info-box" style="margin-top:12px;">
             <i class="ti ti-info-circle" aria-hidden="true"></i>
@@ -390,21 +391,21 @@
       <!-- 국내 퀀트(재무지표 팩터) 스크리닝/백테스트 -->
       <section id="sec-krquant" class="section">
         <div id="krquant-status" class="info-box" style="margin-bottom:1rem;">
-          <i class="ti ti-loader-2" aria-hidden="true"></i> Checking fundamentals data...
+          <i class="ti ti-loader-2" aria-hidden="true"></i> <span data-i18n="checkingFundamentals">Checking fundamentals data...</span>
         </div>
 
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-            <div style="font-size:13px;font-weight:600;">Current Screen (Low P/E + High ROE)</div>
-            <button class="btn-secondary" onclick="runKrQuantScreen()"><i class="ti ti-refresh" aria-hidden="true"></i> Refresh</button>
+            <div style="font-size:13px;font-weight:600;" data-i18n="currentScreenTitle">Current Screen (Low P/E + High ROE)</div>
+            <button class="btn-secondary" onclick="runKrQuantScreen()"><i class="ti ti-refresh" aria-hidden="true"></i> <span data-i18n="refresh">Refresh</span></button>
           </div>
           <div class="bt-form-grid" style="margin-bottom:10px;">
             <div class="bt-field">
-              <label for="kq-screen-topn">Stock count</label>
+              <label for="kq-screen-topn" data-i18n="stockCountLabel">Stock count</label>
               <input type="number" id="kq-screen-topn" min="1" max="100" value="20" />
             </div>
             <div class="bt-field">
-              <label for="kq-screen-mcap">Min market cap (₩100M)</label>
+              <label for="kq-screen-mcap" data-i18n="minMarketCapLabel">Min market cap (₩100M)</label>
               <input type="number" id="kq-screen-mcap" min="0" step="10" value="500" />
             </div>
           </div>
@@ -412,31 +413,31 @@
         </div>
 
         <div class="card">
-          <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Annual Rebalance Backtest</div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;" data-i18n="annualRebalanceBacktestTitle">Annual Rebalance Backtest</div>
           <div class="bt-form-grid">
             <div class="bt-field">
-              <label for="kq-bt-start">Start year</label>
+              <label for="kq-bt-start" data-i18n="startYearLabel">Start year</label>
               <input type="number" id="kq-bt-start" min="2016" value="2023" />
             </div>
             <div class="bt-field">
-              <label for="kq-bt-end">End year</label>
+              <label for="kq-bt-end" data-i18n="endYearLabel">End year</label>
               <input type="number" id="kq-bt-end" value="2026" />
             </div>
             <div class="bt-field">
-              <label for="kq-bt-seed">Capital (₩)</label>
+              <label for="kq-bt-seed" data-i18n="capitalKrwLabel">Capital (₩)</label>
               <input type="number" id="kq-bt-seed" step="1000000" value="30000000" />
             </div>
             <div class="bt-field">
-              <label for="kq-bt-topn">Holdings</label>
+              <label for="kq-bt-topn" data-i18n="holdingsLabel">Holdings</label>
               <input type="number" id="kq-bt-topn" min="1" max="100" value="20" />
             </div>
             <div class="bt-field">
-              <label for="kq-bt-mcap">Min market cap (₩100M)</label>
+              <label for="kq-bt-mcap" data-i18n="minMarketCapLabel">Min market cap (₩100M)</label>
               <input type="number" id="kq-bt-mcap" min="0" step="10" value="500" />
             </div>
           </div>
           <button class="btn-primary" style="margin-top:12px;" onclick="runKrQuantBacktest()">
-            <i class="ti ti-player-play" aria-hidden="true"></i> Run backtest
+            <i class="ti ti-player-play" aria-hidden="true"></i> <span data-i18n="runBacktestBtn">Run backtest</span>
           </button>
           <div class="info-box" style="margin-top:12px;">
             <i class="ti ti-info-circle" aria-hidden="true"></i>
@@ -462,26 +463,26 @@
           <label class="scr-switch">
             <input type="checkbox" id="scr-only-pass" checked onchange="loadScreenerResults()" />
             <span class="scr-switch-track"><span class="scr-switch-thumb"></span></span>
-            <span>Pass all 8 conditions</span>
+            <span data-i18n="passAll8Conditions">Pass all 8 conditions</span>
           </label>
           <div id="screener-status" class="scr-status-bar"></div>
-          <button class="btn-secondary" onclick="loadScreenerResults()" style="margin-left:auto;flex:0 0 auto;"><i class="ti ti-refresh" aria-hidden="true"></i> Refresh</button>
+          <button class="btn-secondary" onclick="loadScreenerResults()" style="margin-left:auto;flex:0 0 auto;"><i class="ti ti-refresh" aria-hidden="true"></i> <span data-i18n="refresh">Refresh</span></button>
         </div>
 
         <div class="scr-search-row">
           <div class="scr-search-box">
             <i class="ti ti-search" aria-hidden="true"></i>
-            <input type="text" id="scr-search" placeholder="Search by name or code" oninput="renderFilteredScreenerRows()" />
+            <input type="text" id="scr-search" data-i18n-placeholder="searchByNameOrCode" placeholder="Search by name or code" oninput="renderFilteredScreenerRows()" />
           </div>
           <div class="scr-pills" id="scr-pills">
-            <button type="button" class="scr-pill active" data-preset="all" onclick="setScreenerPreset('all')"><i class="ti ti-list" aria-hidden="true"></i> All</button>
-            <button type="button" class="scr-pill" data-preset="rsStrong" onclick="setScreenerPreset('rsStrong')"><i class="ti ti-bolt" aria-hidden="true"></i> RS 90+ Leaders</button>
-            <button type="button" class="scr-pill" data-preset="nearHigh" onclick="setScreenerPreset('nearHigh')"><i class="ti ti-arrow-up-right" aria-hidden="true"></i> Near High (10%)</button>
-            <button type="button" class="scr-pill" data-preset="freshBreakout" onclick="setScreenerPreset('freshBreakout')"><i class="ti ti-plant" aria-hidden="true"></i> Early Breakout</button>
-            <button type="button" class="scr-pill" data-preset="watchlist" onclick="setScreenerPreset('watchlist')"><i class="ti ti-star" aria-hidden="true"></i> Watchlist</button>
+            <button type="button" class="scr-pill active" data-preset="all" onclick="setScreenerPreset('all')"><i class="ti ti-list" aria-hidden="true"></i> <span data-i18n="allLabel">All</span></button>
+            <button type="button" class="scr-pill" data-preset="rsStrong" onclick="setScreenerPreset('rsStrong')"><i class="ti ti-bolt" aria-hidden="true"></i> <span data-i18n="rs90Leaders">RS 90+ Leaders</span></button>
+            <button type="button" class="scr-pill" data-preset="nearHigh" onclick="setScreenerPreset('nearHigh')"><i class="ti ti-arrow-up-right" aria-hidden="true"></i> <span data-i18n="nearHigh10">Near High (10%)</span></button>
+            <button type="button" class="scr-pill" data-preset="freshBreakout" onclick="setScreenerPreset('freshBreakout')"><i class="ti ti-plant" aria-hidden="true"></i> <span data-i18n="earlyBreakout">Early Breakout</span></button>
+            <button type="button" class="scr-pill" data-preset="watchlist" onclick="setScreenerPreset('watchlist')"><i class="ti ti-star" aria-hidden="true"></i> <span data-i18n="watchlistLabel">Watchlist</span></button>
           </div>
           <button type="button" class="scr-filter-btn" id="scr-filter-btn" onclick="toggleFinFilterPanel()">
-            <i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> Filters <span class="scr-filter-count" id="scr-filter-count" style="display:none;">0</span>
+            <i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> <span data-i18n="filtersLabel">Filters</span> <span class="scr-filter-count" id="scr-filter-count" style="display:none;">0</span>
           </button>
         </div>
 
@@ -504,7 +505,7 @@
   <!-- 스크리닝 종목 상세 모달 -->
   <div id="scr-detail-overlay" class="scr-modal-overlay" style="display:none;" onclick="if(event.target===this) closeScreenerDetail()">
     <div class="scr-modal">
-      <button class="scr-modal-close" onclick="closeScreenerDetail()" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button>
+      <button class="scr-modal-close" onclick="closeScreenerDetail()" data-i18n-title="closeLabel" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button>
       <div id="scr-detail-body"></div>
     </div>
   </div>

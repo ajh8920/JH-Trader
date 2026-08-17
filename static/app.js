@@ -46,6 +46,411 @@ function cycleTheme() {
 
 document.addEventListener('DOMContentLoaded', () => applyTheme(localStorage.getItem('theme') || 'dark'));
 
+// ─── 언어(한국어/영어) ────────────────────────────────────────────────────────
+// 핵심 UI(탭·버튼·라벨·테이블 헤더 등)만 대상으로 한다 - 안내문/에러 메시지처럼
+// 긴 설명형 텍스트는 RULES.md R12에 따라 계속 한국어 고정이다. 테마와 달리
+// 언어는 페이지 전체를 다시 그려야 해서(수십 개 렌더 함수가 t()를 호출) CSS
+// 속성 하나로 못 바꾸고, 전환 시 새로고침한다 - localStorage에 저장해둔 값을
+// 다음 로드 때 다시 읽어 그 언어로 처음부터 렌더링하는 방식.
+let currentLang = localStorage.getItem('lang') || 'ko';
+
+function t(key) {
+  const entry = I18N[key];
+  if (!entry) return key;
+  return entry[currentLang] ?? entry.ko ?? key;
+}
+
+function applyLang(lang) {
+  currentLang = lang;
+  const btn = document.getElementById('lang-toggle-btn');
+  if (btn) btn.textContent = lang === 'ko' ? 'EN' : '한';
+  if (btn) btn.title = lang === 'ko' ? 'Switch to English' : '한국어로 전환';
+}
+
+function cycleLang() {
+  const next = currentLang === 'ko' ? 'en' : 'ko';
+  localStorage.setItem('lang', next);
+  location.reload();
+}
+
+// Jinja가 서버에서 한 번만 렌더링하는 정적 HTML(탭/버튼/라벨 등)은 app.js의
+// 동적 렌더링과 달리 매번 다시 그려지지 않으므로, data-i18n 계열 속성을 붙여두고
+// 페이지 로드 시 한 번 훑어서 텍스트/placeholder/title을 교체한다.
+function applyI18nToDom() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const text = t(el.dataset.i18nTitle);
+    el.title = text;
+    if (el.hasAttribute('aria-label')) el.setAttribute('aria-label', text);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  applyLang(currentLang);
+  applyI18nToDom();
+});
+
+// 서버가 돌려주는 값(매크로 종목명/그룹명, 애널리스트 등급 등) → 한국어.
+// 키 기반 I18N과 달리 여기 키는 "실제 화면에 뜨는 영어 값" 그 자체다.
+const BACKEND_TEXT_KO = {
+  // 매크로 그룹
+  'Indices': '지수', 'Volatility': '변동성', 'Rates': '금리', 'FX': '환율', 'Commodities': '원자재',
+  // 매크로 종목명
+  'Nasdaq 100': '나스닥 100', 'Dow Jones': '다우존스', 'Russell 2000': '러셀 2000',
+  'US 2Y Treasury Yield': '美 2년물 국채금리', 'US 5Y Treasury Yield': '美 5년물 국채금리',
+  'US 10Y Treasury Yield': '美 10년물 국채금리', 'US 30Y Treasury Yield': '美 30년물 국채금리',
+  'Dollar Index': '달러 인덱스', 'Gold Futures': '금 선물', 'WTI Crude Futures': 'WTI 원유 선물',
+  // 애널리스트 등급/추천
+  'Buy': '매수', 'Hold': '보유', 'Sell': '매도', 'Strong Buy': '적극매수',
+  // 국내 스윙 전략명
+  'Volatility Breakout': '변동성 돌파', 'Range Breakout': '박스권 돌파', 'MA Pullback': '이동평균 눌림목',
+  'Combo (Trend + Pullback + Momentum)': '복합전략(추세+눌림목+모멘텀)',
+  // 실전현황 주문 라벨(infinite_buying.py)
+  'Day 1 Buy': '1일차 매수', 'Stop-Loss Forced Sell (1/4)': '손절모드 강제매도(1/4)',
+  'Buy (Avg Price)': '매수(평단가)', 'Buy (Threshold)': '매수(임계값)',
+  'Sell (Quarter 1/4)': '매도(쿼터 1/4)', 'Sell (Target 3/4)': '매도(목표 3/4)',
+  // 스크리너 재무 필터 - 카테고리명
+  'Balance Sheet': '재무상태표', 'Income Statement': '손익계산서', 'Profitability': '수익성',
+  'Growth (YoY)': '성장성(전년비)', 'Stability': '안정성', 'Valuation': '밸류에이션', 'Consensus': '컨센서스',
+  // 스크리너 재무 필터 - 항목명
+  'Total Assets': '총자산', 'Total Liabilities': '총부채', 'Total Equity': '총자본',
+  'Equity Attributable to Owners': '지배주주지분', 'Issued Capital': '자본금',
+  'Revenue': '매출액', 'Gross Profit': '매출총이익', 'Operating Income': '영업이익',
+  'Pre-Tax Income': '세전이익', 'Net Income': '당기순이익', 'Net Income Attributable to Owners': '지배주주순이익',
+  'Gross Margin': '매출총이익률', 'Operating Margin': '영업이익률', 'Net Margin': '순이익률',
+  'Revenue Growth': '매출성장률', 'Operating Income Growth': '영업이익성장률', 'EPS Growth': 'EPS 성장률',
+  'Current Ratio': '유동비율', 'Quick Ratio': '당좌비율', 'Debt Ratio': '부채비율', 'Net Debt Ratio': '순부채비율',
+  'Dividend Yield': '배당수익률',
+  // 스크리너 재무 필터 - 이상적 수치 티어 라벨
+  'Weak': '약함', 'Fair': '보통', 'Good': '양호', 'Excellent': '우수',
+  'Declining': '감소', 'Slow': '저성장', 'Strong': '고성장', 'Explosive': '폭발적', 'None': '없음',
+  // 스크리너 재무 필터 - 기타
+  'Analyst Rating': '애널리스트 의견', 'Financial Filters': '재무 필터', 'Reset': '초기화', 'Rating': '등급',
+  "Some metrics (stability, consensus, EV/EBITDA, etc.) aren't available for KR stocks.":
+    '일부 지표(안정성, 컨센서스, EV/EBITDA 등)는 국내 종목에서 제공되지 않습니다.',
+};
+
+// "{티커} Buy & Hold" 처럼 값 일부에 티커가 끼어 있는 백엔드 문자열은 정확히
+// 일치하는 키를 미리 등록해둘 수 없어 접미사 치환으로 처리한다.
+function tv(value) {
+  if (currentLang !== 'ko' || value == null) return value;
+  if (BACKEND_TEXT_KO[value] !== undefined) return BACKEND_TEXT_KO[value];
+  if (value.endsWith(' Buy & Hold')) return value.slice(0, -' Buy & Hold'.length) + ' 매수후보유';
+  return value;
+}
+
+const I18N = {
+  // API 키 배너
+  apiKeyTitle: { en: 'Finnhub API Key Required', ko: 'Finnhub API 키가 필요합니다' },
+  apiKeyCopyFrom: { en: 'Get your free API key from the', ko: '무료 API 키는 아래에서 발급받으세요:' },
+  apiKeyPlaceholder: { en: 'Enter your Finnhub API key', ko: 'Finnhub API 키를 입력하세요' },
+  saveVerify: { en: 'Save & Verify', ko: '저장 및 확인' },
+  cancel: { en: 'Cancel', ko: '취소' },
+  verifying: { en: 'Verifying...', ko: '확인 중...' },
+  apiKeySaved: { en: 'API key saved', ko: 'API 키가 저장되었습니다' },
+
+  // 매크로
+  loadingMarketOverview: { en: 'Loading market overview...', ko: '시황 정보를 불러오는 중...' },
+  retry: { en: 'Retry', ko: '다시 시도' },
+  asOf: { en: 'As of', ko: '기준' },
+  refresh: { en: 'Refresh', ko: '새로고침' },
+  noData: { en: 'No data', ko: '데이터 없음' },
+
+  // 공포·탐욕 지수
+  fgTitle: { en: 'Fear & Greed Index', ko: '공포·탐욕 지수' },
+  fgPrevClose: { en: 'Previous Close', ko: '전일 종가' },
+  fg1WeekAgo: { en: '1 Week Ago', ko: '1주일 전' },
+  fg1MonthAgo: { en: '1 Month Ago', ko: '1개월 전' },
+  fg1YearAgo: { en: '1 Year Ago', ko: '1년 전' },
+  live: { en: 'LIVE', ko: '실시간' },
+  fgExtremeFear: { en: 'Extreme Fear', ko: '극도의 공포' },
+  fgFear: { en: 'Fear', ko: '공포' },
+  fgNeutral: { en: 'Neutral', ko: '중립' },
+  fgGreed: { en: 'Greed', ko: '탐욕' },
+  fgExtremeGreed: { en: 'Extreme Greed', ko: '극도의 탐욕' },
+
+  // 종목 검색 / 상세 카드
+  loadingTickerData: { en: 'Loading {ticker} data...', ko: '{ticker} 데이터를 불러오는 중...' },
+  open: { en: 'Open', ko: '시가' },
+  high: { en: 'High', ko: '고가' },
+  low: { en: 'Low', ko: '저가' },
+  prevClose: { en: 'Prev Close', ko: '전일 종가' },
+  avgTarget: { en: 'Avg Target', ko: '평균 목표가' },
+  lowTarget: { en: 'Low Target', ko: '최저 목표가' },
+  highTarget: { en: 'High Target', ko: '최고 목표가' },
+  upside: { en: 'Upside', ko: '상승여력' },
+  priceWithinTargetRange: { en: "Current price's position within the analyst target range", ko: '애널리스트 목표가 구간 내 현재가 위치' },
+  updated: { en: 'Updated', ko: '업데이트' },
+  noTargetPriceData: { en: 'No analyst target price data available', ko: '애널리스트 목표가 데이터가 없습니다' },
+  analysts: { en: 'analysts', ko: '명의 애널리스트' },
+  buy: { en: 'Buy', ko: '매수' },
+  hold: { en: 'Hold', ko: '보유' },
+  sell: { en: 'Sell', ko: '매도' },
+  addToPortfolio: { en: 'Add to Portfolio', ko: '포트폴리오에 추가' },
+  setAlert: { en: 'Set Alert', ko: '알림 설정' },
+  priceVsTarget: { en: 'Price vs. Target', ko: '현재가 대비 목표가' },
+  current: { en: 'Current', ko: '현재가' },
+  priceVsTargetChart: { en: 'price vs. target chart', ko: '현재가 대비 목표가 차트' },
+
+  // 포트폴리오
+  loading: { en: 'Loading...', ko: '불러오는 중...' },
+  updatingPrices: { en: 'Updating prices...', ko: '가격 업데이트 중...' },
+  portfolioEmpty: { en: 'Your portfolio is empty', ko: '포트폴리오가 비어 있습니다' },
+  portfolioEmptyHint: { en: 'Search for a stock above and add it', ko: '위에서 종목을 검색해 추가해보세요' },
+  totalValue: { en: 'Total Value', ko: '총 평가금액' },
+  totalCost: { en: 'Total Cost', ko: '총 매입금액' },
+  totalPL: { en: 'Total P/L', ko: '총 손익' },
+  stock: { en: 'Stock', ko: '종목' },
+  price: { en: 'Price', ko: '현재가' },
+  target: { en: 'Target', ko: '목표가' },
+  qty: { en: 'Qty', ko: '수량' },
+  pl: { en: 'P/L', ko: '손익' },
+
+  // 알림
+  noAlertsSet: { en: 'No alerts set', ko: '설정된 알림이 없습니다' },
+  noAlertsHint: { en: 'Set a price alert from a stock search result', ko: '종목 검색 결과에서 가격 알림을 설정해보세요' },
+  triggered: { en: 'Triggered', ko: '발동됨' },
+  active: { en: 'Active', ko: '대기중' },
+  alertWhenPrice: { en: 'Alert when price', ko: '가격이' },
+  risesAbove: { en: 'rises above', ko: '이상으로 상승 시' },
+  fallsBelow: { en: 'falls below', ko: '이하로 하락 시' },
+
+  // 백테스트(무한매수법) / 국내 스윙 공용
+  runningBacktestFor: { en: 'Running backtest for {ticker}...', ko: '{ticker} 백테스트 실행 중...' },
+  capital: { en: 'Capital', ko: '투자원금' },
+  totalBuyQty: { en: 'Total Buy Qty', ko: '총 매수수량' },
+  sh: { en: 'sh', ko: '주' },
+  totalSellQty: { en: 'Total Sell Qty', ko: '총 매도수량' },
+  holdingQty: { en: 'Holding Qty', ko: '보유수량' },
+  avgPrice: { en: 'Avg Price', ko: '평균단가' },
+  buyAmount: { en: 'Buy Amount', ko: '총 매수금액' },
+  sellAmount: { en: 'Sell Amount', ko: '총 매도금액' },
+  unrealizedPL: { en: 'Unrealized P/L', ko: '평가손익' },
+  return: { en: 'Return', ko: '수익률' },
+  returnOnCapital: { en: 'Return on Capital', ko: '원금 대비 수익률' },
+  targetReturn: { en: 'Target Return', ko: '목표수익률' },
+  splits: { en: 'Splits', ko: '분할수' },
+  strategyMDD: { en: 'Strategy MDD', ko: '전략 MDD' },
+  alphaExcessReturn: { en: 'Alpha (Excess Return)', ko: '알파(초과수익률)' },
+  cyclesCompleted: { en: 'cycles completed', ko: '회차 완료' },
+  quarterStopLoss: { en: 'Quarter Stop-Loss', ko: '쿼터손절' },
+  currentlyHolding: { en: 'Currently Holding', ko: '현재 보유중' },
+  avg: { en: 'avg', ko: '평균' },
+  value: { en: 'value', ko: '평가금액' },
+  noPositionAtEnd: { en: 'No position at period end', ko: '기간 종료 시점 보유 없음' },
+  period: { en: 'Period', ko: '기간' },
+  returnComparison: { en: 'Return Comparison', ko: '수익률 비교' },
+  strategy: { en: 'Strategy', ko: '전략' },
+  returnComparisonChart: { en: 'return comparison chart', ko: '수익률 비교 차트' },
+  priceChartBuySell: { en: 'Price Chart (Buy/Sell Points)', ko: '가격 차트(매수/매도 시점)' },
+  priceChart: { en: 'price chart', ko: '가격 차트' },
+  cycle: { en: 'Cycle', ko: '회차' },
+  date: { en: 'Date', ko: '날짜' },
+  type: { en: 'Type', ko: '구분' },
+  cumQty: { en: 'Cum. Qty', ko: '누적수량' },
+  note: { en: 'Note', ko: '비고' },
+  noTradesInPeriod: { en: 'No trades in this period', ko: '이 기간에 거래 내역이 없습니다' },
+  infiniteBuying: { en: 'Infinite Buying', ko: '무한매수법' },
+  close: { en: 'Close', ko: '종가' },
+
+  // 국내 스윙
+  noMatchingStocks: { en: 'No matching stocks', ko: '일치하는 종목이 없습니다' },
+  trades: { en: 'Trades', ko: '거래횟수' },
+  winRate: { en: 'Win Rate', ko: '승률' },
+  avgHoldDays: { en: 'Avg Hold Days', ko: '평균 보유일' },
+  plPercent: { en: 'P/L %', ko: '손익률' },
+  scrollToZoom: { en: 'Scroll to zoom, drag to pan', ko: '스크롤로 확대/축소, 드래그로 이동' },
+  resetZoom: { en: 'Reset Zoom', ko: '확대/축소 초기화' },
+  stratVolBreakout: { en: 'Volatility Breakout', ko: '변동성 돌파' },
+  stratRangeBreakout: { en: 'Range Breakout', ko: '박스권 돌파' },
+  stratMaPullback: { en: 'MA Pullback', ko: '이동평균 눌림목' },
+  stratCombo: { en: 'Combo (Trend + Pullback + Momentum)', ko: '복합전략(추세+눌림목+모멘텀)' },
+
+  // 국내 퀀트
+  priceCacheReady: { en: 'Price cache ready for', ko: '가격 캐시 준비 완료:' },
+  stocksUnit: { en: 'stocks', ko: '종목' },
+  minutesAgo: { en: 'm ago', ko: '분 전 업데이트' },
+  priceCacheWarming: { en: 'Price cache warming up (takes a few minutes after server start) — screening will be available once ready', ko: '가격 캐시를 준비하는 중입니다(서버 시작 후 몇 분 정도 소요) — 준비가 끝나면 스크리닝을 사용할 수 있습니다' },
+  fundamentalsLoaded: { en: 'Fundamentals:', ko: '재무 데이터:' },
+  recordsUnit: { en: 'records', ko: '건' },
+  screening: { en: 'Screening...', ko: '스크리닝 중...' },
+  noStocksMatchCriteria: { en: 'No stocks match the criteria', ko: '조건에 맞는 종목이 없습니다' },
+  rank: { en: 'Rank', ko: '순위' },
+  name: { en: 'Name', ko: '종목명' },
+  code: { en: 'Code', ko: '종목코드' },
+  marketCap: { en: 'Market Cap', ko: '시가총액' },
+  fiscalYear: { en: 'Fiscal Year', ko: '회계연도' },
+  runningQuantBacktest: { en: 'Running annual rebalance backtest... (querying market-wide prices, may take 5–15 minutes depending on the period)', ko: '연간 리밸런싱 백테스트 실행 중... (전체 시장 가격을 조회하며 기간에 따라 5~15분 정도 소요될 수 있습니다)' },
+  finalValue: { en: 'Final Value', ko: '최종 평가금액' },
+  totalReturn: { en: 'Total Return', ko: '총 수익률' },
+  rebalances: { en: 'Rebalances', ko: '리밸런싱 횟수' },
+  equityCurve: { en: 'Equity Curve', ko: '자산 곡선' },
+  scrollZoomDragPan: { en: 'Scroll to zoom, drag to pan', ko: '스크롤로 확대/축소, 드래그로 이동' },
+  selectedStocksByRebalanceDate: { en: 'Selected Stocks by Rebalance Date', ko: '리밸런싱 시점별 선정 종목' },
+  noStocksSelected: { en: 'No stocks selected', ko: '선정된 종목이 없습니다' },
+  noTradeHistory: { en: 'No trade history', ko: '거래 내역이 없습니다' },
+  quantStrategy: { en: 'Quant Strategy', ko: '퀀트 전략' },
+
+  // 스크리닝
+  addedToWatchlist: { en: 'Added to Watchlist', ko: '관심종목에 추가됨' },
+  addToWatchlist: { en: 'Add to Watchlist', ko: '관심종목에 추가' },
+  preparingData: { en: 'Preparing data...', ko: '데이터 준비 중...' },
+  noStocksMatchSearchFilter: { en: 'No stocks match your search/filter', ko: '검색/필터 조건에 맞는 종목이 없습니다' },
+  ofTotal: { en: 'of {n} total', ko: '전체 {n}종목 중' },
+  sector: { en: 'Sector', ko: '섹터' },
+  conditions: { en: 'Conditions', ko: '조건' },
+  volRel: { en: 'Vol (Rel)', ko: '거래량(상대)' },
+  epsGrowth: { en: 'EPS Growth', ko: 'EPS 성장률' },
+  divYield: { en: 'Div Yield', ko: '배당수익률' },
+  analyst: { en: 'Analyst', ko: '애널리스트' },
+  vs52wLow: { en: 'vs 52w Low', ko: '52주 저가 대비' },
+  vs52wHigh: { en: 'vs 52w High', ko: '52주 고가 대비' },
+  min: { en: 'Min', ko: '최소' },
+  max: { en: 'Max', ko: '최대' },
+  failedToLoadData: { en: 'Failed to load data', ko: '데이터를 불러오지 못했습니다' },
+  notAvailableForKrStocks: { en: 'Not available for KR stocks (no data source)', ko: '국내 종목은 제공되지 않습니다(데이터 소스 없음)' },
+  financialMetrics: { en: 'Financial Metrics', ko: '재무 지표' },
+  searchMetricsPlaceholder: { en: 'Search metrics (e.g. Debt Ratio, ROE)', ko: '지표 검색 (예: 부채비율, ROE)' },
+  financialsDartAnnual: { en: 'Financials (DART FY{year} Annual Report)', ko: '재무제표 (DART {year}년 사업보고서)' },
+  netIncome: { en: 'Net Income', ko: '당기순이익' },
+  analystTargetsRatings: { en: 'Analyst Targets & Ratings', ko: '애널리스트 목표가 및 투자의견' },
+  targetPriceUnavailable: { en: "Target price figures aren't available on the Finnhub free plan.", ko: '목표가 데이터는 Finnhub 무료 플랜에서 제공되지 않습니다.' },
+  trendTemplate: { en: 'Trend Template', ko: '트렌드 템플릿' },
+  volume: { en: 'Volume', ko: '거래량' },
+  backtestInKrSwing: { en: 'Backtest in KR Swing', ko: '국내 스윙에서 백테스트' },
+  trendTemplate8Conditions: { en: 'Trend Template — 8 Conditions', ko: '트렌드 템플릿 — 8가지 조건' },
+  priceAboveMa150And200: { en: '① Price > MA150 &amp; MA200', ko: '① 현재가 > MA150 &amp; MA200' },
+  ma150AboveMa200: { en: '② MA150 > MA200', ko: '② MA150 > MA200' },
+  ma200Rising: { en: '③ MA200 rising 1mo+', ko: '③ MA200 1개월 이상 상승' },
+  ma50AboveMa150And200: { en: '④ MA50 > MA150 &amp; MA200', ko: '④ MA50 > MA150 &amp; MA200' },
+  priceAboveMa50: { en: '⑤ Price > MA50', ko: '⑤ 현재가 > MA50' },
+  priceAbove52wLowBy30pct: { en: '⑥ +30% above 52w low', ko: '⑥ 52주 최저가 대비 +30% 이상' },
+  priceWithin25pctOf52wHigh: { en: '⑦ Within 25% of 52w high', ko: '⑦ 52주 최고가 대비 25% 이내' },
+  rsAboveThreshold: { en: '⑧ RS Rating ≥ 70', ko: '⑧ RS 등급 ≥ 70' },
+
+  // 실전현황
+  noActiveInfinitePositions: { en: 'No active Infinite Buying positions', ko: '진행 중인 무한매수법 포지션이 없습니다' },
+  enterTickerToStart: { en: 'Enter a ticker and capital above to start', ko: '위에서 티커와 투자원금을 입력해 시작하세요' },
+  splitsExhausted: { en: 'Splits Exhausted', ko: '분할 소진' },
+  basicInfo: { en: 'Basic Info', ko: '기본 정보' },
+  capitalUsed: { en: 'Capital Used', ko: '사용된 원금' },
+  splitAmount: { en: 'Split Amount', ko: '분할 금액' },
+  positionInfo: { en: 'Position Info', ko: '포지션 정보' },
+  infiniteBuyingFormula: { en: 'Infinite Buying Formula', ko: '무한매수법 공식' },
+  starPct: { en: 'Star %', ko: '★ 비율' },
+  valuation: { en: 'Valuation', ko: '평가' },
+  unrealizedPl: { en: 'Unrealized P/L', ko: '평가손익' },
+  infiniteBuyingGuide: { en: 'Infinite Buying Guide', ko: '무한매수법 가이드' },
+  sharesUnit: { en: 'sh', ko: '주' },
+  addTrade: { en: 'Add Trade', ko: '거래 추가' },
+  tradeHistory: { en: 'Trade History', ko: '거래 내역' },
+
+  // 실험실
+  alreadyAdded: { en: 'is already added', ko: '은(는) 이미 추가되어 있습니다' },
+  canCompareUpTo8: { en: 'You can compare up to 8 at a time', ko: '한 번에 최대 8개까지 비교할 수 있습니다' },
+  addTickerIndexToCompare: { en: 'Add a ticker/index to compare', ko: '비교할 티커/지수를 추가하세요' },
+  loadingPrices: { en: 'Loading prices...', ko: '가격 데이터를 불러오는 중...' },
+  compareAxisPerUnit: { en: 'Compare (separate axis per unit)', ko: '비교(단위별 별도 축)' },
+  logScale: { en: 'Log scale', ko: '로그 스케일' },
+  findConditionRanges: { en: 'Find Condition Ranges', ko: '조건 구간 찾기' },
+  addCondition: { en: 'Add Condition', ko: '조건 추가' },
+  combine: { en: 'Combine', ko: '결합 방식' },
+  andAllMatch: { en: 'AND (all match)', ko: 'AND(모두 충족)' },
+  orAnyMatch: { en: 'OR (any match)', ko: 'OR(하나라도 충족)' },
+  highlightRanges: { en: 'Highlight Ranges', ko: '구간 강조 표시' },
+  reset: { en: 'Reset', ko: '초기화' },
+  changeVsPriorPeriod: { en: 'Change vs. prior period (%)', ko: '직전 대비 변동률(%)' },
+  valueClose: { en: 'Value (Close)', ko: '값(종가)' },
+  daily: { en: 'Daily', ko: '일간' },
+  weekly: { en: 'Weekly', ko: '주간' },
+  monthly: { en: 'Monthly', ko: '월간' },
+  yearly: { en: 'Yearly', ko: '연간' },
+  unitPoints: { en: 'Points', ko: '포인트' },
+  unitDollars: { en: 'Dollars ($)', ko: '달러($)' },
+  unitRate: { en: 'Rate (%)', ko: '금리(%)' },
+  changePct: { en: 'Change (%)', ko: '변동률(%)' },
+  valueClose2: { en: 'Value', ko: '값' },
+  orMore: { en: 'or more', ko: '이상' },
+  moreThan: { en: 'more than', ko: '초과' },
+  orLess: { en: 'or less', ko: '이하' },
+  lessThan: { en: 'less than', ko: '미만' },
+  or: { en: 'or', ko: '또는' },
+  and: { en: 'and', ko: '그리고' },
+  rangesMatching: { en: 'Ranges matching', ko: '조건에 맞는 구간' },
+  noRangesMatchCondition: { en: 'No ranges match this condition', ko: '이 조건에 맞는 구간이 없습니다' },
+
+  // 정적 HTML(templates/index.html) - 헤더/탭/폼 라벨 등 (data-i18n 계열 속성으로 연결)
+  manageUsers: { en: 'Manage Users', ko: '사용자 관리' },
+  changeTheme: { en: 'Change theme', ko: '테마 변경' },
+  apiKeySettings: { en: 'API Key', ko: 'API 키' },
+  logOut: { en: 'Log out', ko: '로그아웃' },
+  marketLabel: { en: 'MARKET', ko: '시장' },
+  tabMacro: { en: 'Macro', ko: '매크로' },
+  tabSearch: { en: 'Search', ko: '검색' },
+  tabPortfolio: { en: 'Portfolio', ko: '포트폴리오' },
+  tabAlerts: { en: 'Alerts', ko: '알림' },
+  tabBacktest: { en: 'Backtest', ko: '백테스트' },
+  tabLive: { en: 'Live', ko: '실전현황' },
+  tabLab: { en: 'Lab', ko: '실험실' },
+  tabKrSwing: { en: 'KR Swing', ko: '국내 스윙' },
+  tabKrQuant: { en: 'KR Quant', ko: '국내 퀀트' },
+  tabScreener: { en: 'Screener', ko: '스크리닝' },
+  searchTickerPlaceholder: { en: 'Enter ticker (e.g. AAPL, TSLA, NVDA)', ko: '티커 입력 (예: AAPL, TSLA, NVDA)' },
+  quickPicks: { en: 'Quick picks:', ko: '빠른 선택:' },
+  tickerExamplePlaceholder: { en: 'Ticker (AAPL)', ko: '티커 (AAPL)' },
+  costBasisPlaceholder: { en: 'Cost basis ($)', ko: '매입단가 ($)' },
+  add: { en: 'Add', ko: '추가' },
+  tickerLabel: { en: 'Ticker', ko: '티커' },
+  priceThresholdPlaceholder: { en: 'Price threshold ($)', ko: '기준가격 ($)' },
+  optionRisesAbove: { en: 'Rises above', ko: '상승 시' },
+  optionFallsBelow: { en: 'Falls below', ko: '하락 시' },
+  addAlertBtn: { en: 'Add alert', ko: '알림 추가' },
+  version: { en: 'Version', ko: '버전' },
+  startDate: { en: 'Start date', ko: '시작일' },
+  endDate: { en: 'End date', ko: '종료일' },
+  capitalUsdLabel: { en: 'Capital ($)', ko: '투자원금 ($)' },
+  targetReturnPctLabel: { en: 'Target return (%)', ko: '목표수익률 (%)' },
+  runBacktestBtn: { en: 'Run backtest', ko: '백테스트 실행' },
+  startNewPosition: { en: 'Start new position', ko: '새 포지션 시작' },
+  labTickerPlaceholder: { en: 'Enter ticker/index (e.g. ^IXIC, SOXL, ^TNX)', ko: '티커/지수 입력 (예: ^IXIC, SOXL, ^TNX)' },
+  compareBtn: { en: 'Compare', ko: '비교' },
+  stockNameLabel: { en: 'Stock name', ko: '종목명' },
+  capitalKrwLabel: { en: 'Capital (₩)', ko: '투자원금 (₩)' },
+  volatilityFactorK: { en: 'Volatility factor K', ko: '변동성 계수 K' },
+  holdingDays: { en: 'Holding days', ko: '보유일수' },
+  stopLossPct: { en: 'Stop-loss (%)', ko: '손절 (%)' },
+  breakoutPeriodDays: { en: 'Breakout period (days)', ko: '돌파 기간 (일)' },
+  exitPeriodDays: { en: 'Exit period (days)', ko: '청산 기간 (일)' },
+  longMaDays: { en: 'Long MA (days)', ko: '장기 이평선 (일)' },
+  shortMaDays: { en: 'Short MA (days)', ko: '단기 이평선 (일)' },
+  trendMaDays: { en: 'Trend MA (days)', ko: '추세 이평선 (일)' },
+  pullbackMaDays: { en: 'Pullback MA (days)', ko: '눌림목 이평선 (일)' },
+  momentumFactorK: { en: 'Momentum factor K', ko: '모멘텀 계수 K' },
+  trendBreakWindowDays: { en: 'Trend-break window (days)', ko: '추세이탈 판단기간 (일)' },
+  checkingFundamentals: { en: 'Checking fundamentals data...', ko: '재무 데이터 확인 중...' },
+  currentScreenTitle: { en: 'Current Screen (Low P/E + High ROE)', ko: '현재 스크리닝 결과 (저PER + 고ROE)' },
+  stockCountLabel: { en: 'Stock count', ko: '종목 수' },
+  minMarketCapLabel: { en: 'Min market cap (₩100M)', ko: '최소 시가총액 (억원)' },
+  annualRebalanceBacktestTitle: { en: 'Annual Rebalance Backtest', ko: '연간 리밸런싱 백테스트' },
+  startYearLabel: { en: 'Start year', ko: '시작 연도' },
+  endYearLabel: { en: 'End year', ko: '종료 연도' },
+  holdingsLabel: { en: 'Holdings', ko: '보유 종목 수' },
+  passAll8Conditions: { en: 'Pass all 8 conditions', ko: '8개 조건 모두 충족' },
+  searchByNameOrCode: { en: 'Search by name or code', ko: '종목명 또는 코드로 검색' },
+  allLabel: { en: 'All', ko: '전체' },
+  rs90Leaders: { en: 'RS 90+ Leaders', ko: 'RS 90+ 주도주' },
+  nearHigh10: { en: 'Near High (10%)', ko: '고점 근접 (10%)' },
+  earlyBreakout: { en: 'Early Breakout', ko: '초기 돌파' },
+  watchlistLabel: { en: 'Watchlist', ko: '관심종목' },
+  filtersLabel: { en: 'Filters', ko: '필터' },
+  closeLabel: { en: 'Close', ko: '닫기' },
+};
+
 // ─── API 호출 (Python 백엔드 경유) ───────────────────────────────────────────
 
 async function api(method, path, body) {
@@ -93,13 +498,13 @@ function showKeyBanner() {
   banner.innerHTML = `
     <div class="api-banner-inner">
       <div>
-        <strong>Finnhub API Key</strong>
-        <p>Copy your API key from the <a href="https://finnhub.io/dashboard" target="_blank" rel="noopener">finnhub.io dashboard</a></p>
+        <strong>${t('apiKeyTitle')}</strong>
+        <p>${t('apiKeyCopyFrom')} <a href="https://finnhub.io/dashboard" target="_blank" rel="noopener">finnhub.io dashboard</a></p>
       </div>
       <div class="api-key-row">
-        <input type="text" id="api-key-input" placeholder="Paste API key" style="width:280px;" />
-        <button class="btn-primary" onclick="saveApiKey()">Save &amp; Verify</button>
-        <button class="btn-secondary" onclick="document.getElementById('api-key-banner').remove()">Cancel</button>
+        <input type="text" id="api-key-input" placeholder="${t('apiKeyPlaceholder')}" style="width:280px;" />
+        <button class="btn-primary" onclick="saveApiKey()">${t('saveVerify')}</button>
+        <button class="btn-secondary" onclick="document.getElementById('api-key-banner').remove()">${t('cancel')}</button>
       </div>
       <div id="key-error" class="key-error" style="display:none;"></div>
     </div>`;
@@ -113,17 +518,17 @@ async function saveApiKey() {
 
   const btn = document.querySelector('#api-key-banner .btn-primary');
   btn.disabled = true;
-  btn.textContent = 'Verifying...';
+  btn.textContent = t('verifying');
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
 
   try {
     await api('POST', '/api/settings/key', { key });
     document.getElementById('api-key-banner')?.remove();
-    showToast('API key saved');
+    showToast(t('apiKeySaved'));
   } catch (e) {
     if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Save & Verify'; }
+    if (btn) { btn.disabled = false; btn.textContent = t('saveVerify'); }
   }
 }
 
@@ -153,7 +558,7 @@ document.addEventListener('DOMContentLoaded', () => loadMacro());
 async function loadMacro() {
   const el = document.getElementById('macro-content');
   if (!el || el.dataset.loaded === '1') return;
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading market overview...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('loadingMarketOverview')}</div>`;
 
   const maxAttempts = 3;
   let lastData = null;
@@ -172,7 +577,7 @@ async function loadMacro() {
       if (attempt === maxAttempts) {
         el.innerHTML = `
           <div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>
-          <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> Retry</button>`;
+          <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> ${t('retry')}</button>`;
         return;
       }
     }
@@ -196,13 +601,13 @@ function renderMacro(data) {
 
   el.innerHTML = `
     <div class="add-form" style="justify-content:flex-end;align-items:center;">
-      ${asOfText ? `<span style="font-size:12px;color:var(--text-muted);margin-right:auto;">As of ${asOfText}</span>` : ''}
-      <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> Refresh</button>
+      ${asOfText ? `<span style="font-size:12px;color:var(--text-muted);margin-right:auto;">${t('asOf')} ${asOfText}</span>` : ''}
+      <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> ${t('refresh')}</button>
     </div>
     ${data.fearGreed ? renderFearGreedCard(data.fearGreed) : ''}
     ${Object.entries(groups).map(([group, list]) => `
       <div class="card">
-        <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.04em;">${escapeHtml(group)}</div>
+        <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.04em;">${escapeHtml(tv(group))}</div>
         <div class="macro-grid">
           ${list.map(m => {
             const hasPrice = m.price !== null && m.price !== undefined;
@@ -212,7 +617,7 @@ function renderMacro(data) {
             const hasSeries = hasPrice && Array.isArray(m.series) && m.series.length > 1;
             return `
             <div class="macro-item">
-              <div class="macro-name">${escapeHtml(m.name)}</div>
+              <div class="macro-name">${escapeHtml(tv(m.name))}</div>
               <div class="macro-ticker">${escapeHtml(m.ticker)}</div>
               ${hasPrice ? `
                 <div class="macro-price">${priceText}</div>
@@ -221,7 +626,7 @@ function renderMacro(data) {
                   ${changeText}
                 </div>
                 ${hasSeries ? buildMacroSparklineSvg(m.series, isPos) : ''}
-              ` : `<div class="macro-price" style="color:var(--text-muted);font-size:13px;">No data</div>`}
+              ` : `<div class="macro-price" style="color:var(--text-muted);font-size:13px;">${t('noData')}</div>`}
             </div>`;
           }).join('')}
         </div>
@@ -249,7 +654,7 @@ function renderTicker(data) {
   const piece = items.map(m => {
     const isPos = m.change >= 0;
     return `<span class="ticker-item">
-        <span class="ticker-name">${escapeHtml(m.name)}</span>
+        <span class="ticker-name">${escapeHtml(tv(m.name))}</span>
         <span class="ticker-price">${formatMacroPrice(m.price, m.unit)}</span>
         <span class="ticker-change ${isPos ? 'positive' : 'negative'}"><i class="ti ti-trending-${isPos ? 'up' : 'down'}" aria-hidden="true"></i>${formatMacroChange(m.change, m.changePct, m.unit)}</span>
       </span>`;
@@ -273,15 +678,16 @@ const FEAR_GREED_SEGMENTS = [
 ];
 
 const FEAR_GREED_RATING_KO = {
-  'extreme fear': { label: 'Extreme Fear', color: '#e5484d' },
-  'fear': { label: 'Fear', color: '#f0a058' },
-  'neutral': { label: 'Neutral', color: '#dfb945' },
-  'greed': { label: 'Greed', color: '#8fc46a' },
-  'extreme greed': { label: 'Extreme Greed', color: '#38a973' },
+  'extreme fear': { key: 'fgExtremeFear', color: '#e5484d' },
+  'fear': { key: 'fgFear', color: '#f0a058' },
+  'neutral': { key: 'fgNeutral', color: '#dfb945' },
+  'greed': { key: 'fgGreed', color: '#8fc46a' },
+  'extreme greed': { key: 'fgExtremeGreed', color: '#38a973' },
 };
 
 function fearGreedRatingInfo(rating) {
-  return FEAR_GREED_RATING_KO[(rating || '').toLowerCase()] || { label: rating || '-', color: 'var(--text-muted)' };
+  const entry = FEAR_GREED_RATING_KO[(rating || '').toLowerCase()];
+  return entry ? { label: t(entry.key), color: entry.color } : { label: rating || '-', color: 'var(--text-muted)' };
 }
 
 // 원형 링을 stroke-dasharray/dashoffset으로 그려서, 최초 렌더 시 0%에서 실제
@@ -298,7 +704,7 @@ function buildFearGreedGaugeSvg(score) {
   const glowId = 'fg-glow-' + Math.random().toString(36).slice(2, 8);
 
   return `
-    <svg viewBox="0 0 ${size} ${size}" role="img" aria-label="공포탐욕지수 ${Math.round(clampedScore)}, ${rating.label}">
+    <svg viewBox="0 0 ${size} ${size}" role="img" aria-label="${t('fgTitle')} ${Math.round(clampedScore)}, ${rating.label}">
       <defs>
         <filter id="${glowId}" x="-60%" y="-60%" width="220%" height="220%">
           <feGaussianBlur stdDeviation="4.5" result="blur"></feGaussianBlur>
@@ -330,17 +736,17 @@ function animateFearGreedRing(root) {
 
 function renderFearGreedCard(fg) {
   const history = [
-    { label: 'Previous Close', value: fg.previousClose },
-    { label: '1 Week Ago', value: fg.previousWeek },
-    { label: '1 Month Ago', value: fg.previousMonth },
-    { label: '1 Year Ago', value: fg.previousYear },
+    { label: t('fgPrevClose'), value: fg.previousClose },
+    { label: t('fg1WeekAgo'), value: fg.previousWeek },
+    { label: t('fg1MonthAgo'), value: fg.previousMonth },
+    { label: t('fg1YearAgo'), value: fg.previousYear },
   ];
   return `
     <div class="card fear-greed-card">
-      <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Fear &amp; Greed Index (CNN)</div>
+      <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">${t('fgTitle')}</div>
       <div class="fear-greed-body">
         <div class="fear-greed-gauge">
-          <div class="fg-live-badge"><span class="fg-live-dot" aria-hidden="true"></span>LIVE</div>
+          <div class="fg-live-badge"><span class="fg-live-dot" aria-hidden="true"></span>${t('live')}</div>
           ${buildFearGreedGaugeSvg(fg.score)}
           <div class="fear-greed-legend">
             ${Object.values(FEAR_GREED_RATING_KO).map(r => `<span class="fear-greed-legend-item"><span class="fear-greed-dot" style="background:${r.color};"></span>${escapeHtml(r.label)}</span>`).join('')}
@@ -427,7 +833,7 @@ async function searchStock() {
   if (!ticker) return;
 
   const el = document.getElementById('search-result');
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading ${ticker} data...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('loadingTickerData').replace('{ticker}', ticker)}</div>`;
 
   try {
     const data = await api('GET', `/api/stock/${ticker}`);
@@ -464,45 +870,45 @@ function renderStockCard(d, el) {
       </div>
 
       <div class="ohlc-grid">
-        <div class="ohlc-item"><div class="ohlc-label">Open</div><div class="ohlc-value">$${d.open.toFixed(2)}</div></div>
-        <div class="ohlc-item"><div class="ohlc-label">High</div><div class="ohlc-value positive">$${d.high.toFixed(2)}</div></div>
-        <div class="ohlc-item"><div class="ohlc-label">Low</div><div class="ohlc-value negative">$${d.low.toFixed(2)}</div></div>
-        <div class="ohlc-item"><div class="ohlc-label">Prev Close</div><div class="ohlc-value">$${d.prevClose.toFixed(2)}</div></div>
+        <div class="ohlc-item"><div class="ohlc-label">${t('open')}</div><div class="ohlc-value">$${d.open.toFixed(2)}</div></div>
+        <div class="ohlc-item"><div class="ohlc-label">${t('high')}</div><div class="ohlc-value positive">$${d.high.toFixed(2)}</div></div>
+        <div class="ohlc-item"><div class="ohlc-label">${t('low')}</div><div class="ohlc-value negative">$${d.low.toFixed(2)}</div></div>
+        <div class="ohlc-item"><div class="ohlc-label">${t('prevClose')}</div><div class="ohlc-value">$${d.prevClose.toFixed(2)}</div></div>
       </div>
 
       ${d.targetMean ? `
         <div class="meta-grid">
           <div class="meta-item">
-            <div class="meta-label">Avg Target</div>
+            <div class="meta-label">${t('avgTarget')}</div>
             <div class="meta-value" style="color:${upsideColor};">$${d.targetMean.toFixed(2)}</div>
           </div>
           <div class="meta-item">
-            <div class="meta-label">Low Target</div>
+            <div class="meta-label">${t('lowTarget')}</div>
             <div class="meta-value">$${d.targetLow?.toFixed(2) ?? '-'}</div>
           </div>
           <div class="meta-item">
-            <div class="meta-label">High Target</div>
+            <div class="meta-label">${t('highTarget')}</div>
             <div class="meta-value">$${d.targetHigh?.toFixed(2) ?? '-'}</div>
           </div>
         </div>
         <div class="upside-bar-wrap">
           <div class="bar-label">
-            <span>Low $${d.targetLow?.toFixed(0)}</span>
-            <span style="color:${upsideColor};font-weight:600;">Upside ${upside >= 0 ? '+' : ''}${upside.toFixed(1)}%</span>
-            <span>High $${d.targetHigh?.toFixed(0)}</span>
+            <span>${t('low')} $${d.targetLow?.toFixed(0)}</span>
+            <span style="color:${upsideColor};font-weight:600;">${t('upside')} ${upside >= 0 ? '+' : ''}${upside.toFixed(1)}%</span>
+            <span>${t('high')} $${d.targetHigh?.toFixed(0)}</span>
           </div>
           <div class="bar-track">
             <div class="bar-fill" style="width:${barPct}%;background:${upside >= 0 ? '#639922' : '#E24B4A'};"></div>
           </div>
-          <div class="bar-hint">Current price position within target range ${d.targetUpdated ? '· Updated ' + d.targetUpdated : ''}</div>
+          <div class="bar-hint">${t('priceWithinTargetRange')}${d.targetUpdated ? ' · ' + t('updated') + ' ' + d.targetUpdated : ''}</div>
         </div>
-      ` : `<div style="padding:14px 0;color:var(--text-secondary);font-size:13px;"><i class="ti ti-info-circle" aria-hidden="true"></i> No target price data</div>`}
+      ` : `<div style="padding:14px 0;color:var(--text-secondary);font-size:13px;"><i class="ti ti-info-circle" aria-hidden="true"></i> ${t('noTargetPriceData')}</div>`}
 
       ${total > 0 ? `
         <div class="analyst-breakdown">
           <div class="breakdown-header">
-            <span>${total} Analysts${d.recPeriod ? ' · ' + d.recPeriod : ''}</span>
-            ${recLabel ? `<span class="pill pill-rec">${recLabel}</span>` : ''}
+            <span>${total} ${t('analysts')}${d.recPeriod ? ' · ' + d.recPeriod : ''}</span>
+            ${recLabel ? `<span class="pill pill-rec">${tv(recLabel)}</span>` : ''}
           </div>
           <div class="breakdown-bar">
             <div style="flex:${d.recBuy};background:#639922;border-radius:3px 0 0 3px;"></div>
@@ -510,34 +916,34 @@ function renderStockCard(d, el) {
             <div style="flex:${d.recSell};background:#E24B4A;border-radius:0 3px 3px 0;"></div>
           </div>
           <div class="analyst-pills">
-            ${d.recBuy > 0 ? `<span class="pill pill-buy"><i class="ti ti-thumb-up" aria-hidden="true"></i>Buy ${d.recBuy}</span>` : ''}
-            ${d.recHold > 0 ? `<span class="pill pill-hold"><i class="ti ti-minus" aria-hidden="true"></i>Hold ${d.recHold}</span>` : ''}
-            ${d.recSell > 0 ? `<span class="pill pill-sell"><i class="ti ti-thumb-down" aria-hidden="true"></i>Sell ${d.recSell}</span>` : ''}
+            ${d.recBuy > 0 ? `<span class="pill pill-buy"><i class="ti ti-thumb-up" aria-hidden="true"></i>${t('buy')} ${d.recBuy}</span>` : ''}
+            ${d.recHold > 0 ? `<span class="pill pill-hold"><i class="ti ti-minus" aria-hidden="true"></i>${t('hold')} ${d.recHold}</span>` : ''}
+            ${d.recSell > 0 ? `<span class="pill pill-sell"><i class="ti ti-thumb-down" aria-hidden="true"></i>${t('sell')} ${d.recSell}</span>` : ''}
           </div>
         </div>
       ` : ''}
 
       <div class="action-row">
         <button class="btn-primary" onclick="addToPortfolioFromSearch('${d.ticker}', ${d.price})">
-          <i class="ti ti-plus" aria-hidden="true"></i> Add to Portfolio
+          <i class="ti ti-plus" aria-hidden="true"></i> ${t('addToPortfolio')}
         </button>
         <button class="btn-secondary" onclick="addAlertFromSearch('${d.ticker}', ${d.targetMean || d.price})">
-          <i class="ti ti-bell" aria-hidden="true"></i> Set Alert
+          <i class="ti ti-bell" aria-hidden="true"></i> ${t('setAlert')}
         </button>
       </div>
     </div>
 
     ${d.targetMean ? `
       <div class="card">
-        <div style="font-size:13px;font-weight:600;margin-bottom:10px;"><i class="ti ti-chart-bar" aria-hidden="true"></i> Price vs. Target</div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;"><i class="ti ti-chart-bar" aria-hidden="true"></i> ${t('priceVsTarget')}</div>
         <div class="chart-legend">
-          <span><span class="legend-dot" style="background:#378ADD;"></span>Current</span>
-          <span><span class="legend-dot" style="background:#F09595;"></span>Low Target</span>
-          <span><span class="legend-dot" style="background:#97C459;"></span>Avg Target</span>
-          <span><span class="legend-dot" style="background:#5DCAA5;"></span>High Target</span>
+          <span><span class="legend-dot" style="background:#378ADD;"></span>${t('current')}</span>
+          <span><span class="legend-dot" style="background:#F09595;"></span>${t('lowTarget')}</span>
+          <span><span class="legend-dot" style="background:#97C459;"></span>${t('avgTarget')}</span>
+          <span><span class="legend-dot" style="background:#5DCAA5;"></span>${t('highTarget')}</span>
         </div>
         <div class="chart-wrap">
-          <canvas id="target-chart" role="img" aria-label="${d.ticker} current price vs. target chart"></canvas>
+          <canvas id="target-chart" role="img" aria-label="${d.ticker} ${t('priceVsTargetChart')}"></canvas>
         </div>
       </div>
     ` : ''}
@@ -563,7 +969,7 @@ function drawChart(cur, low, mean, high) {
   priceChart = new Chart(canvas, {
     type: 'bar',
     data: {
-      labels: ['Current', 'Low Target', 'Avg Target', 'High Target'],
+      labels: [t('current'), t('lowTarget'), t('avgTarget'), t('highTarget')],
       datasets: [{ data: [cur, low, mean, high], backgroundColor: ['#378ADD','#F09595','#97C459','#5DCAA5'], borderRadius: 5, borderSkipped: false }]
     },
     options: {
@@ -599,7 +1005,7 @@ async function addPortfolioItem() {
 
 async function loadPortfolio() {
   const el = document.getElementById('portfolio-content');
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('loading')}</div>`;
   try {
     const data = await api('GET', '/api/portfolio');
     renderPortfolio(data);
@@ -610,7 +1016,7 @@ async function loadPortfolio() {
 
 async function refreshPortfolio() {
   const el = document.getElementById('portfolio-content');
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Updating prices...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('updatingPrices')}</div>`;
   try {
     const data = await api('POST', '/api/portfolio/refresh');
     renderPortfolio(data);
@@ -622,7 +1028,7 @@ async function refreshPortfolio() {
 function renderPortfolio(portfolio) {
   const el = document.getElementById('portfolio-content');
   if (!portfolio.length) {
-    el.innerHTML = `<div class="empty-state"><i class="ti ti-briefcase" aria-hidden="true"></i><p>Your portfolio is empty</p><small>Search for a stock or add one above</small></div>`;
+    el.innerHTML = `<div class="empty-state"><i class="ti ti-briefcase" aria-hidden="true"></i><p>${t('portfolioEmpty')}</p><small>${t('portfolioEmptyHint')}</small></div>`;
     return;
   }
 
@@ -638,13 +1044,13 @@ function renderPortfolio(portfolio) {
 
   el.innerHTML = `
     <div class="summary-grid">
-      <div class="meta-item"><div class="meta-label">Total Value</div><div class="meta-value">$${totalValue.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
-      <div class="meta-item"><div class="meta-label">Total Cost</div><div class="meta-value">$${totalCost.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
-      <div class="meta-item"><div class="meta-label">Total P/L</div><div class="meta-value ${pnl >= 0 ? 'positive' : 'negative'}">${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toLocaleString('en-US', {maximumFractionDigits:0})} <span style="font-size:13px;">(${pnlPct.toFixed(1)}%)</span></div></div>
+      <div class="meta-item"><div class="meta-label">${t('totalValue')}</div><div class="meta-value">$${totalValue.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
+      <div class="meta-item"><div class="meta-label">${t('totalCost')}</div><div class="meta-value">$${totalCost.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
+      <div class="meta-item"><div class="meta-label">${t('totalPL')}</div><div class="meta-value ${pnl >= 0 ? 'positive' : 'negative'}">${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toLocaleString('en-US', {maximumFractionDigits:0})} <span style="font-size:13px;">(${pnlPct.toFixed(1)}%)</span></div></div>
     </div>
     <div class="pf-table-wrap">
       <table class="pf-table">
-        <thead><tr><th>Stock</th><th>Price</th><th>Target</th><th>Upside</th><th>Qty</th><th>P/L</th><th></th></tr></thead>
+        <thead><tr><th>${t('stock')}</th><th>${t('price')}</th><th>${t('target')}</th><th>${t('upside')}</th><th>${t('qty')}</th><th>${t('pl')}</th><th></th></tr></thead>
         <tbody>
           ${portfolio.map(p => {
             const cur = p.currentPrice || 0;
@@ -714,15 +1120,15 @@ function renderAlerts(alerts) {
   badge.textContent = active;
 
   if (!alerts.length) {
-    el.innerHTML = `<div class="empty-state"><i class="ti ti-bell-off" aria-hidden="true"></i><p>No alerts set</p><small>Add a ticker and price threshold above</small></div>`;
+    el.innerHTML = `<div class="empty-state"><i class="ti ti-bell-off" aria-hidden="true"></i><p>${t('noAlertsSet')}</p><small>${t('noAlertsHint')}</small></div>`;
     return;
   }
 
   el.innerHTML = `<div class="notif-list">${alerts.map(a => `
     <div class="notif-item">
       <div>
-        <div class="notif-ticker">${escapeHtml(a.ticker)} <span class="${a.triggered ? 'badge-done' : 'badge-active'}">${a.triggered ? 'Triggered' : 'Active'}</span></div>
-        <div class="notif-info">Alert when price ${a.type === 'above' ? 'rises above' : 'falls below'} $${a.price.toFixed(2)} · ${a.created}${a.triggeredAt ? ` · <span style="color:var(--green)">Triggered ${a.triggeredAt}</span>` : ''}</div>
+        <div class="notif-ticker">${escapeHtml(a.ticker)} <span class="${a.triggered ? 'badge-done' : 'badge-active'}">${a.triggered ? t('triggered') : t('active')}</span></div>
+        <div class="notif-info">${t('alertWhenPrice')} ${a.type === 'above' ? t('risesAbove') : t('fallsBelow')} $${a.price.toFixed(2)} · ${a.created}${a.triggeredAt ? ` · <span style="color:var(--green)">${t('triggered')} ${a.triggeredAt}</span>` : ''}</div>
       </div>
       <button class="btn-icon" onclick="removeAlert(${a.id})" aria-label="Delete alert"><i class="ti ti-trash" aria-hidden="true"></i></button>
     </div>`).join('')}</div>`;
@@ -786,7 +1192,7 @@ async function runBacktest() {
   if (!splits || splits < 2) { alert('분할수를 확인하세요'); return; }
   if (!targetReturn || targetReturn <= 0) { alert('목표수익률을 확인하세요'); return; }
 
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Running backtest for ${ticker}...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('runningBacktestFor').replace('{ticker}', ticker)}</div>`;
 
   try {
     const data = await api('POST', '/api/backtest/infinite-buying', { ticker, start, end, seed, splits, targetReturn, version });
@@ -804,63 +1210,63 @@ function renderBacktestResult(d) {
   el.innerHTML = `
     <div class="card">
       <div class="bt-summary-grid">
-        <div class="meta-item"><div class="meta-label">Capital</div><div class="meta-value">$${d.seed.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
-        <div class="meta-item"><div class="meta-label">Total Buy Qty</div><div class="meta-value">${d.totalBuyQty.toLocaleString('en-US')} sh</div></div>
-        <div class="meta-item"><div class="meta-label">Total Sell Qty</div><div class="meta-value">${d.totalSellQty.toLocaleString('en-US')} sh</div></div>
-        <div class="meta-item"><div class="meta-label">Holding Qty</div><div class="meta-value">${holding.qty.toLocaleString('en-US')} sh</div></div>
-        <div class="meta-item"><div class="meta-label">Avg Price</div><div class="meta-value">${holding.qty > 0 ? '$' + holding.avgPrice.toFixed(2) : '-'}</div></div>
-        <div class="meta-item"><div class="meta-label">Buy Amount</div><div class="meta-value">$${d.totalBuyAmount.toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
-        <div class="meta-item"><div class="meta-label">Sell Amount</div><div class="meta-value">$${d.totalSellAmount.toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
-        <div class="meta-item"><div class="meta-label">Unrealized P/L</div><div class="meta-value ${pnlCls}">${d.evalPnl>=0?'+':''}$${Math.abs(d.evalPnl).toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
-        <div class="meta-item"><div class="meta-label">Return</div><div class="meta-value ${pnlCls}">${d.returnPct>=0?'+':''}${d.returnPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">Return on Capital</div><div class="meta-value ${pnlCls}">${d.seedReturnPct>=0?'+':''}${d.seedReturnPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">Target Return</div><div class="meta-value">${d.targetReturnPct}%</div></div>
-        <div class="meta-item"><div class="meta-label">Splits</div><div class="meta-value">${d.splits}</div></div>
-        <div class="meta-item"><div class="meta-label">Strategy MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)} Return</div><div class="meta-value ${d.benchmark.returnPct>=0?'positive':'negative'}">${d.benchmark.returnPct>=0?'+':''}${d.benchmark.returnPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)} MDD</div><div class="meta-value negative">-${d.benchmark.mddPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">Alpha (Excess Return)</div><div class="meta-value ${d.alphaPct>=0?'positive':'negative'}">${d.alphaPct>=0?'+':''}${d.alphaPct.toFixed(1)}%p</div></div>
+        <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">$${d.seed.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('totalBuyQty')}</div><div class="meta-value">${d.totalBuyQty.toLocaleString('en-US')} ${t('sh')}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('totalSellQty')}</div><div class="meta-value">${d.totalSellQty.toLocaleString('en-US')} ${t('sh')}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('holdingQty')}</div><div class="meta-value">${holding.qty.toLocaleString('en-US')} ${t('sh')}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('avgPrice')}</div><div class="meta-value">${holding.qty > 0 ? '$' + holding.avgPrice.toFixed(2) : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('buyAmount')}</div><div class="meta-value">$${d.totalBuyAmount.toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('sellAmount')}</div><div class="meta-value">$${d.totalSellAmount.toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('unrealizedPL')}</div><div class="meta-value ${pnlCls}">${d.evalPnl>=0?'+':''}$${Math.abs(d.evalPnl).toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('return')}</div><div class="meta-value ${pnlCls}">${d.returnPct>=0?'+':''}${d.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('returnOnCapital')}</div><div class="meta-value ${pnlCls}">${d.seedReturnPct>=0?'+':''}${d.seedReturnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('targetReturn')}</div><div class="meta-value">${d.targetReturnPct}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('splits')}</div><div class="meta-value">${d.splits}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('strategyMDD')}</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(tv(d.benchmark.label))} ${t('return')}</div><div class="meta-value ${d.benchmark.returnPct>=0?'positive':'negative'}">${d.benchmark.returnPct>=0?'+':''}${d.benchmark.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(tv(d.benchmark.label))} MDD</div><div class="meta-value negative">-${d.benchmark.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('alphaExcessReturn')}</div><div class="meta-value ${d.alphaPct>=0?'positive':'negative'}">${d.alphaPct>=0?'+':''}${d.alphaPct.toFixed(1)}%p</div></div>
       </div>
 
       <div class="bt-holding-box">
         <span class="cycle-pill">${d.version.toUpperCase()}</span>
-        <span class="cycle-pill">${d.completedCycles} Cycles Completed</span>
-        ${holding.lossCutMode ? `<span class="cycle-pill" style="background:var(--red-bg);color:var(--red);">Quarter Stop-Loss</span>` : ''}
+        <span class="cycle-pill">${d.completedCycles} ${t('cyclesCompleted')}</span>
+        ${holding.lossCutMode ? `<span class="cycle-pill" style="background:var(--red-bg);color:var(--red);">${t('quarterStopLoss')}</span>` : ''}
         ${holding.qty > 0
-          ? ` · Currently holding: ${holding.qty} sh @ avg $${holding.avgPrice.toFixed(2)} · Price $${holding.currentPrice.toFixed(2)} · Value $${holding.value.toLocaleString('en-US',{maximumFractionDigits:2})} (T ${holding.tValue}/${d.splits})`
-          : ` · No position at end of backtest (fully exited)`}
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Period: ${d.start} – ${d.end}</div>
+          ? ` · ${t('currentlyHolding')}: ${holding.qty} ${t('sh')} @ ${t('avg')} $${holding.avgPrice.toFixed(2)} · ${t('price')} $${holding.currentPrice.toFixed(2)} · ${t('value')} $${holding.value.toLocaleString('en-US',{maximumFractionDigits:2})} (T ${holding.tValue}/${d.splits})`
+          : ` · ${t('noPositionAtEnd')}`}
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${t('period')}: ${d.start} – ${d.end}</div>
       </div>
 
-      <div style="font-size:13px;font-weight:600;margin:14px 0 8px;">Return Comparison (Strategy vs. ${escapeHtml(d.benchmark.label)})</div>
+      <div style="font-size:13px;font-weight:600;margin:14px 0 8px;">${t('returnComparison')} (${t('strategy')} vs. ${escapeHtml(tv(d.benchmark.label))})</div>
       <div class="chart-wrap">
-        <canvas id="return-chart" role="img" aria-label="Return comparison chart"></canvas>
+        <canvas id="return-chart" role="img" aria-label="${t('returnComparisonChart')}"></canvas>
       </div>
     </div>
 
     <div class="card">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${escapeHtml(d.ticker)} Price Chart (buy/sell markers)</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${escapeHtml(d.ticker)} ${t('priceChartBuySell')}</div>
       <div class="chart-wrap">
-        <canvas id="price-chart" role="img" aria-label="${escapeHtml(d.ticker)} price chart"></canvas>
+        <canvas id="price-chart" role="img" aria-label="${escapeHtml(d.ticker)} ${t('priceChart')}"></canvas>
       </div>
     </div>
 
     <div class="pf-table-wrap">
       <table class="pf-table">
-        <thead><tr><th>Cycle</th><th>Date</th><th>Type</th><th>Price</th><th>Qty</th><th>Cum. Qty</th><th>Avg Price</th><th>Return</th><th>Note</th></tr></thead>
+        <thead><tr><th>${t('cycle')}</th><th>${t('date')}</th><th>${t('type')}</th><th>${t('price')}</th><th>${t('qty')}</th><th>${t('cumQty')}</th><th>${t('avgPrice')}</th><th>${t('return')}</th><th>${t('note')}</th></tr></thead>
         <tbody>
-          ${d.trades.length ? d.trades.map(t => `
+          ${d.trades.length ? d.trades.map(t2 => `
             <tr>
-              <td>${t.cycle}</td>
-              <td>${t.date}</td>
-              <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? 'Buy' : 'Sell'}</span></td>
-              <td>$${t.price.toFixed(2)}</td>
-              <td>${t.qty}</td>
-              <td>${t.qtyAfter}</td>
-              <td>${t.avgPriceAfter !== null ? '$' + t.avgPriceAfter.toFixed(2) : '-'}</td>
-              <td class="${t.returnPctAfter >= 0 ? 'positive' : 'negative'}">${t.returnPctAfter>=0?'+':''}${t.returnPctAfter.toFixed(1)}%</td>
-              <td style="font-size:12px;color:var(--text-secondary);">${escapeHtml(t.note)}</td>
-            </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">No trades executed in this period</td></tr>`}
+              <td>${t2.cycle}</td>
+              <td>${t2.date}</td>
+              <td><span class="${t2.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t2.action === 'buy' ? t('buy') : t('sell')}</span></td>
+              <td>$${t2.price.toFixed(2)}</td>
+              <td>${t2.qty}</td>
+              <td>${t2.qtyAfter}</td>
+              <td>${t2.avgPriceAfter !== null ? '$' + t2.avgPriceAfter.toFixed(2) : '-'}</td>
+              <td class="${t2.returnPctAfter >= 0 ? 'positive' : 'negative'}">${t2.returnPctAfter>=0?'+':''}${t2.returnPctAfter.toFixed(1)}%</td>
+              <td style="font-size:12px;color:var(--text-secondary);">${escapeHtml(t2.note)}</td>
+            </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">${t('noTradesInPeriod')}</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -878,14 +1284,14 @@ function drawReturnChart(curve, benchmark, seed) {
   if (equityChart) equityChart.destroy();
   const toPct = v => (v - seed) / seed * 100;
   const datasets = [{
-    label: 'Infinite Buying',
+    label: t('infiniteBuying'),
     data: curve.map(p => toPct(p.value)),
     borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
     fill: true, pointRadius: 0, borderWidth: 2, tension: 0.15,
   }];
   if (benchmark?.equityCurve?.length) {
     datasets.push({
-      label: benchmark.label,
+      label: tv(benchmark.label),
       data: benchmark.equityCurve.map(p => toPct(p.value)),
       borderColor: '#97C459', backgroundColor: 'transparent',
       fill: false, pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: 0.15,
@@ -926,17 +1332,17 @@ function drawPriceChart(priceCurve, trades, ticker) {
       labels: priceCurve.map(p => p.date),
       datasets: [
         {
-          label: `${ticker} Close`, data: priceCurve.map(p => p.close),
+          label: `${ticker} ${t('close')}`, data: priceCurve.map(p => p.close),
           borderColor: '#888780', backgroundColor: 'transparent',
           fill: false, pointRadius: 0, borderWidth: 1.5, tension: 0.1, order: 3,
         },
         {
-          label: 'Buy', data: buyPoints, type: 'scatter',
+          label: t('buy'), data: buyPoints, type: 'scatter',
           backgroundColor: '#E24B4A', borderColor: '#E24B4A',
           pointRadius: 4, pointStyle: 'triangle', order: 1,
         },
         {
-          label: 'Sell', data: sellPoints, type: 'scatter',
+          label: t('sell'), data: sellPoints, type: 'scatter',
           backgroundColor: '#378ADD', borderColor: '#378ADD',
           pointRadius: 4, pointStyle: 'rectRot', order: 2,
         },
@@ -963,12 +1369,16 @@ let krSwingPriceChart = null;
 const krSwingReturnPanState = { cleanup: null };
 const krSwingPricePanState = { cleanup: null };
 
-const KR_SWING_STRATEGY_LABEL = {
-  volatility_breakout: 'Volatility Breakout',
-  box_breakout: 'Range Breakout',
-  ma_pullback: 'MA Pullback',
-  combo: 'Combo (Trend + Pullback + Momentum)',
+const KR_SWING_STRATEGY_KEY = {
+  volatility_breakout: 'stratVolBreakout',
+  box_breakout: 'stratRangeBreakout',
+  ma_pullback: 'stratMaPullback',
+  combo: 'stratCombo',
 };
+function krSwingStrategyLabel(strategy) {
+  const key = KR_SWING_STRATEGY_KEY[strategy];
+  return key ? t(key) : strategy;
+}
 
 function initKrSwingDates() {
   const startEl = document.getElementById('ks-start');
@@ -1017,7 +1427,7 @@ function renderKrSwingAutocomplete() {
   const list = document.getElementById('ks-autocomplete-list');
   if (!list) return;
   if (!krSwingSuggestions.length) {
-    list.innerHTML = `<div class="ks-autocomplete-empty">No matching stocks</div>`;
+    list.innerHTML = `<div class="ks-autocomplete-empty">${t('noMatchingStocks')}</div>`;
     list.style.display = 'block';
     return;
   }
@@ -1121,7 +1531,7 @@ async function runKrSwingBacktest() {
   if (!seed || seed <= 0) { alert('시드를 입력하세요'); return; }
 
   const params = getKrSwingParams(strategy);
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Running backtest for ${escapeHtml(krSwingSelectedName)}...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('runningBacktestFor').replace('{ticker}', escapeHtml(krSwingSelectedName))}</div>`;
 
   try {
     const data = await api('POST', '/api/kr-swing/backtest', { strategy, code, start, end, seed, params });
@@ -1139,62 +1549,62 @@ function renderKrSwingResult(d) {
   el.innerHTML = `
     <div class="card">
       <div class="bt-summary-grid">
-        <div class="meta-item"><div class="meta-label">Capital</div><div class="meta-value">${formatKrw(d.seed)}</div></div>
-        <div class="meta-item"><div class="meta-label">Stock</div><div class="meta-value">${escapeHtml(d.ticker)} (${escapeHtml(d.market)})</div></div>
-        <div class="meta-item"><div class="meta-label">Trades</div><div class="meta-value">${d.tradeCount}</div></div>
-        <div class="meta-item"><div class="meta-label">Win Rate</div><div class="meta-value">${d.winCount}W / ${d.tradeCount} (${d.winRatePct.toFixed(1)}%)</div></div>
-        <div class="meta-item"><div class="meta-label">Avg Hold Days</div><div class="meta-value">${d.avgHoldDays.toFixed(1)}d</div></div>
-        <div class="meta-item"><div class="meta-label">Buy Amount</div><div class="meta-value">${formatKrw(d.totalBuyAmount)}</div></div>
-        <div class="meta-item"><div class="meta-label">Sell Amount</div><div class="meta-value">${formatKrw(d.totalSellAmount)}</div></div>
-        <div class="meta-item"><div class="meta-label">Unrealized P/L</div><div class="meta-value ${pnlCls}">${d.evalPnl>=0?'+':''}${formatKrw(Math.abs(d.evalPnl))}</div></div>
-        <div class="meta-item"><div class="meta-label">Return on Capital</div><div class="meta-value ${pnlCls}">${d.seedReturnPct>=0?'+':''}${d.seedReturnPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">Strategy MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)} Return</div><div class="meta-value ${d.benchmark.returnPct>=0?'positive':'negative'}">${d.benchmark.returnPct>=0?'+':''}${d.benchmark.returnPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">Alpha (Excess Return)</div><div class="meta-value ${d.alphaPct>=0?'positive':'negative'}">${d.alphaPct>=0?'+':''}${d.alphaPct.toFixed(1)}%p</div></div>
+        <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">${formatKrw(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('stock')}</div><div class="meta-value">${escapeHtml(d.ticker)} (${escapeHtml(d.market)})</div></div>
+        <div class="meta-item"><div class="meta-label">${t('trades')}</div><div class="meta-value">${d.tradeCount}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('winRate')}</div><div class="meta-value">${d.winCount}W / ${d.tradeCount} (${d.winRatePct.toFixed(1)}%)</div></div>
+        <div class="meta-item"><div class="meta-label">${t('avgHoldDays')}</div><div class="meta-value">${d.avgHoldDays.toFixed(1)}d</div></div>
+        <div class="meta-item"><div class="meta-label">${t('buyAmount')}</div><div class="meta-value">${formatKrw(d.totalBuyAmount)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('sellAmount')}</div><div class="meta-value">${formatKrw(d.totalSellAmount)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('unrealizedPL')}</div><div class="meta-value ${pnlCls}">${d.evalPnl>=0?'+':''}${formatKrw(Math.abs(d.evalPnl))}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('returnOnCapital')}</div><div class="meta-value ${pnlCls}">${d.seedReturnPct>=0?'+':''}${d.seedReturnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('strategyMDD')}</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(tv(d.benchmark.label))} ${t('return')}</div><div class="meta-value ${d.benchmark.returnPct>=0?'positive':'negative'}">${d.benchmark.returnPct>=0?'+':''}${d.benchmark.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('alphaExcessReturn')}</div><div class="meta-value ${d.alphaPct>=0?'positive':'negative'}">${d.alphaPct>=0?'+':''}${d.alphaPct.toFixed(1)}%p</div></div>
       </div>
 
       <div class="bt-holding-box">
-        <span class="cycle-pill">${escapeHtml(KR_SWING_STRATEGY_LABEL[d.strategy] || d.strategy)}</span>
+        <span class="cycle-pill">${escapeHtml(krSwingStrategyLabel(d.strategy))}</span>
         ${holding.qty > 0
-          ? ` · Currently holding: ${holding.qty.toLocaleString('en-US')} sh @ avg ${formatKrw(holding.avgPrice)} · Price ${formatKrw(holding.currentPrice)} · Value ${formatKrw(holding.value)}`
-          : ` · No position at end of backtest (fully exited)`}
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Period: ${d.start} – ${d.end}</div>
+          ? ` · ${t('currentlyHolding')}: ${holding.qty.toLocaleString('en-US')} ${t('sh')} @ ${t('avg')} ${formatKrw(holding.avgPrice)} · ${t('price')} ${formatKrw(holding.currentPrice)} · ${t('value')} ${formatKrw(holding.value)}`
+          : ` · ${t('noPositionAtEnd')}`}
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${t('period')}: ${d.start} – ${d.end}</div>
       </div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 8px;">
-        <div style="font-size:13px;font-weight:600;">Return Comparison (Strategy vs. ${escapeHtml(d.benchmark.label)})</div>
-        <button class="btn-secondary" onclick="resetKrSwingReturnZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> Reset Zoom</button>
+        <div style="font-size:13px;font-weight:600;">${t('returnComparison')} (${t('strategy')} vs. ${escapeHtml(tv(d.benchmark.label))})</div>
+        <button class="btn-secondary" onclick="resetKrSwingReturnZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> ${t('resetZoom')}</button>
       </div>
       <div class="chart-wrap">
-        <canvas id="krswing-return-chart" role="img" aria-label="Return comparison chart"></canvas>
+        <canvas id="krswing-return-chart" role="img" aria-label="${t('returnComparisonChart')}"></canvas>
       </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">Scroll to zoom, drag to pan</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">${t('scrollToZoom')}</div>
     </div>
 
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
-        <div style="font-size:13px;font-weight:600;">${escapeHtml(d.ticker)} Price Chart (buy/sell markers)</div>
-        <button class="btn-secondary" onclick="resetKrSwingPriceZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> Reset Zoom</button>
+        <div style="font-size:13px;font-weight:600;">${escapeHtml(d.ticker)} ${t('priceChartBuySell')}</div>
+        <button class="btn-secondary" onclick="resetKrSwingPriceZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> ${t('resetZoom')}</button>
       </div>
       <div class="chart-wrap">
-        <canvas id="krswing-price-chart" role="img" aria-label="${escapeHtml(d.ticker)} price chart"></canvas>
+        <canvas id="krswing-price-chart" role="img" aria-label="${escapeHtml(d.ticker)} ${t('priceChart')}"></canvas>
       </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">Scroll to zoom, drag to pan</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">${t('scrollToZoom')}</div>
     </div>
 
     <div class="pf-table-wrap">
       <table class="pf-table">
-        <thead><tr><th>Date</th><th>Type</th><th>Price</th><th>Qty</th><th>P/L %</th><th>Note</th></tr></thead>
+        <thead><tr><th>${t('date')}</th><th>${t('type')}</th><th>${t('price')}</th><th>${t('qty')}</th><th>${t('plPercent')}</th><th>${t('note')}</th></tr></thead>
         <tbody>
-          ${d.trades.length ? d.trades.map(t => `
+          ${d.trades.length ? d.trades.map(t3 => `
             <tr>
-              <td>${t.date}</td>
-              <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? 'Buy' : 'Sell'}</span></td>
-              <td>${formatKrw(t.price)}</td>
-              <td>${t.qty.toLocaleString('en-US')}</td>
-              <td>${t.pnlPct !== undefined ? `<span class="${t.pnlPct >= 0 ? 'positive' : 'negative'}">${t.pnlPct>=0?'+':''}${t.pnlPct.toFixed(1)}%</span>` : '-'}</td>
-              <td style="font-size:12px;color:var(--text-secondary);">${escapeHtml(t.note)}</td>
-            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">No trades executed in this period</td></tr>`}
+              <td>${t3.date}</td>
+              <td><span class="${t3.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t3.action === 'buy' ? t('buy') : t('sell')}</span></td>
+              <td>${formatKrw(t3.price)}</td>
+              <td>${t3.qty.toLocaleString('en-US')}</td>
+              <td>${t3.pnlPct !== undefined ? `<span class="${t3.pnlPct >= 0 ? 'positive' : 'negative'}">${t3.pnlPct>=0?'+':''}${t3.pnlPct.toFixed(1)}%</span>` : '-'}</td>
+              <td style="font-size:12px;color:var(--text-secondary);">${escapeHtml(t3.note)}</td>
+            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">${t('noTradesInPeriod')}</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -1213,14 +1623,14 @@ function drawKrSwingReturnChart(curve, benchmark, seed) {
   const dates = curve.map(p => p.date);
   const toPct = v => (v - seed) / seed * 100;
   const datasets = [{
-    label: 'Strategy',
+    label: t('strategy'),
     data: curve.map((p, i) => ({ x: i, y: toPct(p.value) })),
     borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
     fill: true, pointRadius: 0, borderWidth: 2, tension: 0.15,
   }];
   if (benchmark?.equityCurve?.length) {
     datasets.push({
-      label: benchmark.label,
+      label: tv(benchmark.label),
       data: benchmark.equityCurve.map((p, i) => ({ x: i, y: toPct(p.value) })),
       borderColor: '#97C459', backgroundColor: 'transparent',
       fill: false, pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: 0.15,
@@ -1281,17 +1691,17 @@ function drawKrSwingPriceChart(priceCurve, trades, ticker) {
     data: {
       datasets: [
         {
-          label: `${ticker} Close`, data: priceCurve.map((p, i) => ({ x: i, y: p.close })),
+          label: `${ticker} ${t('close')}`, data: priceCurve.map((p, i) => ({ x: i, y: p.close })),
           borderColor: '#888780', backgroundColor: 'transparent',
           fill: false, pointRadius: 0, borderWidth: 1.5, tension: 0.1, order: 3,
         },
         {
-          label: 'Buy', data: buyPoints, type: 'scatter',
+          label: t('buy'), data: buyPoints, type: 'scatter',
           backgroundColor: '#E24B4A', borderColor: '#E24B4A',
           pointRadius: 4, pointStyle: 'triangle', order: 1,
         },
         {
-          label: 'Sell', data: sellPoints, type: 'scatter',
+          label: t('sell'), data: sellPoints, type: 'scatter',
           backgroundColor: '#378ADD', borderColor: '#378ADD',
           pointRadius: 4, pointStyle: 'rectRot', order: 2,
         },
@@ -1346,9 +1756,9 @@ async function loadKrQuantStatus() {
   try {
     const data = await api('GET', '/api/kr-quant/status');
     const priceInfo = data.priceCacheReady
-      ? `Price cache ready for ${data.priceCacheCount.toLocaleString('en-US')} stocks (updated ${Math.round(data.priceCacheAgeSeconds / 60)}m ago)`
-      : `Price cache warming up (takes a few minutes after server start) — screening will be available once ready`;
-    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> Fundamentals: ${data.stockCount.toLocaleString('en-US')} stocks (${data.fundamentalRows.toLocaleString('en-US')} records) loaded. ${priceInfo}.`;
+      ? `${t('priceCacheReady')} ${data.priceCacheCount.toLocaleString('en-US')} ${t('stocksUnit')} (${t('updated')} ${Math.round(data.priceCacheAgeSeconds / 60)}${t('minutesAgo')})`
+      : t('priceCacheWarming');
+    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> ${t('fundamentalsLoaded')} ${data.stockCount.toLocaleString('en-US')} ${t('stocksUnit')} (${data.fundamentalRows.toLocaleString('en-US')} ${t('recordsUnit')}). ${priceInfo}.`;
   } catch (e) {
     el.innerHTML = `<i class="ti ti-alert-circle" aria-hidden="true"></i> ${escapeHtml(e.message)}`;
   }
@@ -1360,7 +1770,7 @@ async function runKrQuantScreen() {
   const topN = parseInt(document.getElementById('kq-screen-topn').value, 10) || 20;
   const minMarketCap = (parseFloat(document.getElementById('kq-screen-mcap').value) || 0) * 100000000;
 
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Screening...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('screening')}</div>`;
   try {
     const data = await api('GET', `/api/kr-quant/screen?topN=${topN}&minMarketCap=${minMarketCap}`);
     renderKrQuantScreenResult(data);
@@ -1373,14 +1783,14 @@ function renderKrQuantScreenResult(data) {
   const el = document.getElementById('krquant-screen-result');
   const picks = data.picks || [];
   if (!picks.length) {
-    el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>No stocks match the criteria</p></div>`;
+    el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>${t('noStocksMatchCriteria')}</p></div>`;
     return;
   }
   el.innerHTML = `
-    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">As of: ${escapeHtml(data.date)}</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">${t('asOf')}: ${escapeHtml(data.date)}</div>
     <div class="pf-table-wrap">
       <table class="pf-table">
-        <thead><tr><th>Rank</th><th>Name</th><th>Code</th><th>P/E</th><th>ROE</th><th>Market Cap</th><th>Fiscal Year</th></tr></thead>
+        <thead><tr><th>${t('rank')}</th><th>${t('name')}</th><th>${t('code')}</th><th>P/E</th><th>ROE</th><th>${t('marketCap')}</th><th>${t('fiscalYear')}</th></tr></thead>
         <tbody>
           ${picks.map(p => `
             <tr>
@@ -1412,7 +1822,7 @@ async function runKrQuantBacktest() {
   // 전체 시장의 과거 시점 가격을 조회해야 해서 몇 분씩 걸릴 수 있어, 서버가
   // 요청 안에서 바로 계산하지 않고 작업(job)만 만들어 즉시 id를 돌려준다.
   // 여기서는 그 작업이 끝날 때까지 몇 초 간격으로 상태를 확인(폴링)한다.
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Running annual rebalance backtest... (querying market-wide prices, may take 5–15 minutes depending on the period)</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('runningQuantBacktest')}</div>`;
   try {
     const { jobId } = await api('POST', '/api/kr-quant/backtest', { startYear, endYear, seed, topN, minMarketCap });
     await pollKrQuantBacktestJob(jobId, el);
@@ -1451,35 +1861,35 @@ function renderKrQuantBacktestResult(d) {
   el.innerHTML = `
     <div class="card">
       <div class="bt-summary-grid">
-        <div class="meta-item"><div class="meta-label">Capital</div><div class="meta-value">${formatKrw(d.seed)}</div></div>
-        <div class="meta-item"><div class="meta-label">Final Value</div><div class="meta-value">${formatKrw(d.finalValue)}</div></div>
-        <div class="meta-item"><div class="meta-label">Total Return</div><div class="meta-value ${pnlCls}">${d.totalReturnPct>=0?'+':''}${d.totalReturnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">${formatKrw(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('finalValue')}</div><div class="meta-value">${formatKrw(d.finalValue)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('totalReturn')}</div><div class="meta-value ${pnlCls}">${d.totalReturnPct>=0?'+':''}${d.totalReturnPct.toFixed(1)}%</div></div>
         <div class="meta-item"><div class="meta-label">MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)}</div><div class="meta-value ${(d.benchmark.returnPct ?? 0) >= 0 ? 'positive' : 'negative'}">${d.benchmark.returnPct !== null && d.benchmark.returnPct !== undefined ? (d.benchmark.returnPct >= 0 ? '+' : '') + d.benchmark.returnPct.toFixed(1) + '%' : '-'}</div></div>
-        <div class="meta-item"><div class="meta-label">Rebalances</div><div class="meta-value">${d.rebalanceDates.length}</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(tv(d.benchmark.label))}</div><div class="meta-value ${(d.benchmark.returnPct ?? 0) >= 0 ? 'positive' : 'negative'}">${d.benchmark.returnPct !== null && d.benchmark.returnPct !== undefined ? (d.benchmark.returnPct >= 0 ? '+' : '') + d.benchmark.returnPct.toFixed(1) + '%' : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('rebalances')}</div><div class="meta-value">${d.rebalanceDates.length}</div></div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 8px;">
-        <div style="font-size:13px;font-weight:600;">Equity Curve (Strategy vs. ${escapeHtml(d.benchmark.label)})</div>
-        <button class="btn-secondary" onclick="resetKrQuantZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> Reset Zoom</button>
+        <div style="font-size:13px;font-weight:600;">${t('equityCurve')} (${t('strategy')} vs. ${escapeHtml(tv(d.benchmark.label))})</div>
+        <button class="btn-secondary" onclick="resetKrQuantZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> ${t('resetZoom')}</button>
       </div>
       <div class="chart-wrap">
         <canvas id="krquant-chart" role="img" aria-label="Equity curve chart"></canvas>
       </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">Scroll to zoom, drag to pan</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">${t('scrollZoomDragPan')}</div>
     </div>
 
     <div class="card">
-      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Selected Stocks by Rebalance Date</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('selectedStocksByRebalanceDate')}</div>
       ${d.picksLog.map(pl => `
         <div style="margin-bottom:14px;">
-          <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">${escapeHtml(pl.date)} (${pl.picks.length} stocks)</div>
+          <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">${escapeHtml(pl.date)} (${pl.picks.length} ${t('stocksUnit')})</div>
           <div class="pf-table-wrap">
             <table class="pf-table">
-              <thead><tr><th>Rank</th><th>Name</th><th>P/E</th><th>ROE</th><th>Market Cap</th></tr></thead>
+              <thead><tr><th>${t('rank')}</th><th>${t('name')}</th><th>P/E</th><th>ROE</th><th>${t('marketCap')}</th></tr></thead>
               <tbody>
                 ${pl.picks.length ? pl.picks.map(p => `
                   <tr><td>${p.combinedRank}</td><td>${escapeHtml(p.name)}</td><td>${p.per.toFixed(2)}</td><td>${p.roe.toFixed(2)}%</td><td>${formatKrw(p.marketCap)}</td></tr>
-                `).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">No stocks selected</td></tr>`}
+                `).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">${t('noStocksSelected')}</td></tr>`}
               </tbody>
             </table>
           </div>
@@ -1488,17 +1898,17 @@ function renderKrQuantBacktestResult(d) {
 
     <div class="pf-table-wrap">
       <table class="pf-table">
-        <thead><tr><th>Date</th><th>Type</th><th>Name</th><th>Price</th><th>Qty</th><th>P/L %</th></tr></thead>
+        <thead><tr><th>${t('date')}</th><th>${t('type')}</th><th>${t('name')}</th><th>${t('price')}</th><th>${t('qty')}</th><th>P/L %</th></tr></thead>
         <tbody>
-          ${d.trades.length ? d.trades.map(t => `
+          ${d.trades.length ? d.trades.map(t4 => `
             <tr>
-              <td>${t.date}</td>
-              <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? 'Buy' : 'Sell'}</span></td>
-              <td>${escapeHtml(t.name)}</td>
-              <td>${formatKrw(t.price)}</td>
-              <td>${t.qty.toLocaleString('en-US')}</td>
-              <td>${t.pnlPct !== undefined ? `<span class="${t.pnlPct >= 0 ? 'positive' : 'negative'}">${t.pnlPct>=0?'+':''}${t.pnlPct.toFixed(1)}%</span>` : '-'}</td>
-            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">No trade history</td></tr>`}
+              <td>${t4.date}</td>
+              <td><span class="${t4.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t4.action === 'buy' ? t('buy') : t('sell')}</span></td>
+              <td>${escapeHtml(t4.name)}</td>
+              <td>${formatKrw(t4.price)}</td>
+              <td>${t4.qty.toLocaleString('en-US')}</td>
+              <td>${t4.pnlPct !== undefined ? `<span class="${t4.pnlPct >= 0 ? 'positive' : 'negative'}">${t4.pnlPct>=0?'+':''}${t4.pnlPct.toFixed(1)}%</span>` : '-'}</td>
+            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">${t('noTradeHistory')}</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -1514,14 +1924,14 @@ function drawKrQuantChart(curve, benchmark, seed) {
   const dates = curve.map(p => p.date);
   const toPct = v => (v - seed) / seed * 100;
   const datasets = [{
-    label: 'Quant Strategy',
+    label: t('quantStrategy'),
     data: curve.map((p, i) => ({ x: i, y: toPct(p.value) })),
     borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
     fill: true, pointRadius: 3, borderWidth: 2, tension: 0.1,
   }];
   if (benchmark?.equityCurve?.length) {
     datasets.push({
-      label: benchmark.label,
+      label: tv(benchmark.label),
       data: benchmark.equityCurve.map((p, i) => ({ x: i, y: toPct(p.value) })),
       borderColor: '#97C459', backgroundColor: 'transparent',
       fill: false, pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: 0.1,
@@ -1566,14 +1976,14 @@ function resetKrQuantZoom() {
 // ─── 트렌드 템플릿(미너비니 스타일) 스크리닝 ──────────────────────────────────
 
 const TREND_CONDITION_LABELS = [
-  ['priceAboveMa150And200', '① Price > MA150 &amp; MA200'],
-  ['ma150AboveMa200', '② MA150 > MA200'],
-  ['ma200Rising', '③ MA200 rising 1mo+'],
-  ['ma50AboveMa150And200', '④ MA50 > MA150 &amp; MA200'],
-  ['priceAboveMa50', '⑤ Price > MA50'],
-  ['priceAbove52wLowBy30pct', '⑥ +30% above 52w low'],
-  ['priceWithin25pctOf52wHigh', '⑦ Within 25% of 52w high'],
-  ['rsAboveThreshold', '⑧ RS Rating ≥ 70'],
+  ['priceAboveMa150And200'],
+  ['ma150AboveMa200'],
+  ['ma200Rising'],
+  ['ma50AboveMa150And200'],
+  ['priceAboveMa50'],
+  ['priceAbove52wLowBy30pct'],
+  ['priceWithin25pctOf52wHigh'],
+  ['rsAboveThreshold'],
 ];
 
 function ratingClass(r) {
@@ -1625,7 +2035,7 @@ function updateScrDetailStarButton(btn, market, code) {
   const on = isInWatchlist(market, code);
   btn.classList.toggle('on', on);
   btn.querySelector('i').className = `ti ${on ? 'ti-star-filled' : 'ti-star'}`;
-  btn.querySelector('span').textContent = on ? 'Added to Watchlist' : 'Add to Watchlist';
+  btn.querySelector('span').textContent = on ? t('addedToWatchlist') : t('addToWatchlist');
 }
 
 function jumpToKrSwingBacktest(code, name) {
@@ -1642,11 +2052,11 @@ async function loadScreenerStatus() {
     const data = await api('GET', '/api/screener/status');
     const s = data[market];
     if (!s.ready) {
-      el.innerHTML = `<i class="ti ti-loader-2" aria-hidden="true"></i> Preparing data...`;
+      el.innerHTML = `<i class="ti ti-loader-2" aria-hidden="true"></i> ${t('preparingData')}`;
       return;
     }
     const asOfText = s.asOf ? formatAsOf(s.asOf) : null;
-    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> ${s.count.toLocaleString('en-US')} stocks${asOfText ? ' · As of ' + asOfText : ''}`;
+    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> ${s.count.toLocaleString('en-US')} ${t('stocksUnit')}${asOfText ? ' · ' + t('asOf') + ' ' + asOfText : ''}`;
   } catch (e) {
     el.innerHTML = `<i class="ti ti-alert-circle" aria-hidden="true"></i> ${escapeHtml(e.message)}`;
   }
@@ -1659,7 +2069,7 @@ async function loadScreenerResults() {
   const market = document.getElementById('scr-market').value;
   const onlyPass = document.getElementById('scr-only-pass').checked;
 
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('loading')}</div>`;
   try {
     const data = await api('GET', `/api/screener/results?market=${market}&onlyPass=${onlyPass}`);
     renderScreenerResults(data);
@@ -1801,16 +2211,16 @@ function buildFinFilterPanel() {
     const n = countActiveInCat(cat);
     return `
       <button type="button" class="ffcat-tab ${cat.key === scrFilterActiveCat ? 'active' : ''}" onclick="setFinFilterCat('${cat.key}')">
-        <span>${cat.icon} ${cat.title}</span>${n ? `<span class="ffcat-tab-count">${n}</span>` : ''}
+        <span>${cat.icon} ${tv(cat.title)}</span>${n ? `<span class="ffcat-tab-count">${n}</span>` : ''}
       </button>`;
   }).join('');
 
   const detailHtml = activeCat.key === 'consensus' ? `
     <div class="ffrow-detail">
-      <div class="ffrow-head"><span class="fflabel">Analyst Rating</span></div>
+      <div class="ffrow-head"><span class="fflabel">${tv('Analyst Rating')}</span></div>
       <span class="ffchips">
         ${['Buy', 'Hold', 'Sell'].map(label => `
-          <span class="ffchip ${scrActiveRatings.has(label) ? 'selected' : ''}" onclick="toggleFinFilterRating('${label}')">${label}</span>
+          <span class="ffchip ${scrActiveRatings.has(label) ? 'selected' : ''}" onclick="toggleFinFilterRating('${label}')">${tv(label)}</span>
         `).join('')}
       </span>
     </div>` : activeCat.items.map(item => {
@@ -1818,18 +2228,18 @@ function buildFinFilterPanel() {
     const cur = scrActiveFilters[item.key] || {};
     const tiersHtml = item.tiers ? `
       <div class="fftiers">
-        ${item.tiers.map(t => `
-          <button type="button" class="fftier ${isTierActive(item.key, t) ? 'selected' : ''}" onclick="applyFinTier('${item.key}', ${t.min ?? 'null'}, ${t.max ?? 'null'})">${t.label}</button>
+        ${item.tiers.map(tr => `
+          <button type="button" class="fftier ${isTierActive(item.key, tr) ? 'selected' : ''}" onclick="applyFinTier('${item.key}', ${tr.min ?? 'null'}, ${tr.max ?? 'null'})">${tv(tr.label)}</button>
         `).join('')}
       </div>` : '';
     return `
       <div class="ffrow-detail">
         <div class="ffrow-head">
-          <span class="fflabel">${escapeHtml(item.label)} <span class="ffunit">${unitLabel}</span></span>
+          <span class="fflabel">${escapeHtml(tv(item.label))} <span class="ffunit">${unitLabel}</span></span>
           <span class="ffrange">
-            <input type="number" placeholder="Min" data-fkey="${item.key}" data-bound="min" value="${cur.min ?? ''}" onchange="onFinInputChange(this)">
+            <input type="number" placeholder="${t('min')}" data-fkey="${item.key}" data-bound="min" value="${cur.min ?? ''}" onchange="onFinInputChange(this)">
             <span>~</span>
-            <input type="number" placeholder="Max" data-fkey="${item.key}" data-bound="max" value="${cur.max ?? ''}" onchange="onFinInputChange(this)">
+            <input type="number" placeholder="${t('max')}" data-fkey="${item.key}" data-bound="max" value="${cur.max ?? ''}" onchange="onFinInputChange(this)">
           </span>
         </div>
         ${tiersHtml}
@@ -1838,12 +2248,12 @@ function buildFinFilterPanel() {
 
   panel.innerHTML = `
     <div class="ffpanel-head">
-      <span class="ffpanel-title">Financial Filters</span>
+      <span class="ffpanel-title">${tv('Financial Filters')}</span>
       <div class="ffpanel-actions">
-        <span class="ffbtn" onclick="resetFinFilters()">Reset</span>
+        <span class="ffbtn" onclick="resetFinFilters()">${tv('Reset')}</span>
       </div>
     </div>
-    ${!scrIsUS ? '<div class="ffnote">Some metrics (stability, consensus, EV/EBITDA, etc.) aren\'t available for KR stocks.</div>' : ''}
+    ${!scrIsUS ? `<div class="ffnote">${tv("Some metrics (stability, consensus, EV/EBITDA, etc.) aren't available for KR stocks.")}</div>` : ''}
     <div class="ffcat-tabs">${tabsHtml}</div>
     <div class="ffcat-detail">${detailHtml}</div>`;
 }
@@ -1975,30 +2385,30 @@ function renderFilteredScreenerRows() {
   };
 
   if (!scrRawResults.length) {
-    el.innerHTML = `<div class="empty-state" style="padding:2.5rem 1.5rem;"><i class="ti ti-filter-off" aria-hidden="true"></i><p>No stocks match the criteria</p></div>`;
+    el.innerHTML = `<div class="empty-state" style="padding:2.5rem 1.5rem;"><i class="ti ti-filter-off" aria-hidden="true"></i><p>${t('noStocksMatchCriteria')}</p></div>`;
     return;
   }
   if (!filtered.length) {
-    el.innerHTML = `<div class="empty-state" style="padding:2.5rem 1.5rem;"><i class="ti ti-search-off" aria-hidden="true"></i><p>No stocks match your search/filter</p></div>`;
+    el.innerHTML = `<div class="empty-state" style="padding:2.5rem 1.5rem;"><i class="ti ti-search-off" aria-hidden="true"></i><p>${t('noStocksMatchSearchFilter')}</p></div>`;
     return;
   }
 
   el.innerHTML = `
-    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">${filtered.length.toLocaleString('en-US')} stocks${filtered.length !== scrRawResults.length ? ` (of ${scrRawResults.length.toLocaleString('en-US')} total)` : ''}</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">${filtered.length.toLocaleString('en-US')} ${t('stocksUnit')}${filtered.length !== scrRawResults.length ? ` (${t('ofTotal').replace('{n}', scrRawResults.length.toLocaleString('en-US'))})` : ''}</div>
     <div class="scr-table-outer">
     <div class="scr-table-wrap" id="scr-table-wrap">
       <table class="scr-table">
         <thead>
           <tr>
             <th style="width:32px;"></th>
-            <th>Name</th><th>Code</th><th>Sector</th><th style="text-align:right;">Price</th><th>RS</th><th>Conditions</th>
-            <th style="text-align:right;">Vol (Rel)</th>
-            <th style="text-align:right;">Market Cap</th>
+            <th>${t('name')}</th><th>${t('code')}</th><th>${t('sector')}</th><th style="text-align:right;">${t('price')}</th><th>RS</th><th>${t('conditions')}</th>
+            <th style="text-align:right;">${t('volRel')}</th>
+            <th style="text-align:right;">${t('marketCap')}</th>
             <th style="text-align:right;">P/E</th>
-            <th style="text-align:right;">EPS Growth</th>
-            <th style="text-align:right;">Div Yield</th>
-            <th>Analyst</th>
-            <th style="text-align:right;">vs 52w Low</th><th style="text-align:right;">vs 52w High</th>
+            <th style="text-align:right;">${t('epsGrowth')}</th>
+            <th style="text-align:right;">${t('divYield')}</th>
+            <th>${t('analyst')}</th>
+            <th style="text-align:right;">${t('vs52wLow')}</th><th style="text-align:right;">${t('vs52wHigh')}</th>
           </tr>
         </thead>
         <tbody>
@@ -2025,7 +2435,7 @@ function renderFilteredScreenerRows() {
               <td class="scr-num-cell">${fmtPe(r.peRatio)}</td>
               <td class="scr-num-cell ${r.epsGrowth > 0 ? 'positive' : ''}" ${!scrIsUS ? `title="발행주식수 변동을 반영하지 않은 순이익 증가율 근사치입니다"` : ''}>${fmtPct1(r.epsGrowth)}</td>
               <td class="scr-num-cell" ${!scrIsUS ? `title="국내 종목은 배당수익률 데이터를 제공하지 않습니다"` : ''}>${r.dividendYield != null ? Number(r.dividendYield).toFixed(2) + '%' : '-'}</td>
-              <td ${!scrIsUS ? `title="국내 종목은 애널리스트 레이팅 데이터를 제공하지 않습니다"` : ''}>${r.analystRating ? `<span class="scr-rating-badge ${ratingClass(r.analystRating)}">${r.analystRating}</span>` : '-'}</td>
+              <td ${!scrIsUS ? `title="국내 종목은 애널리스트 레이팅 데이터를 제공하지 않습니다"` : ''}>${r.analystRating ? `<span class="scr-rating-badge ${ratingClass(r.analystRating)}">${tv(r.analystRating)}</span>` : '-'}</td>
               <td class="scr-num-cell ${r.pctAbove52wLow >= 30 ? 'positive' : ''}">${r.pctAbove52wLow != null ? '+' + r.pctAbove52wLow.toFixed(1) + '%' : '-'}</td>
               <td class="scr-num-cell ${r.pctBelow52wHigh <= 25 ? 'positive' : ''}">${r.pctBelow52wHigh != null ? '-' + r.pctBelow52wHigh.toFixed(1) + '%' : '-'}</td>
             </tr>`).join('')}
@@ -2070,10 +2480,10 @@ function showScrPopover(anchorEl, code) {
 
   const pop = document.createElement('div');
   pop.className = 'scr-popover';
-  pop.innerHTML = TREND_CONDITION_LABELS.map(([key, label]) => `
+  pop.innerHTML = TREND_CONDITION_LABELS.map(([key]) => `
     <div class="scr-popover-row ${r.conditions[key] ? 'pass' : 'fail'}">
       <i class="ti ${r.conditions[key] ? 'ti-check' : 'ti-x'}" aria-hidden="true"></i>
-      <span>${label}</span>
+      <span>${t(key)}</span>
     </div>`).join('');
   document.body.appendChild(pop);
 
@@ -2102,7 +2512,7 @@ async function openScreenerDetail(code) {
   const overlay = document.getElementById('scr-detail-overlay');
   const body = document.getElementById('scr-detail-body');
   overlay.style.display = 'flex';
-  body.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div>`;
+  body.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('loading')}</div>`;
   document.addEventListener('keydown', scrDetailEscHandler);
 
   try {
@@ -2223,29 +2633,29 @@ function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
     {
       key: 'consensus', icon: '🎯', title: 'Consensus',
       items: [
-        ['Rating', d.analystRating || null],
+        ['Rating', d.analystRating ? tv(d.analystRating) : null],
       ],
     },
   ];
 
   const catsHtml = categories.map((cat, idx) => {
     const available = cat.items.filter(([, v]) => v != null);
-    const highlight = available.slice(0, 2).map(([l, v]) => `${l} ${v}`).join(' · ');
+    const highlight = available.slice(0, 2).map(([l, v]) => `${tv(l)} ${v}`).join(' · ');
     const bodyHtml = available.length
       ? available.map(([label, value]) => {
           const isNeg = typeof value === 'string' && value.trim().startsWith('-');
           const isPos = typeof value === 'string' && value.trim().startsWith('+');
-          return `<div class="scr-fin-metric" data-label="${escapeHtml(label)}">
-            <span class="label">${escapeHtml(label)}</span>
+          return `<div class="scr-fin-metric" data-label="${escapeHtml(tv(label))}">
+            <span class="label">${escapeHtml(tv(label))}</span>
             <span class="value ${isPos ? 'positive' : isNeg ? 'negative' : ''}">${value}</span>
           </div>`;
         }).join('')
-      : `<div class="scr-fin-empty">${isUS ? 'Failed to load data' : 'Not available for KR stocks (no data source)'}</div>`;
+      : `<div class="scr-fin-empty">${isUS ? t('failedToLoadData') : t('notAvailableForKrStocks')}</div>`;
     return `
       <div class="scr-fin-acc" data-cat="${cat.key}">
         <div class="scr-fin-acc-head" onclick="toggleFinAcc(this)">
           <span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>
-          <span class="name">${cat.icon} ${cat.title}</span>
+          <span class="name">${cat.icon} ${tv(cat.title)}</span>
           <span class="hl">${highlight}</span>
         </div>
         <div class="scr-fin-acc-body"><div class="scr-fin-acc-body-inner">${bodyHtml}</div></div>
@@ -2254,10 +2664,10 @@ function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
 
   return `
     <div class="scr-detail-section">
-      <div class="scr-detail-section-title">Financial Metrics</div>
+      <div class="scr-detail-section-title">${t('financialMetrics')}</div>
       <div class="scr-fin-search">
         <i class="ti ti-search" aria-hidden="true"></i>
-        <input type="text" placeholder="Search metrics (e.g. Debt Ratio, ROE)" oninput="filterFinAccordion(this.value)">
+        <input type="text" placeholder="${t('searchMetricsPlaceholder')}" oninput="filterFinAccordion(this.value)">
       </div>
       <div class="scr-fin-list">${catsHtml}</div>
     </div>`;
@@ -2298,11 +2708,11 @@ function renderScreenerDetail(d) {
     return `₩${Math.round(v).toLocaleString('en-US')}`;
   };
 
-  const condRows = TREND_CONDITION_LABELS.map(([key, label]) => {
+  const condRows = TREND_CONDITION_LABELS.map(([key]) => {
     const pass = !!d.conditions[key];
     return `<div class="scr-detail-cond-row ${pass ? '' : 'fail'}">
       <i class="ti ${pass ? 'ti-check' : 'ti-x'} ${pass ? 'pass' : 'fail'}" aria-hidden="true"></i>
-      <span>${label}</span>
+      <span>${t(key)}</span>
     </div>`;
   }).join('');
 
@@ -2326,31 +2736,31 @@ function renderScreenerDetail(d) {
     const f = d.financials;
     financialsHtml = `
       <div class="scr-detail-section">
-        <div class="scr-detail-section-title">Financials (DART FY${escapeHtml(f.bsnsYear || '')} Annual Report)</div>
+        <div class="scr-detail-section-title">${t('financialsDartAnnual').replace('{year}', escapeHtml(f.bsnsYear || ''))}</div>
         <div class="scr-detail-grid">
-          <div class="scr-detail-stat"><div class="scr-detail-stat-label">Net Income</div><div class="scr-detail-stat-value ${f.netIncome < 0 ? 'negative' : ''}">${fmtBig(f.netIncome)}</div></div>
-          <div class="scr-detail-stat"><div class="scr-detail-stat-label">Revenue</div><div class="scr-detail-stat-value">${fmtBig(f.revenue)}</div></div>
-          <div class="scr-detail-stat"><div class="scr-detail-stat-label">Total Equity</div><div class="scr-detail-stat-value">${fmtBig(f.totalEquity)}</div></div>
+          <div class="scr-detail-stat"><div class="scr-detail-stat-label">${t('netIncome')}</div><div class="scr-detail-stat-value ${f.netIncome < 0 ? 'negative' : ''}">${fmtBig(f.netIncome)}</div></div>
+          <div class="scr-detail-stat"><div class="scr-detail-stat-label">${tv('Revenue')}</div><div class="scr-detail-stat-value">${fmtBig(f.revenue)}</div></div>
+          <div class="scr-detail-stat"><div class="scr-detail-stat-label">${tv('Total Equity')}</div><div class="scr-detail-stat-value">${fmtBig(f.totalEquity)}</div></div>
         </div>
       </div>`;
   }
 
   let targetHtml = '';
   if (d.target) {
-    const t = d.target;
-    const totalRec = (t.recBuy || 0) + (t.recHold || 0) + (t.recSell || 0);
-    const buyPct = totalRec ? t.recBuy / totalRec * 100 : 0;
-    const holdPct = totalRec ? t.recHold / totalRec * 100 : 0;
-    const sellPct = totalRec ? t.recSell / totalRec * 100 : 0;
+    const tgt = d.target;
+    const totalRec = (tgt.recBuy || 0) + (tgt.recHold || 0) + (tgt.recSell || 0);
+    const buyPct = totalRec ? tgt.recBuy / totalRec * 100 : 0;
+    const holdPct = totalRec ? tgt.recHold / totalRec * 100 : 0;
+    const sellPct = totalRec ? tgt.recSell / totalRec * 100 : 0;
     targetHtml = `
       <div class="scr-detail-section">
-        <div class="scr-detail-section-title">Analyst Targets &amp; Ratings (Finnhub)</div>
-        ${t.targetMean ? `
+        <div class="scr-detail-section-title">${t('analystTargetsRatings')} (Finnhub)</div>
+        ${tgt.targetMean ? `
           <div class="scr-detail-grid" style="margin-bottom:10px;">
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">Avg Target</div><div class="scr-detail-stat-value">$${t.targetMean.toFixed(2)}</div></div>
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">High</div><div class="scr-detail-stat-value">$${t.targetHigh?.toFixed(2) ?? '-'}</div></div>
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">Low</div><div class="scr-detail-stat-value">$${t.targetLow?.toFixed(2) ?? '-'}</div></div>
-          </div>` : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Target price figures aren't available on the Finnhub free plan.</div>`}
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">${t('avgTarget')}</div><div class="scr-detail-stat-value">$${tgt.targetMean.toFixed(2)}</div></div>
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">${t('high')}</div><div class="scr-detail-stat-value">$${tgt.targetHigh?.toFixed(2) ?? '-'}</div></div>
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">${t('low')}</div><div class="scr-detail-stat-value">$${tgt.targetLow?.toFixed(2) ?? '-'}</div></div>
+          </div>` : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">${t('targetPriceUnavailable')}</div>`}
         ${totalRec ? `
           <div class="scr-detail-rec-bar">
             <div style="width:${buyPct}%;background:var(--green);"></div>
@@ -2358,13 +2768,13 @@ function renderScreenerDetail(d) {
             <div style="width:${sellPct}%;background:var(--red);"></div>
           </div>
           <div class="scr-detail-rec-legend">
-            <span><span class="scr-detail-rec-dot" style="background:var(--green);"></span>Buy ${t.recBuy}</span>
-            <span><span class="scr-detail-rec-dot" style="background:var(--amber);"></span>Hold ${t.recHold}</span>
-            <span><span class="scr-detail-rec-dot" style="background:var(--red);"></span>Sell ${t.recSell}</span>
+            <span><span class="scr-detail-rec-dot" style="background:var(--green);"></span>${t('buy')} ${tgt.recBuy}</span>
+            <span><span class="scr-detail-rec-dot" style="background:var(--amber);"></span>${t('hold')} ${tgt.recHold}</span>
+            <span><span class="scr-detail-rec-dot" style="background:var(--red);"></span>${t('sell')} ${tgt.recSell}</span>
           </div>` : ''}
       </div>`;
   } else if (d.market === 'US') {
-    targetHtml = `<div class="scr-detail-section"><div class="scr-detail-section-title">Analyst Targets &amp; Ratings</div><div style="font-size:12px;color:var(--text-muted);">Failed to load data.</div></div>`;
+    targetHtml = `<div class="scr-detail-section"><div class="scr-detail-section-title">${t('analystTargetsRatings')}</div><div style="font-size:12px;color:var(--text-muted);">${t('failedToLoadData')}</div></div>`;
   }
 
   body.innerHTML = `
@@ -2376,8 +2786,8 @@ function renderScreenerDetail(d) {
     </div>
     <div class="scr-detail-price-row">
       <span class="scr-detail-price">${fmt(d.price)}</span>
-      <span class="scr-pass-badge ${d.passCount < 8 ? 'partial' : ''}">Trend Template ${d.passCount}/8</span>
-      ${d.volume != null ? `<span class="scr-detail-volume">Volume ${Math.round(d.volume).toLocaleString('en-US')}${d.relVolume != null ? ` (${Number(d.relVolume).toFixed(2)}x)` : ''}</span>` : ''}
+      <span class="scr-pass-badge ${d.passCount < 8 ? 'partial' : ''}">${t('trendTemplate')} ${d.passCount}/8</span>
+      ${d.volume != null ? `<span class="scr-detail-volume">${t('volume')} ${Math.round(d.volume).toLocaleString('en-US')}${d.relVolume != null ? ` (${Number(d.relVolume).toFixed(2)}x)` : ''}</span>` : ''}
     </div>
 
     ${financialAccordionHtml}
@@ -2386,21 +2796,21 @@ function renderScreenerDetail(d) {
       <button type="button" id="scr-detail-star" class="scr-detail-star-btn ${isInWatchlist(d.market, d.code) ? 'on' : ''}"
               onclick="toggleScreenerWatchlist('${d.market}', '${escapeHtml(d.code)}', '${escapeHtml(d.name).replace(/'/g, "\\'")}', event)">
         <i class="ti ${isInWatchlist(d.market, d.code) ? 'ti-star-filled' : 'ti-star'}" aria-hidden="true"></i>
-        <span>${isInWatchlist(d.market, d.code) ? 'Added to Watchlist' : 'Add to Watchlist'}</span>
+        <span>${isInWatchlist(d.market, d.code) ? t('addedToWatchlist') : t('addToWatchlist')}</span>
       </button>
       ${d.market === 'KR' ? `
         <button type="button" class="btn-secondary" onclick="jumpToKrSwingBacktest('${escapeHtml(d.code)}', '${escapeHtml(d.name).replace(/'/g, "\\'")}')">
-          <i class="ti ti-chart-candle" aria-hidden="true"></i> Backtest in KR Swing
+          <i class="ti ti-chart-candle" aria-hidden="true"></i> ${t('backtestInKrSwing')}
         </button>` : ''}
     </div>
 
     <div class="chart-wrap" style="height:260px;">
       <canvas id="scr-detail-chart" role="img" aria-label="${escapeHtml(d.name)} price chart"></canvas>
     </div>
-    <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">Scroll to zoom, drag to pan</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">${t('scrollZoomDragPan')}</div>
 
     <div class="scr-detail-section">
-      <div class="scr-detail-section-title">Trend Template — 8 Conditions</div>
+      <div class="scr-detail-section-title">${t('trendTemplate8Conditions')}</div>
       <div class="scr-detail-cond-list">${condRows}</div>
     </div>
 
@@ -2434,7 +2844,7 @@ function drawScreenerDetailChart(d) {
   const mkLine = (data, color, label, dash) => ({
     label, data: data.map((v, i) => ({ x: i, y: v })),
     borderColor: color, backgroundColor: 'transparent', fill: false,
-    pointRadius: 0, borderWidth: label === 'Close' ? 1.5 : 1.2, tension: 0.1, spanGaps: false,
+    pointRadius: 0, borderWidth: label === t('close') ? 1.5 : 1.2, tension: 0.1, spanGaps: false,
     borderDash: dash || [],
   });
 
@@ -2442,7 +2852,7 @@ function drawScreenerDetailChart(d) {
     type: 'line',
     data: {
       datasets: [
-        mkLine(closes, '#888780', 'Close'),
+        mkLine(closes, '#888780', t('close')),
         mkLine(ma50, '#E24B4A', 'MA50'),
         mkLine(ma150, '#EF9F27', 'MA150'),
         mkLine(ma200, '#378ADD', 'MA200'),
@@ -2512,7 +2922,7 @@ async function deleteInfinitePosition(id) {
 
 async function loadInfinitePositions() {
   const el = document.getElementById('live-positions');
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('loading')}</div>`;
   try {
     const positions = await api('GET', '/api/infinite/positions');
     renderInfinitePositions(positions);
@@ -2524,7 +2934,7 @@ async function loadInfinitePositions() {
 function renderInfinitePositions(positions) {
   const el = document.getElementById('live-positions');
   if (!positions.length) {
-    el.innerHTML = `<div class="empty-state"><i class="ti ti-infinity" aria-hidden="true"></i><p>No active Infinite Buying positions</p><small>Enter a ticker and capital above to start</small></div>`;
+    el.innerHTML = `<div class="empty-state"><i class="ti ti-infinity" aria-hidden="true"></i><p>${t('noActiveInfinitePositions')}</p><small>${t('enterTickerToStart')}</small></div>`;
     return;
   }
 
@@ -2538,51 +2948,51 @@ function renderInfinitePositions(positions) {
         <div>
           <span class="ticker-badge">${escapeHtml(p.ticker)}</span>
           <span class="cycle-pill">${p.version.toUpperCase()}</span>
-          <span class="cycle-pill">Cycle ${p.cycle}</span>
-          ${p.lossCutMode ? `<span class="cycle-pill" style="background:var(--red-bg);color:var(--red);">Splits Exhausted</span>` : ''}
+          <span class="cycle-pill">${t('cycle')} ${p.cycle}</span>
+          ${p.lossCutMode ? `<span class="cycle-pill" style="background:var(--red-bg);color:var(--red);">${t('splitsExhausted')}</span>` : ''}
         </div>
         <button class="btn-icon" onclick="deleteInfinitePosition(${p.id})" aria-label="Delete position"><i class="ti ti-trash" aria-hidden="true"></i></button>
       </div>
-      <div class="live-section-label">Basic Info</div>
+      <div class="live-section-label">${t('basicInfo')}</div>
       <div class="bt-summary-grid live-info-grid">
-        <div class="meta-item"><div class="meta-label">Capital</div><div class="meta-value">$${p.seed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
-        <div class="meta-item"><div class="meta-label">Capital Used</div><div class="meta-value">$${p.usedSeed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
-        <div class="meta-item"><div class="meta-label">Split Amount</div><div class="meta-value">$${p.splitAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">$${p.seed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('capitalUsed')}</div><div class="meta-value">$${p.usedSeed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('splitAmount')}</div><div class="meta-value">$${p.splitAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
       </div>
 
-      <div class="live-section-label">Position Info</div>
+      <div class="live-section-label">${t('positionInfo')}</div>
       <div class="bt-summary-grid live-info-grid">
-        <div class="meta-item"><div class="meta-label">Avg Price</div><div class="meta-value">${p.avgPrice ? '$' + p.avgPrice.toFixed(2) : '-'}</div></div>
-        <div class="meta-item"><div class="meta-label">Holding Qty</div><div class="meta-value">${p.holdingQty}</div></div>
-        <div class="meta-item"><div class="meta-label">Buy Amount</div><div class="meta-value">$${p.buyAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('avgPrice')}</div><div class="meta-value">${p.avgPrice ? '$' + p.avgPrice.toFixed(2) : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('holdingQty')}</div><div class="meta-value">${p.holdingQty}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('buyAmount')}</div><div class="meta-value">$${p.buyAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
       </div>
 
-      <div class="live-section-label">Infinite Buying Formula</div>
+      <div class="live-section-label">${t('infiniteBuyingFormula')}</div>
       <div class="bt-summary-grid live-info-grid">
         <div class="meta-item"><div class="meta-label">T</div><div class="meta-value">${p.tValue}</div></div>
-        <div class="meta-item"><div class="meta-label">Target Return</div><div class="meta-value">${p.targetReturnPct}%</div></div>
-        <div class="meta-item"><div class="meta-label">Star %</div><div class="meta-value">${p.starPct !== null ? p.starPct.toFixed(2) + '%' : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('targetReturn')}</div><div class="meta-value">${p.targetReturnPct}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('starPct')}</div><div class="meta-value">${p.starPct !== null ? p.starPct.toFixed(2) + '%' : '-'}</div></div>
       </div>
 
-      <div class="live-section-label">Valuation</div>
+      <div class="live-section-label">${t('valuation')}</div>
       <div class="bt-summary-grid live-info-grid">
-        <div class="meta-item"><div class="meta-label">Price</div><div class="meta-value">${p.currentPrice ? '$' + p.currentPrice.toFixed(2) : '-'}</div></div>
-        <div class="meta-item"><div class="meta-label">Unrealized P/L</div><div class="meta-value ${pnlCls}">${p.evalPnl>=0?'+':''}$${Math.abs(p.evalPnl).toLocaleString('en-US',{maximumFractionDigits:2})}</div></div>
-        <div class="meta-item"><div class="meta-label">Return</div><div class="meta-value ${pnlCls}">${p.returnPct>=0?'+':''}${p.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('price')}</div><div class="meta-value">${p.currentPrice ? '$' + p.currentPrice.toFixed(2) : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('unrealizedPl')}</div><div class="meta-value ${pnlCls}">${p.evalPnl>=0?'+':''}$${Math.abs(p.evalPnl).toLocaleString('en-US',{maximumFractionDigits:2})}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('return')}</div><div class="meta-value ${pnlCls}">${p.returnPct>=0?'+':''}${p.returnPct.toFixed(1)}%</div></div>
       </div>
 
       <div class="${recBoxCls}">
-        <div class="live-rec-title"><i class="ti ti-bulb" aria-hidden="true"></i> Infinite Buying Guide <span class="cycle-pill">${p.version.toUpperCase()}</span></div>
+        <div class="live-rec-title"><i class="ti ti-bulb" aria-hidden="true"></i> ${t('infiniteBuyingGuide')} <span class="cycle-pill">${p.version.toUpperCase()}</span></div>
         <div class="live-rec-orders">
           ${rec.orders.map(o => `
             <div class="live-rec-order-row">
               <div class="live-rec-pills">
-                <span class="pill ${o.action === 'sell' ? 'pill-sell' : 'pill-buy'}">${o.action === 'sell' ? 'Sell' : 'Buy'}</span>
-                <span class="pill pill-rec">${o.orderType}</span>
+                <span class="pill ${o.action === 'sell' ? 'pill-sell' : 'pill-buy'}">${o.action === 'sell' ? t('sell') : t('buy')}</span>
+                <span class="pill pill-rec">${tv(o.orderType)}</span>
                 ${o.pct !== undefined ? `<span style="font-size:12px;color:var(--text-secondary);">${o.pct>=0?'+':''}${o.pct}%</span>` : ''}
               </div>
               <div class="live-rec-order-value">
-                ${o.price !== null ? '$' + o.price.toFixed(2) : ''}${o.price !== null && o.qty !== null ? ' × ' : ''}${o.qty !== null ? o.qty + ' sh' : ''}
+                ${o.price !== null ? '$' + o.price.toFixed(2) : ''}${o.price !== null && o.qty !== null ? ' × ' : ''}${o.qty !== null ? o.qty + ' ' + t('sharesUnit') : ''}
               </div>
             </div>`).join('')}
         </div>
@@ -2592,13 +3002,13 @@ function renderInfinitePositions(positions) {
       <div class="add-form">
         <input type="date" id="live-trade-date-${p.id}" style="width:150px;" />
         <select id="live-trade-action-${p.id}" style="width:90px;">
-          <option value="buy">Buy</option>
-          <option value="sell">Sell</option>
+          <option value="buy">${t('buy')}</option>
+          <option value="sell">${t('sell')}</option>
         </select>
-        <input type="number" id="live-trade-price-${p.id}" placeholder="Price ($)" style="width:110px;" step="0.01" />
-        <input type="number" id="live-trade-qty-${p.id}" placeholder="Qty" style="width:90px;" step="1" min="1" />
-        <button class="btn-primary" onclick="addInfiniteTrade(${p.id})"><i class="ti ti-plus" aria-hidden="true"></i> Add Trade</button>
-        <button class="btn-secondary" onclick="toggleLiveTrades(${p.id})"><i class="ti ti-list" aria-hidden="true"></i> Trade History (${p.tradeCount})</button>
+        <input type="number" id="live-trade-price-${p.id}" placeholder="${t('price')} ($)" style="width:110px;" step="0.01" />
+        <input type="number" id="live-trade-qty-${p.id}" placeholder="${t('qty')}" style="width:90px;" step="1" min="1" />
+        <button class="btn-primary" onclick="addInfiniteTrade(${p.id})"><i class="ti ti-plus" aria-hidden="true"></i> ${t('addTrade')}</button>
+        <button class="btn-secondary" onclick="toggleLiveTrades(${p.id})"><i class="ti ti-list" aria-hidden="true"></i> ${t('tradeHistory')} (${p.tradeCount})</button>
       </div>
       <div id="live-trades-${p.id}" style="display:none;"></div>
     </div>`;
@@ -2636,25 +3046,25 @@ async function toggleLiveTrades(positionId) {
 async function showLiveTrades(positionId) {
   const tradesEl = document.getElementById(`live-trades-${positionId}`);
   tradesEl.style.display = 'block';
-  tradesEl.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div>`;
+  tradesEl.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('loading')}</div>`;
   try {
     const trades = await api('GET', `/api/infinite/positions/${positionId}/trades`);
     if (!trades.length) {
-      tradesEl.innerHTML = `<div class="empty-state"><p>No trade history</p></div>`;
+      tradesEl.innerHTML = `<div class="empty-state"><p>${t('noTradeHistory')}</p></div>`;
       return;
     }
     tradesEl.innerHTML = `
       <div class="pf-table-wrap">
         <table class="pf-table">
-          <thead><tr><th>Date</th><th>Type</th><th>Price</th><th>Qty</th><th></th></tr></thead>
+          <thead><tr><th>${t('date')}</th><th>${t('type')}</th><th>${t('price')}</th><th>${t('qty')}</th><th></th></tr></thead>
           <tbody>
-            ${trades.slice().reverse().map(t => `
+            ${trades.slice().reverse().map(t6 => `
               <tr>
-                <td>${t.date}</td>
-                <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? 'Buy' : 'Sell'}</span></td>
-                <td>$${t.price.toFixed(2)}</td>
-                <td>${t.qty}</td>
-                <td><button class="btn-icon" onclick="deleteInfiniteTrade(${positionId}, ${t.id})" aria-label="Delete trade"><i class="ti ti-trash" aria-hidden="true"></i></button></td>
+                <td>${t6.date}</td>
+                <td><span class="${t6.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t6.action === 'buy' ? t('buy') : t('sell')}</span></td>
+                <td>$${t6.price.toFixed(2)}</td>
+                <td>${t6.qty}</td>
+                <td><button class="btn-icon" onclick="deleteInfiniteTrade(${positionId}, ${t6.id})" aria-label="Delete trade"><i class="ti ti-trash" aria-hidden="true"></i></button></td>
               </tr>`).join('')}
           </tbody>
         </table>
@@ -2687,7 +3097,7 @@ let labCombinator = 'AND';
 // ^ 접두사는 지수(포인트)로 취급한다.
 const LAB_RATE_TICKERS = new Set(['^TNX', '^IRX', '^FVX', '^TYX']);
 const LAB_UNIT_ORDER = ['pt', 'pct', 'usd'];
-const LAB_UNIT_LABEL = { pt: 'Points', usd: 'Dollars ($)', pct: 'Rate (%)' };
+const LAB_UNIT_LABEL_KEY = { pt: 'unitPoints', usd: 'unitDollars', pct: 'unitRate' };
 
 function getLabUnit(ticker) {
   if (LAB_RATE_TICKERS.has(ticker)) return 'pct';
@@ -2744,26 +3154,26 @@ function addLabTicker() {
   const input = document.getElementById('lab-ticker-input');
   const ticker = input.value.trim().toUpperCase();
   if (!ticker) return;
-  if (labTickers.includes(ticker)) { showToast(`${ticker} is already added`); return; }
-  if (labTickers.length >= 8) { showToast('You can compare up to 8 at a time'); return; }
+  if (labTickers.includes(ticker)) { showToast(`${ticker} ${t('alreadyAdded')}`); return; }
+  if (labTickers.length >= 8) { showToast(t('canCompareUpTo8')); return; }
   labTickers.push(ticker);
   input.value = '';
   renderLabChips();
 }
 
 function removeLabTicker(ticker) {
-  labTickers = labTickers.filter(t => t !== ticker);
+  labTickers = labTickers.filter(tk => tk !== ticker);
   renderLabChips();
 }
 
 function renderLabChips() {
   const el = document.getElementById('lab-ticker-chips');
-  el.innerHTML = labTickers.map((t, i) => `
+  el.innerHTML = labTickers.map((tk, i) => `
     <span class="lab-chip">
       <span class="lab-chip-swatch" style="background:${LAB_COLORS[i % LAB_COLORS.length]};"></span>
-      ${escapeHtml(t)}
-      <button type="button" onclick="removeLabTicker('${t}')" aria-label="Remove ${t}"><i class="ti ti-x" aria-hidden="true"></i></button>
-    </span>`).join('') || `<span style="font-size:12px;color:var(--text-muted);">Add a ticker/index to compare</span>`;
+      ${escapeHtml(tk)}
+      <button type="button" onclick="removeLabTicker('${tk}')" aria-label="Remove ${tk}"><i class="ti ti-x" aria-hidden="true"></i></button>
+    </span>`).join('') || `<span style="font-size:12px;color:var(--text-muted);">${t('addTickerIndexToCompare')}</span>`;
 }
 
 let labInterval = 'daily';
@@ -2777,7 +3187,7 @@ async function runLabCompare() {
   if (!labTickers.length) { alert('티커/지수를 1개 이상 추가하세요'); return; }
   if (!start || !end) { alert('시작일과 종료일을 입력하세요'); return; }
 
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading prices...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('loadingPrices')}</div>`;
   try {
     const data = await api('POST', '/api/lab/series', { tickers: labTickers, start, end });
     labSeriesData = data;
@@ -2788,10 +3198,10 @@ async function runLabCompare() {
 }
 
 const LAB_INTERVALS = [
-  { key: 'daily', label: 'Daily' },
-  { key: 'weekly', label: 'Weekly' },
-  { key: 'monthly', label: 'Monthly' },
-  { key: 'yearly', label: 'Yearly' },
+  { key: 'daily', labelKey: 'daily' },
+  { key: 'weekly', labelKey: 'weekly' },
+  { key: 'monthly', labelKey: 'monthly' },
+  { key: 'yearly', labelKey: 'yearly' },
 ];
 
 function renderLabResult(data) {
@@ -2808,39 +3218,39 @@ function renderLabResult(data) {
 
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-        <div style="font-size:13px;font-weight:600;">Compare (separate axis per unit)</div>
+        <div style="font-size:13px;font-weight:600;">${t('compareAxisPerUnit')}</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <div class="lab-interval-group">
-            ${LAB_INTERVALS.map(iv => `<button type="button" class="lab-interval-btn ${iv.key === labInterval ? 'active' : ''}" data-interval="${iv.key}" onclick="setLabInterval('${iv.key}')">${iv.label}</button>`).join('')}
+            ${LAB_INTERVALS.map(iv => `<button type="button" class="lab-interval-btn ${iv.key === labInterval ? 'active' : ''}" data-interval="${iv.key}" onclick="setLabInterval('${iv.key}')">${t(iv.labelKey)}</button>`).join('')}
           </div>
           <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);cursor:pointer;">
-            <input type="checkbox" id="lab-log-scale" ${labLogScale ? 'checked' : ''} onchange="toggleLabLogScale()" /> Log scale
+            <input type="checkbox" id="lab-log-scale" ${labLogScale ? 'checked' : ''} onchange="toggleLabLogScale()" /> ${t('logScale')}
           </label>
-          <button class="btn-secondary" onclick="resetLabZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> Reset Zoom</button>
+          <button class="btn-secondary" onclick="resetLabZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> ${t('resetZoom')}</button>
         </div>
       </div>
       <div class="chart-wrap">
         <canvas id="lab-chart" role="img" aria-label="Comparison chart"></canvas>
       </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">Scroll to zoom, drag to pan</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">${t('scrollZoomDragPan')}</div>
     </div>
 
     <div class="card">
-      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Find Condition Ranges</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('findConditionRanges')}</div>
       <div id="lab-cond-rows" style="display:flex;flex-direction:column;gap:8px;"></div>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px;">
-        <button class="btn-secondary" onclick="addLabConditionRow()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-plus" aria-hidden="true"></i> Add Condition</button>
+        <button class="btn-secondary" onclick="addLabConditionRow()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-plus" aria-hidden="true"></i> ${t('addCondition')}</button>
         <div id="lab-cond-combinator-wrap" style="display:none;align-items:center;gap:10px;font-size:12px;color:var(--text-secondary);">
-          Combine:
+          ${t('combine')}:
           <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
-            <input type="radio" name="lab-cond-combinator" value="AND" onchange="setLabCombinator('AND')" /> AND (all match)
+            <input type="radio" name="lab-cond-combinator" value="AND" onchange="setLabCombinator('AND')" /> ${t('andAllMatch')}
           </label>
           <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
-            <input type="radio" name="lab-cond-combinator" value="OR" onchange="setLabCombinator('OR')" /> OR (any match)
+            <input type="radio" name="lab-cond-combinator" value="OR" onchange="setLabCombinator('OR')" /> ${t('orAnyMatch')}
           </label>
         </div>
-        <button class="btn-primary" onclick="applyLabCondition()"><i class="ti ti-highlight" aria-hidden="true"></i> Highlight Ranges</button>
-        <button class="btn-secondary" onclick="clearLabCondition()"><i class="ti ti-x" aria-hidden="true"></i> Reset</button>
+        <button class="btn-primary" onclick="applyLabCondition()"><i class="ti ti-highlight" aria-hidden="true"></i> ${t('highlightRanges')}</button>
+        <button class="btn-secondary" onclick="clearLabCondition()"><i class="ti ti-x" aria-hidden="true"></i> ${t('reset')}</button>
       </div>
       <div id="lab-regions"></div>
     </div>
@@ -2863,8 +3273,8 @@ function renderLabConditionRowsUi() {
         ${data.series.map(s => `<option value="${escapeHtml(s.ticker)}" ${s.ticker === row.ticker ? 'selected' : ''}>${escapeHtml(s.ticker)}</option>`).join('')}
       </select>
       <select id="lab-cond-metric-${row.id}">
-        <option value="change" ${row.metric === 'change' ? 'selected' : ''}>Change vs. prior period (%)</option>
-        <option value="close" ${row.metric === 'close' ? 'selected' : ''}>Value (Close)</option>
+        <option value="change" ${row.metric === 'change' ? 'selected' : ''}>${t('changeVsPriorPeriod')}</option>
+        <option value="close" ${row.metric === 'close' ? 'selected' : ''}>${t('valueClose')}</option>
       </select>
       <select id="lab-cond-op-${row.id}">
         <option value="lte" ${row.op === 'lte' ? 'selected' : ''}>≤</option>
@@ -2888,11 +3298,11 @@ function renderLabConditionRowsUi() {
 
 function syncLabConditionRowsFromDom() {
   labConditionRows.forEach(row => {
-    const t = document.getElementById(`lab-cond-ticker-${row.id}`);
+    const tEl = document.getElementById(`lab-cond-ticker-${row.id}`);
     const m = document.getElementById(`lab-cond-metric-${row.id}`);
     const o = document.getElementById(`lab-cond-op-${row.id}`);
     const th = document.getElementById(`lab-cond-threshold-${row.id}`);
-    if (t) row.ticker = t.value;
+    if (tEl) row.ticker = tEl.value;
     if (m) row.metric = m.value;
     if (o) row.op = o.value;
     if (th) row.threshold = th.value;
@@ -2998,7 +3408,7 @@ function drawLabChart(data, regions) {
       position: i === 0 ? 'left' : 'right',
       grid: { drawOnChartArea: i === 0, color: 'rgba(128,128,128,0.1)' },
       ticks: { callback: v => formatLabValue(Number(v), unit) },
-      title: { display: true, text: LAB_UNIT_LABEL[unit], font: { size: 11 } },
+      title: { display: true, text: t(LAB_UNIT_LABEL_KEY[unit]), font: { size: 11 } },
     };
   });
 
@@ -3123,8 +3533,8 @@ function applyLabCondition() {
     if (!series) continue;
 
     perConditionFlags.push(computeLabFlags(series.closes, row.metric, row.op, threshold));
-    const metricLabel = row.metric === 'change' ? 'Change (%)' : 'Value';
-    const opLabel = { gte: 'or more', gt: 'more than', lte: 'or less', lt: 'less than' }[row.op];
+    const metricLabel = row.metric === 'change' ? t('changePct') : t('valueClose2');
+    const opLabel = { gte: t('orMore'), gt: t('moreThan'), lte: t('orLess'), lt: t('lessThan') }[row.op];
     summaries.push(`${row.ticker} ${metricLabel} ${threshold} ${opLabel}`);
   }
   if (!perConditionFlags.length) return;
@@ -3148,11 +3558,11 @@ function clearLabCondition() {
 
 function renderLabRegions(regions, summaries, combinator) {
   const el = document.getElementById('lab-regions');
-  const joiner = combinator === 'OR' ? ' or ' : ' and ';
-  const summary = `Ranges matching ${summaries.map(escapeHtml).join(joiner)}: ${regions.length}`;
+  const joiner = combinator === 'OR' ? ` ${t('or')} ` : ` ${t('and')} `;
+  const summary = `${t('rangesMatching')} ${summaries.map(escapeHtml).join(joiner)}: ${regions.length}`;
 
   if (!regions.length) {
-    el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>${summary}</p><small>No ranges match this condition</small></div>`;
+    el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>${summary}</p><small>${t('noRangesMatchCondition')}</small></div>`;
     return;
   }
 
