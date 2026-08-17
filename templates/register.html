@@ -6,26 +6,33 @@
   <title>회원가입 · 미국 주식 목표가 트래커</title>
   <link rel="stylesheet" href="/static/style.css?v={{ asset_version('style.css') }}" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css" />
+  <script>
+    (function () {
+      var t = localStorage.getItem('theme') || 'dark';
+      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
 </head>
-<body>
-  <div class="app" style="max-width:380px;padding-top:4rem;">
-    <header class="header" style="margin-bottom:1.5rem;">
-      <i class="ti ti-chart-candle header-icon" aria-hidden="true"></i>
-      <div>
-        <h1 class="header-title">회원가입</h1>
-        <p class="header-sub">미국 주식 목표가 트래커</p>
-      </div>
-    </header>
+<body class="auth-body">
+  {% include "_auth_backdrop.html" %}
 
-    <div class="card">
+  <div class="auth-veil">
+    <div class="auth-modal">
+      <div class="auth-modal-brand">
+        <i class="ti ti-chart-candle" aria-hidden="true"></i>
+        <span>미국 주식 목표가 트래커</span>
+      </div>
+      <h1 class="auth-modal-title">회원가입</h1>
+      <p class="auth-modal-sub">새 계정 만들기</p>
+
       {% if error %}
       <div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>{{ error }}</div>
       {% endif %}
-      <form method="post" style="display:flex;flex-direction:column;gap:10px;">
+      <form method="post" class="auth-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
         <input type="text" name="username" placeholder="아이디 (3자 이상)" required autofocus />
         <input type="password" name="password" placeholder="비밀번호 (6자 이상)" required />
-        <button type="submit" class="btn-primary" style="justify-content:center;">
+        <button type="submit" class="btn-primary auth-submit">
           <i class="ti ti-user-plus" aria-hidden="true"></i> 가입하기
         </button>
       </form>
@@ -33,11 +40,8 @@
         <i class="ti ti-info-circle" aria-hidden="true"></i>
         가장 먼저 가입하는 계정은 자동으로 관리자 권한을 갖습니다.
       </div>
+      <p class="auth-modal-switch">이미 계정이 있으신가요? <a href="/login">로그인</a></p>
     </div>
-
-    <p style="text-align:center;font-size:13px;color:var(--text-secondary);">
-      이미 계정이 있으신가요? <a href="/login">로그인</a>
-    </p>
   </div>
 </body>
 </html>

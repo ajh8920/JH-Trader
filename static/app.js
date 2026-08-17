@@ -213,30 +213,40 @@ function renderMacro(data) {
         </div>
       </div>`).join('')}
   `;
+
+  animateFearGreedNeedle(el);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      el.querySelectorAll('.macro-sparkline').forEach(svg => svg.classList.add('in'));
+    });
+  });
 }
 
 const FEAR_GREED_SEGMENTS = [
-  { from: 0, to: 20, color: '#c0392b' },
-  { from: 20, to: 40, color: '#e08a3c' },
-  { from: 40, to: 60, color: '#d9c23c' },
-  { from: 60, to: 80, color: '#8fbf4d' },
-  { from: 80, to: 100, color: '#2e9e4f' },
+  { from: 0, to: 20, color: '#e5484d' },
+  { from: 20, to: 40, color: '#f0a058' },
+  { from: 40, to: 60, color: '#dfb945' },
+  { from: 60, to: 80, color: '#8fc46a' },
+  { from: 80, to: 100, color: '#38a973' },
 ];
 
 const FEAR_GREED_RATING_KO = {
-  'extreme fear': { label: '극단적 공포', color: '#c0392b' },
-  'fear': { label: '공포', color: '#e08a3c' },
-  'neutral': { label: '중립', color: '#d9c23c' },
-  'greed': { label: '탐욕', color: '#8fbf4d' },
-  'extreme greed': { label: '극단적 탐욕', color: '#2e9e4f' },
+  'extreme fear': { label: '극단적 공포', color: '#e5484d' },
+  'fear': { label: '공포', color: '#f0a058' },
+  'neutral': { label: '중립', color: '#dfb945' },
+  'greed': { label: '탐욕', color: '#8fc46a' },
+  'extreme greed': { label: '극단적 탐욕', color: '#38a973' },
 };
 
 function fearGreedRatingInfo(rating) {
   return FEAR_GREED_RATING_KO[(rating || '').toLowerCase()] || { label: rating || '-', color: 'var(--text-muted)' };
 }
 
+// 바늘을 좌표 재계산이 아니라 CSS transform: rotate()로 그려서, 최초 렌더 시
+// -90deg(0점 위치)에서 실제 점수 각도로 부드럽게 스윕하는 애니메이션을 걸 수 있게 한다
+// (좌표 기반이면 매 프레임 path를 다시 그려야 해서 transition을 못 쓴다).
 function buildFearGreedGaugeSvg(score) {
-  const cx = 110, cy = 100, rOuter = 88, rInner = 60;
+  const cx = 110, cy = 100, rOuter = 88, rInner = 62;
   const angleForScore = s => Math.PI - (s / 100) * Math.PI;
   const pt = (r, s) => {
     const a = angleForScore(s);
@@ -249,21 +259,35 @@ function buildFearGreedGaugeSvg(score) {
     const [x4, y4] = pt(rInner, from);
     return `M ${x1} ${y1} A ${rOuter} ${rOuter} 0 0 1 ${x2} ${y2} L ${x3} ${y3} A ${rInner} ${rInner} 0 0 0 ${x4} ${y4} Z`;
   };
-  const segments = FEAR_GREED_SEGMENTS.map(s => `<path d="${arcPath(s.from, s.to)}" fill="${s.color}" opacity="0.88"></path>`).join('');
+  const segments = FEAR_GREED_SEGMENTS.map(s => `<path d="${arcPath(s.from, s.to)}" fill="${s.color}"></path>`).join('');
 
   const clampedScore = Math.max(0, Math.min(100, score));
-  const needleAngle = angleForScore(clampedScore);
-  const needleLen = rInner - 10;
-  const tipX = cx + needleLen * Math.cos(needleAngle);
-  const tipY = cy - needleLen * Math.sin(needleAngle);
+  const targetDeg = (clampedScore / 100) * 180 - 90;
+  const needleLen = rInner - 12;
 
   return `
     <svg viewBox="0 0 220 156" role="img" aria-label="공포탐욕지수 ${Math.round(clampedScore)}">
       ${segments}
-      <line x1="${cx}" y1="${cy}" x2="${tipX.toFixed(1)}" y2="${tipY.toFixed(1)}" stroke="var(--text)" stroke-width="3" stroke-linecap="round"></line>
-      <circle cx="${cx}" cy="${cy}" r="6" fill="var(--text)"></circle>
-      <text x="${cx}" y="${cy + 40}" text-anchor="middle" font-size="24" font-weight="700" fill="var(--text)">${Math.round(clampedScore)}</text>
+      <circle cx="${cx}" cy="${cy}" r="${rInner - 4}" fill="var(--bg)" opacity="0.55"></circle>
+      <g class="fg-needle" data-target-deg="${targetDeg.toFixed(2)}" style="transform-origin:${cx}px ${cy}px; transform:rotate(-90deg);">
+        <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - needleLen}" stroke="var(--text)" stroke-width="3" stroke-linecap="round"></line>
+        <circle cx="${cx}" cy="${cy}" r="6.5" fill="var(--blue)"></circle>
+      </g>
+      <text x="${cx}" y="${cy + 40}" text-anchor="middle" font-size="26" font-weight="800" fill="var(--text)" class="fg-score-text">${Math.round(clampedScore)}</text>
     </svg>`;
+}
+
+// 최초 렌더 직후 -90deg(0점)에서 실제 각도로 CSS transition이 걸리도록, 삽입된
+// 다음 프레임에 목표 각도를 적용한다(같은 프레임에서 하면 transition이 씹힌다).
+function animateFearGreedNeedle(root) {
+  const needle = (root || document).querySelector('.fg-needle');
+  if (!needle) return;
+  const target = needle.dataset.targetDeg;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      needle.style.transform = `rotate(${target}deg)`;
+    });
+  });
 }
 
 function renderFearGreedCard(fg) {
