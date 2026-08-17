@@ -1,9 +1,11 @@
+{% from "_macros.html" import brand_mark %}
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JH-Trader</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
   <link rel="stylesheet" href="/static/style.css?v={{ asset_version('style.css') }}" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css" />
   <script>
@@ -35,7 +37,7 @@
     {% endif %}
 
     <header class="header">
-      <i class="ti ti-chart-candle header-icon" aria-hidden="true"></i>
+      {{ brand_mark(32) }}
       <div>
         <h1 class="header-title">JH-Trader</h1>
       </div>
@@ -59,6 +61,11 @@
         </a>
       </div>
     </header>
+
+    <div class="ticker-tape" id="ticker-tape">
+      <div class="ticker-tape-label"><span class="ticker-dot" aria-hidden="true"></span>MARKET<span class="ticker-tape-asof" id="ticker-asof"></span></div>
+      <div class="ticker-viewport"><div class="ticker-track" id="ticker-track"></div></div>
+    </div>
 
     <nav class="tabs" role="tablist">
       <button class="tab active" data-tab="macro" onclick="switchTab('macro')" role="tab"><i class="ti ti-world" aria-hidden="true"></i> 매크로</button>

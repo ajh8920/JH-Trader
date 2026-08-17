@@ -4,7 +4,7 @@ import re
 import secrets
 import time
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 
@@ -443,7 +443,10 @@ def get_macro():
             "series": series,
         })
 
-    result = sanitize_json({"instruments": out, "fearGreed": fear_greed})
+    result = sanitize_json({
+        "instruments": out, "fearGreed": fear_greed,
+        "asOf": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    })
 
     # 일부 항목이 실패한 결과를 캐시해버리면 그 실패가 최대 90초 동안 그대로
     # 재노출된다. 전체가 성공했을 때만 캐시하고, 일부 실패 시에는 다음 요청이
@@ -1003,7 +1006,8 @@ def screener_status():
         )
         count = TrendScreenCache.query.filter_by(market=market).count()
         age = (datetime.utcnow() - latest.updated_at).total_seconds() if latest and latest.updated_at else None
-        out[market] = {"ready": latest is not None, "count": count, "ageSeconds": round(age) if age else None}
+        as_of = latest.updated_at.replace(tzinfo=timezone.utc).isoformat() if latest and latest.updated_at else None
+        out[market] = {"ready": latest is not None, "count": count, "ageSeconds": round(age) if age else None, "asOf": as_of}
     return jsonify(out)
 
 

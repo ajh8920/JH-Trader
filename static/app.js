@@ -8,6 +8,16 @@ function escapeHtml(str) {
   }[c]));
 }
 
+// 서버가 주는 UTC ISO 시각을 사용자 브라우저의 로컬 시간대로 "YYYY-MM-DD HH:MM"
+// 형태로 바꾼다. 데이터가 언제 기준인지 화면 곳곳에서 같은 형식으로 보여주기 위한 공용 헬퍼.
+function formatAsOf(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // ─── 테마(라이트/다크/시스템) ─────────────────────────────────────────────────
 
 const THEME_ICONS = { system: 'ti-device-desktop', light: 'ti-sun', dark: 'ti-moon' };
@@ -151,6 +161,7 @@ async function loadMacro() {
     try {
       const data = await api('GET', '/api/macro');
       lastData = data;
+      renderTicker(data);
       const allOk = (data.instruments || []).every(i => i.price !== null && i.price !== undefined) && !!data.fearGreed;
       if (allOk || attempt === maxAttempts) {
         renderMacro(data);
@@ -181,8 +192,11 @@ function renderMacro(data) {
     (groups[item.group] ??= []).push(item);
   });
 
+  const asOfText = formatAsOf(data.asOf);
+
   el.innerHTML = `
-    <div class="add-form" style="justify-content:flex-end;">
+    <div class="add-form" style="justify-content:flex-end;align-items:center;">
+      ${asOfText ? `<span style="font-size:12px;color:var(--text-muted);margin-right:auto;">기준 ${asOfText}</span>` : ''}
       <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> 새로고침</button>
     </div>
     ${data.fearGreed ? renderFearGreedCard(data.fearGreed) : ''}
@@ -220,6 +234,34 @@ function renderMacro(data) {
       el.querySelectorAll('.macro-sparkline').forEach(svg => svg.classList.add('in'));
     });
   });
+}
+
+// 제목과 탭 사이의 전광판(무한 스크롤 티커). 매크로 탭이 열려있지 않아도 페이지
+// 로드 시 loadMacro()가 항상 한 번은 도니(§ 매크로 섹션 상단 참고) 그 결과를 그대로 재사용한다.
+// 애니메이션은 내용을 두 벌 이어붙여 절반(-50%) 이동했을 때 이음매 없이 반복되게 한다 -
+// 두 번째 벌은 스크린리더에 중복 노출되지 않도록 aria-hidden 처리한다.
+function renderTicker(data) {
+  const track = document.getElementById('ticker-track');
+  if (!track) return;
+  const items = (data.instruments || []).filter(m => m.price !== null && m.price !== undefined);
+  if (!items.length) return;
+
+  const piece = items.map(m => {
+    const isPos = m.change >= 0;
+    return `<span class="ticker-item">
+        <span class="ticker-name">${escapeHtml(m.name)}</span>
+        <span class="ticker-price">${formatMacroPrice(m.price, m.unit)}</span>
+        <span class="ticker-change ${isPos ? 'positive' : 'negative'}"><i class="ti ti-trending-${isPos ? 'up' : 'down'}" aria-hidden="true"></i>${formatMacroChange(m.change, m.changePct, m.unit)}</span>
+      </span>`;
+  }).join('<span class="ticker-sep">·</span>');
+
+  track.innerHTML = `<span class="ticker-set">${piece}</span><span class="ticker-set" aria-hidden="true">${piece}</span>`;
+
+  const asOfEl = document.getElementById('ticker-asof');
+  if (asOfEl) {
+    const asOfText = formatAsOf(data.asOf);
+    asOfEl.textContent = asOfText ? asOfText.slice(5) : ''; // "MM-DD HH:MM"만 - 티커 라벨은 자리가 좁다
+  }
 }
 
 const FEAR_GREED_SEGMENTS = [
@@ -1608,8 +1650,8 @@ async function loadScreenerStatus() {
       el.innerHTML = `<i class="ti ti-loader-2" aria-hidden="true"></i> 데이터 준비 중...`;
       return;
     }
-    const ageMin = s.ageSeconds !== null ? Math.round(s.ageSeconds / 60) : null;
-    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> ${s.count.toLocaleString('ko-KR')}종목${ageMin !== null ? ' · ' + ageMin + '분 전 갱신' : ''}`;
+    const asOfText = s.asOf ? formatAsOf(s.asOf) : null;
+    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> ${s.count.toLocaleString('ko-KR')}종목${asOfText ? ' · 기준 ' + asOfText : ''}`;
   } catch (e) {
     el.innerHTML = `<i class="ti ti-alert-circle" aria-hidden="true"></i> ${escapeHtml(e.message)}`;
   }

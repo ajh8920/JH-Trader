@@ -1,9 +1,10 @@
+{% from "_macros.html" import brand_mark %}
 {# 로그인/회원가입 화면 뒤에 블러 처리해 보여줄 메인 화면 미리보기. 장식 목적이라
    실데이터가 아닌 대표값을 쓴다(비로그인 상태라 실제 API를 호출할 수 없다). #}
 <div class="auth-backdrop" aria-hidden="true">
   <div class="app">
     <header class="header">
-      <i class="ti ti-chart-candle header-icon" aria-hidden="true"></i>
+      {{ brand_mark(32) }}
       <div>
         <h1 class="header-title">JH-Trader</h1>
       </div>
