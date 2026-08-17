@@ -1699,6 +1699,11 @@ function renderScreenerResults(data) {
 // 각 항목을 "값에 접근하는 함수"로 정의해 절대금액(abs)/퍼센트(unit)를
 // 구분한다 - 절대금액은 억원(국내)·백만달러(미국) 단위로 입력받아 원 단위로
 // 환산해서 비교한다(그대로 원 단위로 입력하게 하면 숫자가 너무 커서 비실용적).
+// tiers: 각 지표의 "이상적인 값" 4단계 프리셋. 값 투자·표준 스크리닝(Finviz/GuruFocus류)
+// 관행을 참고한 근사 기준이며 업종별 예외는 반영하지 않는다 - 정밀 판단용이 아니라
+// 빠른 1차 필터용 버튼이다. 왼쪽→오른쪽은 항상 "수치가 낮음→높음" 순서로 두고
+// (부채비율처럼 낮을수록 좋은 지표는 라벨만 반대로 붙는다), 성장률처럼 실제로
+// 음수가 나올 수 있는 지표는 그대로 음수 구간을 첫 번째 단계로 둔다.
 const FIN_FILTER_CATEGORIES = [
   { key: 'bs', icon: '🧾', title: 'Balance Sheet', items: [
     { key: 'totalAssets', label: 'Total Assets', abs: true, get: r => r.metrics?.totalAssets },
@@ -1716,95 +1721,136 @@ const FIN_FILTER_CATEGORIES = [
     { key: 'netIncomeAttributable', label: 'Net Income Attributable to Owners', abs: true, get: r => r.metrics?.netIncomeAttributable },
   ] },
   { key: 'profit', icon: '📈', title: 'Profitability', items: [
-    { key: 'grossMargin', label: 'Gross Margin', unit: '%', get: r => r.metrics?.grossMargin },
-    { key: 'operatingMargin', label: 'Operating Margin', unit: '%', get: r => r.metrics?.operatingMargin },
-    { key: 'netMargin', label: 'Net Margin', unit: '%', get: r => r.metrics?.netMargin },
-    { key: 'roe', label: 'ROE', unit: '%', get: r => r.metrics?.roe },
-    { key: 'roa', label: 'ROA', unit: '%', get: r => r.metrics?.roa },
+    { key: 'grossMargin', label: 'Gross Margin', unit: '%', get: r => r.metrics?.grossMargin,
+      tiers: [{ label: 'Weak', max: 20 }, { label: 'Fair', min: 20, max: 40 }, { label: 'Good', min: 40, max: 60 }, { label: 'Excellent', min: 60 }] },
+    { key: 'operatingMargin', label: 'Operating Margin', unit: '%', get: r => r.metrics?.operatingMargin,
+      tiers: [{ label: 'Weak', max: 5 }, { label: 'Fair', min: 5, max: 15 }, { label: 'Good', min: 15, max: 25 }, { label: 'Excellent', min: 25 }] },
+    { key: 'netMargin', label: 'Net Margin', unit: '%', get: r => r.metrics?.netMargin,
+      tiers: [{ label: 'Weak', max: 3 }, { label: 'Fair', min: 3, max: 10 }, { label: 'Good', min: 10, max: 20 }, { label: 'Excellent', min: 20 }] },
+    { key: 'roe', label: 'ROE', unit: '%', get: r => r.metrics?.roe,
+      tiers: [{ label: 'Weak', max: 5 }, { label: 'Fair', min: 5, max: 15 }, { label: 'Good', min: 15, max: 20 }, { label: 'Excellent', min: 20 }] },
+    { key: 'roa', label: 'ROA', unit: '%', get: r => r.metrics?.roa,
+      tiers: [{ label: 'Weak', max: 2 }, { label: 'Fair', min: 2, max: 5 }, { label: 'Good', min: 5, max: 10 }, { label: 'Excellent', min: 10 }] },
   ] },
   { key: 'growth', icon: '🌱', title: 'Growth (YoY)', items: [
-    { key: 'revenueGrowth', label: 'Revenue Growth', unit: '%', get: r => r.metrics?.revenueGrowth },
-    { key: 'opIncomeGrowth', label: 'Operating Income Growth', unit: '%', get: r => r.metrics?.opIncomeGrowth },
-    { key: 'epsGrowth', label: 'EPS Growth', unit: '%', get: r => r.epsGrowth },
+    { key: 'revenueGrowth', label: 'Revenue Growth', unit: '%', get: r => r.metrics?.revenueGrowth,
+      tiers: [{ label: 'Declining', max: 0 }, { label: 'Slow', min: 0, max: 10 }, { label: 'Strong', min: 10, max: 25 }, { label: 'Explosive', min: 25 }] },
+    { key: 'opIncomeGrowth', label: 'Operating Income Growth', unit: '%', get: r => r.metrics?.opIncomeGrowth,
+      tiers: [{ label: 'Declining', max: 0 }, { label: 'Slow', min: 0, max: 10 }, { label: 'Strong', min: 10, max: 25 }, { label: 'Explosive', min: 25 }] },
+    { key: 'epsGrowth', label: 'EPS Growth', unit: '%', get: r => r.epsGrowth,
+      tiers: [{ label: 'Declining', max: 0 }, { label: 'Slow', min: 0, max: 10 }, { label: 'Strong', min: 10, max: 25 }, { label: 'Explosive', min: 25 }] },
   ] },
   { key: 'stability', icon: '🛡️', title: 'Stability', items: [
-    { key: 'currentRatio', label: 'Current Ratio', unit: '%', get: r => r.metrics?.currentRatio },
-    { key: 'quickRatio', label: 'Quick Ratio', unit: '%', get: r => r.metrics?.quickRatio },
-    { key: 'debtRatio', label: 'Debt Ratio', unit: '%', get: r => r.metrics?.debtRatio },
-    { key: 'netDebtRatio', label: 'Net Debt Ratio', unit: '%', get: r => r.metrics?.netDebtRatio },
+    { key: 'currentRatio', label: 'Current Ratio', unit: '%', get: r => r.metrics?.currentRatio,
+      tiers: [{ label: 'Weak', max: 100 }, { label: 'Fair', min: 100, max: 150 }, { label: 'Good', min: 150, max: 200 }, { label: 'Excellent', min: 200 }] },
+    { key: 'quickRatio', label: 'Quick Ratio', unit: '%', get: r => r.metrics?.quickRatio,
+      tiers: [{ label: 'Weak', max: 50 }, { label: 'Fair', min: 50, max: 100 }, { label: 'Good', min: 100, max: 150 }, { label: 'Excellent', min: 150 }] },
+    { key: 'debtRatio', label: 'Debt Ratio', unit: '%', get: r => r.metrics?.debtRatio,
+      tiers: [{ label: 'Excellent', max: 30 }, { label: 'Good', min: 30, max: 60 }, { label: 'Fair', min: 60, max: 100 }, { label: 'Weak', min: 100 }] },
+    { key: 'netDebtRatio', label: 'Net Debt Ratio', unit: '%', get: r => r.metrics?.netDebtRatio,
+      tiers: [{ label: 'Excellent', max: 0 }, { label: 'Good', min: 0, max: 30 }, { label: 'Fair', min: 30, max: 60 }, { label: 'Weak', min: 60 }] },
   ] },
   { key: 'value', icon: '💰', title: 'Valuation', items: [
     { key: 'marketCap', label: 'Market Cap', abs: true, get: r => r.marketCap },
-    { key: 'peRatio', label: 'P/E', unit: 'x', get: r => r.peRatio },
-    { key: 'pbr', label: 'P/B', unit: 'x', get: r => r.metrics?.pbr },
-    { key: 'psr', label: 'P/S', unit: 'x', get: r => r.metrics?.psr },
-    { key: 'evEbitda', label: 'EV/EBITDA', unit: 'x', get: r => r.metrics?.evEbitda },
-    { key: 'dividendYield', label: 'Dividend Yield', unit: '%', get: r => r.dividendYield },
+    { key: 'peRatio', label: 'P/E', unit: 'x', get: r => r.peRatio,
+      tiers: [{ label: 'Excellent', max: 10 }, { label: 'Good', min: 10, max: 18 }, { label: 'Fair', min: 18, max: 25 }, { label: 'Weak', min: 25 }] },
+    { key: 'pbr', label: 'P/B', unit: 'x', get: r => r.metrics?.pbr,
+      tiers: [{ label: 'Excellent', max: 1 }, { label: 'Good', min: 1, max: 3 }, { label: 'Fair', min: 3, max: 5 }, { label: 'Weak', min: 5 }] },
+    { key: 'psr', label: 'P/S', unit: 'x', get: r => r.metrics?.psr,
+      tiers: [{ label: 'Excellent', max: 1 }, { label: 'Good', min: 1, max: 2 }, { label: 'Fair', min: 2, max: 4 }, { label: 'Weak', min: 4 }] },
+    { key: 'evEbitda', label: 'EV/EBITDA', unit: 'x', get: r => r.metrics?.evEbitda,
+      tiers: [{ label: 'Excellent', max: 8 }, { label: 'Good', min: 8, max: 12 }, { label: 'Fair', min: 12, max: 16 }, { label: 'Weak', min: 16 }] },
+    { key: 'dividendYield', label: 'Dividend Yield', unit: '%', get: r => r.dividendYield,
+      tiers: [{ label: 'None', max: 0 }, { label: 'Fair', min: 0, max: 2 }, { label: 'Good', min: 2, max: 4 }, { label: 'Excellent', min: 4 }] },
   ] },
 ];
 
 let scrActiveFilters = {}; // { [itemKey]: {min, max} }
 let scrActiveRatings = new Set(); // 컨센서스(투자의견) 다중 선택
+let scrFilterActiveCat = FIN_FILTER_CATEGORIES[0].key; // 지금 하단에 펼쳐진 카테고리
 
 function absScale() { return scrIsUS ? 1e6 : 1e8; }
 function absUnitLabel() { return scrIsUS ? '$M' : '₩100M'; }
 
+function finFilterCatList() {
+  return scrIsUS ? [...FIN_FILTER_CATEGORIES, { key: 'consensus', icon: '🎯', title: 'Consensus', items: [] }] : FIN_FILTER_CATEGORIES;
+}
+
+// tier 프리셋 버튼이 지금 이 필터와 "선택된 상태로 보이는지"는 min/max 값이
+// 정확히 일치하는지로 판단한다(직접 입력한 값이 우연히 같아도 같은 걸로 취급 -
+// 사용자 입장에서는 결과가 같으니 구분할 필요가 없다).
+function isTierActive(key, tier) {
+  const cur = scrActiveFilters[key];
+  if (!cur) return false;
+  return (cur.min ?? null) === (tier.min ?? null) && (cur.max ?? null) === (tier.max ?? null);
+}
+
+function countActiveInCat(cat) {
+  if (cat.key === 'consensus') return scrActiveRatings.size;
+  return cat.items.filter(it => scrActiveFilters[it.key]).length;
+}
+
 function buildFinFilterPanel() {
   const panel = document.getElementById('scr-filter-panel');
   if (!panel) return;
+  const cats = finFilterCatList();
+  if (!cats.some(c => c.key === scrFilterActiveCat)) scrFilterActiveCat = cats[0].key;
+  const activeCat = cats.find(c => c.key === scrFilterActiveCat);
 
-  const catsHtml = FIN_FILTER_CATEGORIES.map(cat => {
-    const rowsHtml = cat.items.map(item => {
-      const unitLabel = item.abs ? `(${absUnitLabel()})` : item.unit ? `(${item.unit})` : '';
-      const cur = scrActiveFilters[item.key] || {};
-      return `
-        <div class="ffrow">
-          <span class="fflabel">${escapeHtml(item.label)} <span class="ffunit">${unitLabel}</span></span>
-          <span class="ffrange">
-            <input type="number" placeholder="Min" data-fkey="${item.key}" data-bound="min" value="${cur.min ?? ''}">
-            <span>~</span>
-            <input type="number" placeholder="Max" data-fkey="${item.key}" data-bound="max" value="${cur.max ?? ''}">
-          </span>
-        </div>`;
-    }).join('');
+  const tabsHtml = cats.map(cat => {
+    const n = countActiveInCat(cat);
     return `
-      <div class="ffcat" data-cat="${cat.key}">
-        <div class="ffcat-head" onclick="toggleFinFilterCat(this)">
-          <span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>
-          <span class="name">${cat.icon} ${cat.title}</span>
-        </div>
-        <div class="ffcat-body"><div class="ffcat-body-inner">${rowsHtml}</div></div>
-      </div>`;
+      <button type="button" class="ffcat-tab ${cat.key === scrFilterActiveCat ? 'active' : ''}" onclick="setFinFilterCat('${cat.key}')">
+        <span>${cat.icon} ${cat.title}</span>${n ? `<span class="ffcat-tab-count">${n}</span>` : ''}
+      </button>`;
   }).join('');
 
-  const ratingHtml = !scrIsUS ? '' : `
-    <div class="ffcat" data-cat="consensus">
-      <div class="ffcat-head" onclick="toggleFinFilterCat(this)">
-        <span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>
-        <span class="name">🎯 Consensus</span>
-      </div>
-      <div class="ffcat-body"><div class="ffcat-body-inner">
-        <div class="ffrow">
-          <span class="fflabel">Rating</span>
-          <span class="ffchips">
-            ${['Buy', 'Hold', 'Sell'].map(label => `
-              <span class="ffchip ${scrActiveRatings.has(label) ? 'selected' : ''}" onclick="toggleFinFilterRating('${label}')">${label}</span>
-            `).join('')}
+  const detailHtml = activeCat.key === 'consensus' ? `
+    <div class="ffrow-detail">
+      <div class="ffrow-head"><span class="fflabel">Analyst Rating</span></div>
+      <span class="ffchips">
+        ${['Buy', 'Hold', 'Sell'].map(label => `
+          <span class="ffchip ${scrActiveRatings.has(label) ? 'selected' : ''}" onclick="toggleFinFilterRating('${label}')">${label}</span>
+        `).join('')}
+      </span>
+    </div>` : activeCat.items.map(item => {
+    const unitLabel = item.abs ? `(${absUnitLabel()})` : item.unit ? `(${item.unit})` : '';
+    const cur = scrActiveFilters[item.key] || {};
+    const tiersHtml = item.tiers ? `
+      <div class="fftiers">
+        ${item.tiers.map(t => `
+          <button type="button" class="fftier ${isTierActive(item.key, t) ? 'selected' : ''}" onclick="applyFinTier('${item.key}', ${t.min ?? 'null'}, ${t.max ?? 'null'})">${t.label}</button>
+        `).join('')}
+      </div>` : '';
+    return `
+      <div class="ffrow-detail">
+        <div class="ffrow-head">
+          <span class="fflabel">${escapeHtml(item.label)} <span class="ffunit">${unitLabel}</span></span>
+          <span class="ffrange">
+            <input type="number" placeholder="Min" data-fkey="${item.key}" data-bound="min" value="${cur.min ?? ''}" onchange="onFinInputChange(this)">
+            <span>~</span>
+            <input type="number" placeholder="Max" data-fkey="${item.key}" data-bound="max" value="${cur.max ?? ''}" onchange="onFinInputChange(this)">
           </span>
         </div>
-      </div></div>
-    </div>`;
+        ${tiersHtml}
+      </div>`;
+  }).join('');
 
   panel.innerHTML = `
     <div class="ffpanel-head">
       <span class="ffpanel-title">Financial Filters</span>
       <div class="ffpanel-actions">
         <span class="ffbtn" onclick="resetFinFilters()">Reset</span>
-        <span class="ffbtn primary" onclick="applyFinFilters()">Apply</span>
       </div>
     </div>
     ${!scrIsUS ? '<div class="ffnote">Some metrics (stability, consensus, EV/EBITDA, etc.) aren\'t available for KR stocks.</div>' : ''}
-    <div class="ffcat-list">${catsHtml}${ratingHtml}</div>`;
+    <div class="ffcat-tabs">${tabsHtml}</div>
+    <div class="ffcat-detail">${detailHtml}</div>`;
+}
+
+function setFinFilterCat(key) {
+  scrFilterActiveCat = key;
+  buildFinFilterPanel();
 }
 
 function toggleFinFilterPanel() {
@@ -1815,31 +1861,40 @@ function toggleFinFilterPanel() {
   btn.classList.toggle('active', show);
 }
 
-function toggleFinFilterCat(headEl) {
-  headEl.parentElement.classList.toggle('open');
+// 프리셋(tier) 버튼: 이미 선택된 걸 다시 누르면 그 필터를 끄고(toggle off),
+// 아니면 그 구간을 즉시 적용한다 - 직접 입력과 달리 "적용" 버튼 없이 바로 반영된다.
+function applyFinTier(key, min, max) {
+  const tier = { min: min === null ? null : Number(min), max: max === null ? null : Number(max) };
+  if (isTierActive(key, tier)) {
+    delete scrActiveFilters[key];
+  } else {
+    scrActiveFilters[key] = tier;
+  }
+  buildFinFilterPanel();
+  updateFinFilterCount();
+  renderFilteredScreenerRows();
+}
+
+// 직접 입력(min/max)은 focus를 잃거나 Enter를 눌렀을 때(change 이벤트)만 반영한다 -
+// 매 키 입력마다 패널을 다시 그리면 입력 중 포커스가 날아가 버리기 때문이다.
+function onFinInputChange(inputEl) {
+  const key = inputEl.dataset.fkey;
+  const bound = inputEl.dataset.bound;
+  const raw = inputEl.value.trim();
+  const cur = { ...(scrActiveFilters[key] || {}) };
+  if (!raw || Number.isNaN(Number(raw))) delete cur[bound];
+  else cur[bound] = Number(raw);
+  if (cur.min === undefined && cur.max === undefined) delete scrActiveFilters[key];
+  else scrActiveFilters[key] = cur;
+  buildFinFilterPanel();
+  updateFinFilterCount();
+  renderFilteredScreenerRows();
 }
 
 function toggleFinFilterRating(label) {
   if (scrActiveRatings.has(label)) scrActiveRatings.delete(label);
   else scrActiveRatings.add(label);
-  document.querySelectorAll('.ffchip').forEach(chip => {
-    chip.classList.toggle('selected', scrActiveRatings.has(chip.textContent.trim()));
-  });
-}
-
-function applyFinFilters() {
-  const next = {};
-  document.querySelectorAll('#scr-filter-panel input[data-fkey]').forEach(input => {
-    const key = input.dataset.fkey;
-    const bound = input.dataset.bound;
-    const raw = input.value.trim();
-    if (!raw) return;
-    const v = Number(raw);
-    if (Number.isNaN(v)) return;
-    next[key] = next[key] || {};
-    next[key][bound] = v;
-  });
-  scrActiveFilters = next;
+  buildFinFilterPanel();
   updateFinFilterCount();
   renderFilteredScreenerRows();
 }

@@ -636,17 +636,26 @@ input::placeholder { color: var(--text-muted); }
 }
 .ffbtn.primary { background: var(--blue); color: white; border-color: var(--blue); }
 .ffnote { font-size: 11.5px; color: var(--text-muted); margin-bottom: 10px; }
-.ffcat-list { display: flex; flex-direction: column; gap: 6px; }
-.ffcat { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-secondary); overflow: hidden; }
-.ffcat-head { display: flex; align-items: center; gap: 8px; padding: 10px 13px; cursor: pointer; user-select: none; }
-.ffcat-head .name { font-size: 13px; font-weight: 700; }
-.ffcat-head .chev { font-size: 11px; color: var(--text-muted); transition: transform .15s ease; }
-.ffcat.open .chev { transform: rotate(90deg); }
-.ffcat-body { max-height: 0; overflow: hidden; transition: max-height .2s ease; }
-.ffcat.open .ffcat-body { max-height: 600px; }
-.ffcat-body-inner { padding: 2px 13px 12px; display: flex; flex-direction: column; gap: 2px; }
-.ffrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-.ffrow:last-child { border-bottom: none; }
+
+/* 카테고리 탭 바 — 최상단에 두고 클릭한 카테고리 하나만 아래에 펼친다 */
+.ffcat-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.ffcat-tab {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600;
+  padding: 7px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--bg-secondary); color: var(--text-secondary); cursor: pointer;
+}
+.ffcat-tab:hover { border-color: var(--border-strong); color: var(--text); }
+.ffcat-tab.active { background: var(--blue); border-color: var(--blue); color: white; }
+.ffcat-tab-count {
+  background: rgba(0,0,0,0.18); color: inherit; font-size: 10.5px; font-weight: 700;
+  border-radius: 999px; padding: 1px 6px; min-width: 16px; text-align: center; line-height: 1.4;
+}
+.ffcat-tab.active .ffcat-tab-count { background: rgba(255,255,255,0.25); }
+
+.ffcat-detail { display: flex; flex-direction: column; gap: 4px; }
+.ffrow-detail { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.ffrow-detail:last-child { border-bottom: none; }
+.ffrow-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .fflabel { font-size: 12.5px; color: var(--text-secondary); }
 .ffunit { color: var(--text-muted); font-size: 11px; }
 .ffrange { display: flex; align-items: center; gap: 5px; }
@@ -655,12 +664,22 @@ input::placeholder { color: var(--text-muted); }
   background: var(--bg); color: var(--text); font-size: 12.5px; font-variant-numeric: tabular-nums;
 }
 .ffrange span { font-size: 11px; color: var(--text-muted); }
-.ffchips { display: flex; gap: 6px; }
+.ffchips { display: flex; gap: 6px; flex-wrap: wrap; }
 .ffchip {
   font-size: 11.5px; font-weight: 600; padding: 3px 11px; border-radius: 999px; border: 1px solid var(--border);
   background: var(--bg); color: var(--text-secondary); cursor: pointer;
 }
 .ffchip.selected { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
+
+/* 지표별 "이상적인 값" 4단계 프리셋 버튼 */
+.fftiers { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.fftier {
+  flex: 1 1 0; min-width: 72px; font-size: 11.5px; font-weight: 600; padding: 6px 8px;
+  border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-secondary);
+  color: var(--text-secondary); cursor: pointer; text-align: center;
+}
+.fftier:hover { border-color: var(--border-strong); color: var(--text); }
+.fftier.selected { background: var(--blue); border-color: var(--blue); color: white; }
 .scr-detail-cond-row.fail { color: var(--text-muted); }
 .scr-detail-cond-row i.pass { color: var(--green); }
 .scr-detail-cond-row i.fail { color: var(--text-muted); }
