@@ -1825,7 +1825,7 @@ threading.Thread(target=us_fundamentals_refresher, daemon=True).start()
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("  미국 주식 목표가 트래커")
+    print("  JH-Trader")
     print("  http://localhost:3000 으로 접속하세요")
     print("=" * 50)
     app.run(debug=False, port=3000)
