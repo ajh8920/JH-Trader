@@ -24,12 +24,12 @@
     <div class="api-banner" id="api-key-banner">
       <div class="api-banner-inner">
         <div>
-          <strong>Finnhub API 키 필요</strong>
-          <p><a href="https://finnhub.io/register" target="_blank" rel="noopener">finnhub.io</a>에서 무료 가입 후 API 키를 입력하세요 (무료, 분당 60회)</p>
+          <strong>Finnhub API Key Required</strong>
+          <p>Sign up free at <a href="https://finnhub.io/register" target="_blank" rel="noopener">finnhub.io</a> and enter your API key (free, 60 req/min)</p>
         </div>
         <div class="api-key-row">
-          <input type="text" id="api-key-input" placeholder="API 키 붙여넣기" style="width:280px;" />
-          <button class="btn-primary" onclick="saveApiKey()">저장 및 확인</button>
+          <input type="text" id="api-key-input" placeholder="Paste API key" style="width:280px;" />
+          <button class="btn-primary" onclick="saveApiKey()">Save &amp; Verify</button>
         </div>
         <div id="key-error" class="key-error" style="display:none;"></div>
       </div>
@@ -46,17 +46,17 @@
           {{ current_user.username }}{% if current_user.is_admin %} <span class="pill pill-rec">admin</span>{% endif %}
         </span>
         {% if current_user.is_admin %}
-        <a href="/admin" class="settings-btn" title="사용자 관리" aria-label="사용자 관리">
+        <a href="/admin" class="settings-btn" title="Manage Users" aria-label="Manage Users">
           <i class="ti ti-users" aria-hidden="true"></i>
         </a>
         {% endif %}
-        <button class="settings-btn" id="theme-toggle-btn" onclick="cycleTheme()" title="테마 변경" aria-label="테마 변경">
+        <button class="settings-btn" id="theme-toggle-btn" onclick="cycleTheme()" title="Change theme" aria-label="Change theme">
           <i class="ti ti-sun" id="theme-icon" aria-hidden="true"></i>
         </button>
-        <button class="settings-btn" onclick="showKeyBanner()" title="API 키 변경" aria-label="API 키 변경">
+        <button class="settings-btn" onclick="showKeyBanner()" title="API Key" aria-label="API Key">
           <i class="ti ti-settings" aria-hidden="true"></i>
         </button>
-        <a href="/logout" class="settings-btn" title="로그아웃" aria-label="로그아웃">
+        <a href="/logout" class="settings-btn" title="Log out" aria-label="Log out">
           <i class="ti ti-logout" aria-hidden="true"></i>
         </a>
       </div>
@@ -68,20 +68,20 @@
     </div>
 
     <nav class="tabs" role="tablist">
-      <button class="tab active" data-tab="macro" onclick="switchTab('macro')" role="tab"><i class="ti ti-world" aria-hidden="true"></i> 매크로</button>
+      <button class="tab active" data-tab="macro" onclick="switchTab('macro')" role="tab"><i class="ti ti-world" aria-hidden="true"></i> Macro</button>
       <!-- 종목 검색/포트폴리오/알림 탭은 기능은 그대로 두고 화면에서만 숨김 처리했습니다.
            나중에 다시 노출하려면 아래 3개 버튼의 style="display:none;"만 지우면 됩니다. -->
-      <button class="tab" data-tab="search" onclick="switchTab('search')" role="tab" style="display:none;"><i class="ti ti-search" aria-hidden="true"></i> 종목 검색</button>
-      <button class="tab" data-tab="portfolio" onclick="switchTab('portfolio')" role="tab" style="display:none;"><i class="ti ti-briefcase" aria-hidden="true"></i> 포트폴리오</button>
-      <button class="tab" data-tab="alerts" onclick="switchTab('alerts')" role="tab" style="display:none;"><i class="ti ti-bell" aria-hidden="true"></i> 알림 <span id="alert-badge" class="badge" style="display:none;">0</span></button>
+      <button class="tab" data-tab="search" onclick="switchTab('search')" role="tab" style="display:none;"><i class="ti ti-search" aria-hidden="true"></i> Search</button>
+      <button class="tab" data-tab="portfolio" onclick="switchTab('portfolio')" role="tab" style="display:none;"><i class="ti ti-briefcase" aria-hidden="true"></i> Portfolio</button>
+      <button class="tab" data-tab="alerts" onclick="switchTab('alerts')" role="tab" style="display:none;"><i class="ti ti-bell" aria-hidden="true"></i> Alerts <span id="alert-badge" class="badge" style="display:none;">0</span></button>
       {% if show_all_tabs %}
-      <button class="tab" data-tab="backtest" onclick="switchTab('backtest')" role="tab"><i class="ti ti-history" aria-hidden="true"></i> 백테스트</button>
-      <button class="tab" data-tab="live" onclick="switchTab('live')" role="tab"><i class="ti ti-infinity" aria-hidden="true"></i> 실전 현황</button>
-      <button class="tab" data-tab="lab" onclick="switchTab('lab')" role="tab"><i class="ti ti-flask" aria-hidden="true"></i> 실험실</button>
-      <button class="tab" data-tab="krswing" onclick="switchTab('krswing')" role="tab"><i class="ti ti-chart-candle" aria-hidden="true"></i> 국내 스윙</button>
-      <button class="tab" data-tab="krquant" onclick="switchTab('krquant')" role="tab"><i class="ti ti-filter" aria-hidden="true"></i> 국내 퀀트</button>
+      <button class="tab" data-tab="backtest" onclick="switchTab('backtest')" role="tab"><i class="ti ti-history" aria-hidden="true"></i> Backtest</button>
+      <button class="tab" data-tab="live" onclick="switchTab('live')" role="tab"><i class="ti ti-infinity" aria-hidden="true"></i> Live</button>
+      <button class="tab" data-tab="lab" onclick="switchTab('lab')" role="tab"><i class="ti ti-flask" aria-hidden="true"></i> Lab</button>
+      <button class="tab" data-tab="krswing" onclick="switchTab('krswing')" role="tab"><i class="ti ti-chart-candle" aria-hidden="true"></i> KR Swing</button>
+      <button class="tab" data-tab="krquant" onclick="switchTab('krquant')" role="tab"><i class="ti ti-filter" aria-hidden="true"></i> KR Quant</button>
       {% endif %}
-      <button class="tab" data-tab="screener" onclick="switchTab('screener')" role="tab"><i class="ti ti-trending-up" aria-hidden="true"></i> 스크리닝</button>
+      <button class="tab" data-tab="screener" onclick="switchTab('screener')" role="tab"><i class="ti ti-trending-up" aria-hidden="true"></i> Screener</button>
     </nav>
 
     <main>
@@ -93,11 +93,11 @@
       <!-- 종목 검색 -->
       <section id="sec-search" class="section">
         <div class="search-row">
-          <input type="text" id="ticker-input" placeholder="티커 입력 (예: AAPL, TSLA, NVDA)" onkeydown="if(event.key==='Enter') searchStock()" />
-          <button class="btn-primary" onclick="searchStock()"><i class="ti ti-search" aria-hidden="true"></i> 조회</button>
+          <input type="text" id="ticker-input" placeholder="Enter ticker (e.g. AAPL, TSLA, NVDA)" onkeydown="if(event.key==='Enter') searchStock()" />
+          <button class="btn-primary" onclick="searchStock()"><i class="ti ti-search" aria-hidden="true"></i> Search</button>
         </div>
         <div class="quick-btns">
-          <span class="quick-label">빠른 조회:</span>
+          <span class="quick-label">Quick picks:</span>
           <button onclick="quickSearch('AAPL')">AAPL</button>
           <button onclick="quickSearch('MSFT')">MSFT</button>
           <button onclick="quickSearch('NVDA')">NVDA</button>
@@ -113,11 +113,11 @@
       <!-- 포트폴리오 -->
       <section id="sec-portfolio" class="section">
         <div class="add-form">
-          <input type="text" id="pf-ticker" placeholder="티커 (AAPL)" style="width:110px;" onkeydown="if(event.key==='Enter') addPortfolioItem()" />
-          <input type="number" id="pf-qty" placeholder="수량" style="width:90px;" min="0" step="1" />
-          <input type="number" id="pf-price" placeholder="매입가 ($)" style="width:120px;" step="0.01" />
-          <button class="btn-primary" onclick="addPortfolioItem()"><i class="ti ti-plus" aria-hidden="true"></i> 추가</button>
-          <button class="btn-secondary" onclick="refreshPortfolio()"><i class="ti ti-refresh" aria-hidden="true"></i> 새로고침</button>
+          <input type="text" id="pf-ticker" placeholder="Ticker (AAPL)" style="width:110px;" onkeydown="if(event.key==='Enter') addPortfolioItem()" />
+          <input type="number" id="pf-qty" placeholder="Qty" style="width:90px;" min="0" step="1" />
+          <input type="number" id="pf-price" placeholder="Cost basis ($)" style="width:120px;" step="0.01" />
+          <button class="btn-primary" onclick="addPortfolioItem()"><i class="ti ti-plus" aria-hidden="true"></i> Add</button>
+          <button class="btn-secondary" onclick="refreshPortfolio()"><i class="ti ti-refresh" aria-hidden="true"></i> Refresh</button>
         </div>
         <div id="portfolio-content"></div>
       </section>
@@ -125,13 +125,13 @@
       <!-- 알림 -->
       <section id="sec-alerts" class="section">
         <div class="add-form">
-          <input type="text" id="al-ticker" placeholder="티커" style="width:100px;" />
-          <input type="number" id="al-price" placeholder="가격 기준 ($)" style="width:140px;" step="0.01" />
+          <input type="text" id="al-ticker" placeholder="Ticker" style="width:100px;" />
+          <input type="number" id="al-price" placeholder="Price threshold ($)" style="width:140px;" step="0.01" />
           <select id="al-type">
-            <option value="above">이상 도달 시</option>
-            <option value="below">이하 하락 시</option>
+            <option value="above">Rises above</option>
+            <option value="below">Falls below</option>
           </select>
-          <button class="btn-primary" onclick="addAlert()"><i class="ti ti-bell" aria-hidden="true"></i> 알림 추가</button>
+          <button class="btn-primary" onclick="addAlert()"><i class="ti ti-bell" aria-hidden="true"></i> Add alert</button>
         </div>
         <div id="alerts-content"></div>
         <div class="info-box">
@@ -146,40 +146,40 @@
         <div class="card">
           <div class="bt-form-grid">
             <div class="bt-field">
-              <label for="bt-version">버전</label>
+              <label for="bt-version">Version</label>
               <select id="bt-version" onchange="applyBacktestVersionDefaults()">
-                <option value="v2">v2.2 (40분할)</option>
-                <option value="v3">v3.0 (20분할·중간복리)</option>
-                <option value="v4">v4.0 (20/30/40분할 선택·중간복리)</option>
+                <option value="v2">v2.2 (40 splits)</option>
+                <option value="v3">v3.0 (20 splits, mid-compound)</option>
+                <option value="v4">v4.0 (20/30/40 splits, mid-compound)</option>
               </select>
             </div>
             <div class="bt-field">
-              <label for="bt-ticker">티커</label>
+              <label for="bt-ticker">Ticker</label>
               <input type="text" id="bt-ticker" placeholder="SOXL" value="SOXL" onchange="applyTickerTargetDefault()" />
             </div>
             <div class="bt-field">
-              <label for="bt-start">시작일</label>
+              <label for="bt-start">Start date</label>
               <input type="date" id="bt-start" />
             </div>
             <div class="bt-field">
-              <label for="bt-end">종료일</label>
+              <label for="bt-end">End date</label>
               <input type="date" id="bt-end" />
             </div>
             <div class="bt-field">
-              <label for="bt-seed">시드 ($)</label>
+              <label for="bt-seed">Capital ($)</label>
               <input type="number" id="bt-seed" placeholder="10000" step="0.01" value="10000" />
             </div>
             <div class="bt-field">
-              <label for="bt-splits">분할수</label>
+              <label for="bt-splits">Splits</label>
               <input type="number" id="bt-splits" min="2" max="100" value="40" />
             </div>
             <div class="bt-field">
-              <label for="bt-target">목표수익률 (%)</label>
+              <label for="bt-target">Target return (%)</label>
               <input type="number" id="bt-target" step="0.1" value="12" />
             </div>
           </div>
           <button class="btn-primary" style="margin-top:12px;" onclick="runBacktest()">
-            <i class="ti ti-player-play" aria-hidden="true"></i> 백테스트 실행
+            <i class="ti ti-player-play" aria-hidden="true"></i> Run backtest
           </button>
           <div class="info-box" style="margin-top:12px;">
             <i class="ti ti-info-circle" aria-hidden="true"></i>
@@ -194,32 +194,32 @@
         <div class="card">
           <div class="bt-form-grid">
             <div class="bt-field">
-              <label for="live-ticker">티커</label>
+              <label for="live-ticker">Ticker</label>
               <input type="text" id="live-ticker" placeholder="SOXL" onchange="applyLiveTickerTargetDefault()" />
             </div>
             <div class="bt-field">
-              <label for="live-version">버전</label>
+              <label for="live-version">Version</label>
               <select id="live-version">
-                <option value="v2">v2.2 (40분할)</option>
-                <option value="v3">v3.0 (20분할)</option>
-                <option value="v4">v4.0 (20/30/40분할)</option>
+                <option value="v2">v2.2 (40 splits)</option>
+                <option value="v3">v3.0 (20 splits)</option>
+                <option value="v4">v4.0 (20/30/40 splits)</option>
               </select>
             </div>
             <div class="bt-field">
-              <label for="live-splits">분할수</label>
+              <label for="live-splits">Splits</label>
               <input type="number" id="live-splits" min="2" max="100" value="40" />
             </div>
             <div class="bt-field">
-              <label for="live-target">목표수익률 (%)</label>
+              <label for="live-target">Target return (%)</label>
               <input type="number" id="live-target" step="0.1" value="10" />
             </div>
             <div class="bt-field">
-              <label for="live-seed">시드 ($)</label>
+              <label for="live-seed">Capital ($)</label>
               <input type="number" id="live-seed" placeholder="10000" step="0.01" value="10000" />
             </div>
           </div>
           <button class="btn-primary" style="margin-top:12px;" onclick="addInfinitePosition()">
-            <i class="ti ti-plus" aria-hidden="true"></i> 새 포지션 시작
+            <i class="ti ti-plus" aria-hidden="true"></i> Start new position
           </button>
         </div>
         <div id="live-positions"></div>
@@ -229,23 +229,23 @@
       <section id="sec-lab" class="section">
         <div class="card">
           <div class="add-form">
-            <input type="text" id="lab-ticker-input" placeholder="티커/지수 입력 (예: ^IXIC, SOXL, ^TNX)" style="width:220px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addLabTicker();}" />
-            <button class="btn-secondary" onclick="addLabTicker()"><i class="ti ti-plus" aria-hidden="true"></i> 추가</button>
+            <input type="text" id="lab-ticker-input" placeholder="Enter ticker/index (e.g. ^IXIC, SOXL, ^TNX)" style="width:220px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addLabTicker();}" />
+            <button class="btn-secondary" onclick="addLabTicker()"><i class="ti ti-plus" aria-hidden="true"></i> Add</button>
           </div>
           <div id="lab-ticker-chips" class="lab-chips"></div>
 
           <div class="bt-form-grid live-info-grid" style="margin-top:12px;">
             <div class="bt-field">
-              <label for="lab-start">시작일</label>
+              <label for="lab-start">Start date</label>
               <input type="date" id="lab-start" />
             </div>
             <div class="bt-field">
-              <label for="lab-end">종료일</label>
+              <label for="lab-end">End date</label>
               <input type="date" id="lab-end" />
             </div>
           </div>
           <button class="btn-primary" style="margin-top:12px;" onclick="runLabCompare()">
-            <i class="ti ti-chart-line" aria-hidden="true"></i> 비교하기
+            <i class="ti ti-chart-line" aria-hidden="true"></i> Compare
           </button>
           <div class="info-box" style="margin-top:12px;">
             <i class="ti ti-info-circle" aria-hidden="true"></i>
@@ -260,16 +260,16 @@
         <div class="card">
           <div class="bt-form-grid">
             <div class="bt-field">
-              <label for="ks-strategy">전략</label>
+              <label for="ks-strategy">Strategy</label>
               <select id="ks-strategy" onchange="onKrSwingStrategyChange()">
-                <option value="volatility_breakout">변동성 돌파</option>
-                <option value="box_breakout">박스권 돌파</option>
-                <option value="ma_pullback">이동평균 눌림목</option>
-                <option value="combo">복합전략(추세+눌림목+모멘텀)</option>
+                <option value="volatility_breakout">Volatility Breakout</option>
+                <option value="box_breakout">Range Breakout</option>
+                <option value="ma_pullback">MA Pullback</option>
+                <option value="combo">Combo (Trend + Pullback + Momentum)</option>
               </select>
             </div>
             <div class="bt-field ks-autocomplete">
-              <label for="ks-code-input">종목명</label>
+              <label for="ks-code-input">Stock name</label>
               <input type="text" id="ks-code-input" placeholder="삼성전자" value="삼성전자" autocomplete="off"
                      oninput="onKrSwingCodeInput(this.value)"
                      onfocus="onKrSwingCodeInput(this.value)"
@@ -279,97 +279,97 @@
               <div id="ks-autocomplete-list" class="ks-autocomplete-list" style="display:none;"></div>
             </div>
             <div class="bt-field">
-              <label for="ks-start">시작일</label>
+              <label for="ks-start">Start date</label>
               <input type="date" id="ks-start" />
             </div>
             <div class="bt-field">
-              <label for="ks-end">종료일</label>
+              <label for="ks-end">End date</label>
               <input type="date" id="ks-end" />
             </div>
             <div class="bt-field">
-              <label for="ks-seed">시드 (원)</label>
+              <label for="ks-seed">Capital (₩)</label>
               <input type="number" id="ks-seed" placeholder="10000000" step="10000" value="10000000" />
             </div>
           </div>
 
           <div id="ks-params-volatility_breakout" class="bt-form-grid ks-params" style="margin-top:8px;">
             <div class="bt-field">
-              <label for="ks-vb-k">변동성계수 K</label>
+              <label for="ks-vb-k">Volatility factor K</label>
               <input type="number" id="ks-vb-k" step="0.05" value="0.5" />
             </div>
             <div class="bt-field">
-              <label for="ks-vb-hold">보유일수</label>
+              <label for="ks-vb-hold">Holding days</label>
               <input type="number" id="ks-vb-hold" step="1" min="1" value="1" />
             </div>
             <div class="bt-field">
-              <label for="ks-vb-stop">손절율 (%)</label>
+              <label for="ks-vb-stop">Stop-loss (%)</label>
               <input type="number" id="ks-vb-stop" step="0.5" value="-5" />
             </div>
           </div>
 
           <div id="ks-params-box_breakout" class="bt-form-grid ks-params" style="margin-top:8px;display:none;">
             <div class="bt-field">
-              <label for="ks-bb-entry">돌파 기간(일)</label>
+              <label for="ks-bb-entry">Breakout period (days)</label>
               <input type="number" id="ks-bb-entry" step="1" min="2" value="20" />
             </div>
             <div class="bt-field">
-              <label for="ks-bb-exit">청산 기간(일)</label>
+              <label for="ks-bb-exit">Exit period (days)</label>
               <input type="number" id="ks-bb-exit" step="1" min="2" value="10" />
             </div>
             <div class="bt-field">
-              <label for="ks-bb-stop">손절율 (%)</label>
+              <label for="ks-bb-stop">Stop-loss (%)</label>
               <input type="number" id="ks-bb-stop" step="0.5" value="-7" />
             </div>
           </div>
 
           <div id="ks-params-ma_pullback" class="bt-form-grid ks-params" style="margin-top:8px;display:none;">
             <div class="bt-field">
-              <label for="ks-ma-long">장기 이평선(일)</label>
+              <label for="ks-ma-long">Long MA (days)</label>
               <input type="number" id="ks-ma-long" step="1" min="2" value="20" />
             </div>
             <div class="bt-field">
-              <label for="ks-ma-short">단기 이평선(일)</label>
+              <label for="ks-ma-short">Short MA (days)</label>
               <input type="number" id="ks-ma-short" step="1" min="2" value="5" />
             </div>
             <div class="bt-field">
-              <label for="ks-ma-stop">손절율 (%)</label>
+              <label for="ks-ma-stop">Stop-loss (%)</label>
               <input type="number" id="ks-ma-stop" step="0.5" value="-5" />
             </div>
             <div class="bt-field">
-              <label for="ks-ma-target">목표수익률 (%)</label>
+              <label for="ks-ma-target">Target return (%)</label>
               <input type="number" id="ks-ma-target" step="0.5" value="10" />
             </div>
           </div>
 
           <div id="ks-params-combo" class="bt-form-grid ks-params" style="margin-top:8px;display:none;">
             <div class="bt-field">
-              <label for="ks-combo-trend">추세 이평선(일)</label>
+              <label for="ks-combo-trend">Trend MA (days)</label>
               <input type="number" id="ks-combo-trend" step="1" min="5" value="60" />
             </div>
             <div class="bt-field">
-              <label for="ks-combo-pullback">눌림목 이평선(일)</label>
+              <label for="ks-combo-pullback">Pullback MA (days)</label>
               <input type="number" id="ks-combo-pullback" step="1" min="2" value="20" />
             </div>
             <div class="bt-field">
-              <label for="ks-combo-k">모멘텀계수 K</label>
+              <label for="ks-combo-k">Momentum factor K</label>
               <input type="number" id="ks-combo-k" step="0.05" value="0.3" />
             </div>
             <div class="bt-field">
-              <label for="ks-combo-stop">손절율 (%)</label>
+              <label for="ks-combo-stop">Stop-loss (%)</label>
               <input type="number" id="ks-combo-stop" step="0.5" value="-4" />
             </div>
             <div class="bt-field">
-              <label for="ks-combo-trailing">추세이탈 기준(일)</label>
+              <label for="ks-combo-trailing">Trend-break window (days)</label>
               <input type="number" id="ks-combo-trailing" step="1" min="2" value="10" />
             </div>
             <div class="bt-field">
-              <label for="ks-combo-target">목표수익률 (%)</label>
+              <label for="ks-combo-target">Target return (%)</label>
               <input type="number" id="ks-combo-target" step="0.5" value="15" />
             </div>
           </div>
 
           <button class="btn-primary" style="margin-top:12px;" onclick="runKrSwingBacktest()">
-            <i class="ti ti-player-play" aria-hidden="true"></i> 백테스트 실행
+            <i class="ti ti-player-play" aria-hidden="true"></i> Run backtest
           </button>
           <div class="info-box" style="margin-top:12px;">
             <i class="ti ti-info-circle" aria-hidden="true"></i>
@@ -388,21 +388,21 @@
       <!-- 국내 퀀트(재무지표 팩터) 스크리닝/백테스트 -->
       <section id="sec-krquant" class="section">
         <div id="krquant-status" class="info-box" style="margin-bottom:1rem;">
-          <i class="ti ti-loader-2" aria-hidden="true"></i> 재무데이터 준비 상태 확인 중...
+          <i class="ti ti-loader-2" aria-hidden="true"></i> Checking fundamentals data...
         </div>
 
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-            <div style="font-size:13px;font-weight:600;">현재 시점 스크리닝 (저PER + 고ROE)</div>
-            <button class="btn-secondary" onclick="runKrQuantScreen()"><i class="ti ti-refresh" aria-hidden="true"></i> 새로고침</button>
+            <div style="font-size:13px;font-weight:600;">Current Screen (Low P/E + High ROE)</div>
+            <button class="btn-secondary" onclick="runKrQuantScreen()"><i class="ti ti-refresh" aria-hidden="true"></i> Refresh</button>
           </div>
           <div class="bt-form-grid" style="margin-bottom:10px;">
             <div class="bt-field">
-              <label for="kq-screen-topn">종목 수</label>
+              <label for="kq-screen-topn">Stock count</label>
               <input type="number" id="kq-screen-topn" min="1" max="100" value="20" />
             </div>
             <div class="bt-field">
-              <label for="kq-screen-mcap">최소 시가총액 (억원)</label>
+              <label for="kq-screen-mcap">Min market cap (₩100M)</label>
               <input type="number" id="kq-screen-mcap" min="0" step="10" value="500" />
             </div>
           </div>
@@ -410,31 +410,31 @@
         </div>
 
         <div class="card">
-          <div style="font-size:13px;font-weight:600;margin-bottom:10px;">연간 리밸런싱 백테스트</div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Annual Rebalance Backtest</div>
           <div class="bt-form-grid">
             <div class="bt-field">
-              <label for="kq-bt-start">시작연도</label>
+              <label for="kq-bt-start">Start year</label>
               <input type="number" id="kq-bt-start" min="2016" value="2023" />
             </div>
             <div class="bt-field">
-              <label for="kq-bt-end">종료연도</label>
+              <label for="kq-bt-end">End year</label>
               <input type="number" id="kq-bt-end" value="2026" />
             </div>
             <div class="bt-field">
-              <label for="kq-bt-seed">시드 (원)</label>
+              <label for="kq-bt-seed">Capital (₩)</label>
               <input type="number" id="kq-bt-seed" step="1000000" value="30000000" />
             </div>
             <div class="bt-field">
-              <label for="kq-bt-topn">보유 종목 수</label>
+              <label for="kq-bt-topn">Holdings</label>
               <input type="number" id="kq-bt-topn" min="1" max="100" value="20" />
             </div>
             <div class="bt-field">
-              <label for="kq-bt-mcap">최소 시가총액 (억원)</label>
+              <label for="kq-bt-mcap">Min market cap (₩100M)</label>
               <input type="number" id="kq-bt-mcap" min="0" step="10" value="500" />
             </div>
           </div>
           <button class="btn-primary" style="margin-top:12px;" onclick="runKrQuantBacktest()">
-            <i class="ti ti-player-play" aria-hidden="true"></i> 백테스트 실행
+            <i class="ti ti-player-play" aria-hidden="true"></i> Run backtest
           </button>
           <div class="info-box" style="margin-top:12px;">
             <i class="ti ti-info-circle" aria-hidden="true"></i>
@@ -452,34 +452,34 @@
         <div class="scr-toolbar">
           <div class="scr-market-select">
             <select id="scr-market" onchange="loadScreenerResults()">
-              <option value="KR">🇰🇷 국내 · 코스피/코스닥</option>
-              <option value="US">🇺🇸 미국 · S&amp;P500+나스닥</option>
+              <option value="KR">🇰🇷 Korea · KOSPI/KOSDAQ</option>
+              <option value="US">🇺🇸 US · S&amp;P 500 + Nasdaq</option>
             </select>
             <i class="ti ti-chevron-down scr-select-arrow" aria-hidden="true"></i>
           </div>
           <label class="scr-switch">
             <input type="checkbox" id="scr-only-pass" checked onchange="loadScreenerResults()" />
             <span class="scr-switch-track"><span class="scr-switch-thumb"></span></span>
-            <span>8개 조건 모두 통과만</span>
+            <span>Pass all 8 conditions</span>
           </label>
           <div id="screener-status" class="scr-status-bar"></div>
-          <button class="btn-secondary" onclick="loadScreenerResults()" style="margin-left:auto;flex:0 0 auto;"><i class="ti ti-refresh" aria-hidden="true"></i> 새로고침</button>
+          <button class="btn-secondary" onclick="loadScreenerResults()" style="margin-left:auto;flex:0 0 auto;"><i class="ti ti-refresh" aria-hidden="true"></i> Refresh</button>
         </div>
 
         <div class="scr-search-row">
           <div class="scr-search-box">
             <i class="ti ti-search" aria-hidden="true"></i>
-            <input type="text" id="scr-search" placeholder="종목명 또는 코드로 검색" oninput="renderFilteredScreenerRows()" />
+            <input type="text" id="scr-search" placeholder="Search by name or code" oninput="renderFilteredScreenerRows()" />
           </div>
           <div class="scr-pills" id="scr-pills">
-            <button type="button" class="scr-pill active" data-preset="all" onclick="setScreenerPreset('all')"><i class="ti ti-list" aria-hidden="true"></i> 전체</button>
-            <button type="button" class="scr-pill" data-preset="rsStrong" onclick="setScreenerPreset('rsStrong')"><i class="ti ti-bolt" aria-hidden="true"></i> RS 90+ 강세주</button>
-            <button type="button" class="scr-pill" data-preset="nearHigh" onclick="setScreenerPreset('nearHigh')"><i class="ti ti-arrow-up-right" aria-hidden="true"></i> 신고가 근접(10%내)</button>
-            <button type="button" class="scr-pill" data-preset="freshBreakout" onclick="setScreenerPreset('freshBreakout')"><i class="ti ti-plant" aria-hidden="true"></i> 바닥 탈출 초기</button>
-            <button type="button" class="scr-pill" data-preset="watchlist" onclick="setScreenerPreset('watchlist')"><i class="ti ti-star" aria-hidden="true"></i> 관심종목</button>
+            <button type="button" class="scr-pill active" data-preset="all" onclick="setScreenerPreset('all')"><i class="ti ti-list" aria-hidden="true"></i> All</button>
+            <button type="button" class="scr-pill" data-preset="rsStrong" onclick="setScreenerPreset('rsStrong')"><i class="ti ti-bolt" aria-hidden="true"></i> RS 90+ Leaders</button>
+            <button type="button" class="scr-pill" data-preset="nearHigh" onclick="setScreenerPreset('nearHigh')"><i class="ti ti-arrow-up-right" aria-hidden="true"></i> Near High (10%)</button>
+            <button type="button" class="scr-pill" data-preset="freshBreakout" onclick="setScreenerPreset('freshBreakout')"><i class="ti ti-plant" aria-hidden="true"></i> Early Breakout</button>
+            <button type="button" class="scr-pill" data-preset="watchlist" onclick="setScreenerPreset('watchlist')"><i class="ti ti-star" aria-hidden="true"></i> Watchlist</button>
           </div>
           <button type="button" class="scr-filter-btn" id="scr-filter-btn" onclick="toggleFinFilterPanel()">
-            <i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> 필터 <span class="scr-filter-count" id="scr-filter-count" style="display:none;">0</span>
+            <i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> Filters <span class="scr-filter-count" id="scr-filter-count" style="display:none;">0</span>
           </button>
         </div>
 
@@ -502,7 +502,7 @@
   <!-- 스크리닝 종목 상세 모달 -->
   <div id="scr-detail-overlay" class="scr-modal-overlay" style="display:none;" onclick="if(event.target===this) closeScreenerDetail()">
     <div class="scr-modal">
-      <button class="scr-modal-close" onclick="closeScreenerDetail()" aria-label="닫기"><i class="ti ti-x" aria-hidden="true"></i></button>
+      <button class="scr-modal-close" onclick="closeScreenerDetail()" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button>
       <div id="scr-detail-body"></div>
     </div>
   </div>

@@ -425,6 +425,6 @@ def run_quant_backtest(start_year, end_year, seed, top_n=20, min_market_cap=MIN_
         "minMarketCap": min_market_cap, "rebalanceDates": rebalance_dates,
         "finalValue": round(portfolio_value, 2), "totalReturnPct": total_return_pct,
         "mddPct": mdd,
-        "benchmark": {"label": "코스피 매수후보유", "returnPct": bh_return_pct, "equityCurve": benchmark_curve},
+        "benchmark": {"label": "KOSPI Buy & Hold", "returnPct": bh_return_pct, "equityCurve": benchmark_curve},
         "equityCurve": equity_curve, "trades": list(reversed(trades)), "picksLog": list(reversed(picks_log)),
     }

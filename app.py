@@ -321,20 +321,20 @@ def delete_key():
 # 없어도 누구나 볼 수 있다.
 
 MACRO_INSTRUMENTS = [
-    {"ticker": "^GSPC", "name": "S&P 500", "group": "지수", "unit": "pt"},
-    {"ticker": "^NDX", "name": "나스닥 100", "group": "지수", "unit": "pt"},
-    {"ticker": "^DJI", "name": "다우존스", "group": "지수", "unit": "pt"},
-    {"ticker": "^RUT", "name": "러셀 2000", "group": "지수", "unit": "pt"},
-    {"ticker": "^VIX", "name": "변동성지수(VIX)", "group": "변동성", "unit": "pt"},
+    {"ticker": "^GSPC", "name": "S&P 500", "group": "Indices", "unit": "pt"},
+    {"ticker": "^NDX", "name": "Nasdaq 100", "group": "Indices", "unit": "pt"},
+    {"ticker": "^DJI", "name": "Dow Jones", "group": "Indices", "unit": "pt"},
+    {"ticker": "^RUT", "name": "Russell 2000", "group": "Indices", "unit": "pt"},
+    {"ticker": "^VIX", "name": "VIX", "group": "Volatility", "unit": "pt"},
     # 국채 금리: 2년물은 CBOE 지수 티커가 따로 없어 ICE 2년물 금리 선물(2YY=F)로 대체한다
     # (실제 트레이더들도 흔히 쓰는 대체 지표). 5/10/30년물은 CBOE 금리 지수를 그대로 쓴다.
-    {"ticker": "2YY=F", "name": "美 2년물 국채금리", "group": "금리", "unit": "pct"},
-    {"ticker": "^FVX", "name": "美 5년물 국채금리", "group": "금리", "unit": "pct"},
-    {"ticker": "^TNX", "name": "美 10년물 국채금리", "group": "금리", "unit": "pct"},
-    {"ticker": "^TYX", "name": "美 30년물 국채금리", "group": "금리", "unit": "pct"},
-    {"ticker": "DX-Y.NYB", "name": "달러 인덱스", "group": "환율", "unit": "pt"},
-    {"ticker": "GC=F", "name": "금 선물", "group": "원자재", "unit": "usd"},
-    {"ticker": "CL=F", "name": "WTI 원유 선물", "group": "원자재", "unit": "usd"},
+    {"ticker": "2YY=F", "name": "US 2Y Treasury Yield", "group": "Rates", "unit": "pct"},
+    {"ticker": "^FVX", "name": "US 5Y Treasury Yield", "group": "Rates", "unit": "pct"},
+    {"ticker": "^TNX", "name": "US 10Y Treasury Yield", "group": "Rates", "unit": "pct"},
+    {"ticker": "^TYX", "name": "US 30Y Treasury Yield", "group": "Rates", "unit": "pct"},
+    {"ticker": "DX-Y.NYB", "name": "Dollar Index", "group": "FX", "unit": "pt"},
+    {"ticker": "GC=F", "name": "Gold Futures", "group": "Commodities", "unit": "usd"},
+    {"ticker": "CL=F", "name": "WTI Crude Futures", "group": "Commodities", "unit": "usd"},
 ]
 
 
@@ -1710,10 +1710,10 @@ def _analyst_rating_label(rec):
     if total == 0:
         return None
     if buy >= total * 0.6:
-        return "매수"
+        return "Buy"
     if sell >= total * 0.6:
-        return "매도"
-    return "중립"
+        return "Sell"
+    return "Hold"
 
 
 def us_fundamentals_refresher():

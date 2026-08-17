@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>로그인 · JH-Trader</title>
+  <title>Log in · JH-Trader</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
   <link rel="stylesheet" href="/static/style.css?v={{ asset_version('style.css') }}" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css" />
@@ -25,21 +25,21 @@
         {{ brand_mark(20) }}
         <span>JH-Trader</span>
       </div>
-      <h1 class="auth-modal-title">로그인</h1>
-      <p class="auth-modal-sub">계정으로 계속하기</p>
+      <h1 class="auth-modal-title">Log in</h1>
+      <p class="auth-modal-sub">Continue with your account</p>
 
       {% if error %}
       <div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>{{ error }}</div>
       {% endif %}
       <form method="post" class="auth-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-        <input type="text" name="username" placeholder="아이디" required autofocus />
-        <input type="password" name="password" placeholder="비밀번호" required />
+        <input type="text" name="username" placeholder="Username" required autofocus />
+        <input type="password" name="password" placeholder="Password" required />
         <button type="submit" class="btn-primary auth-submit">
-          <i class="ti ti-login" aria-hidden="true"></i> 로그인
+          <i class="ti ti-login" aria-hidden="true"></i> Log in
         </button>
       </form>
-      <p class="auth-modal-switch">계정이 없으신가요? <a href="/register">회원가입</a></p>
+      <p class="auth-modal-switch">Don't have an account? <a href="/register">Sign up</a></p>
     </div>
   </div>
 </body>

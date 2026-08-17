@@ -105,7 +105,7 @@ def _run_volatility_breakout(bars, seed, params):
                         entry_idx = i
                         trades.append({
                             "date": date, "action": "buy", "price": round(fill, 2), "qty": buy_qty,
-                            "note": f"변동성 돌파(K={k}) 매수",
+                            "note": f"Volatility breakout (K={k}) buy",
                         })
         else:
             stop_price = entry_price * (1 + stop_loss_pct / 100)
@@ -114,7 +114,7 @@ def _run_volatility_breakout(bars, seed, params):
                 cash += qty * sell_price
                 trades.append({
                     "date": date, "action": "sell", "price": round(sell_price, 2), "qty": qty,
-                    "note": f"손절매도({stop_loss_pct}%)",
+                    "note": f"Stop-loss sell ({stop_loss_pct}%)",
                     "pnlPct": round((sell_price - entry_price) / entry_price * 100, 2),
                     "holdDays": i - entry_idx,
                 })
@@ -124,7 +124,7 @@ def _run_volatility_breakout(bars, seed, params):
                 cash += qty * o
                 trades.append({
                     "date": date, "action": "sell", "price": round(o, 2), "qty": qty,
-                    "note": f"보유기간({hold_days}일) 도래 시가 매도",
+                    "note": f"Holding period ({hold_days}d) reached, open sell",
                     "pnlPct": round((o - entry_price) / entry_price * 100, 2),
                     "holdDays": i - entry_idx,
                 })
@@ -163,7 +163,7 @@ def _run_box_breakout(bars, seed, params):
                         entry_idx = i
                         trades.append({
                             "date": date, "action": "buy", "price": round(c, 2), "qty": buy_qty,
-                            "note": f"{entry_n}일 신고가 돌파 매수",
+                            "note": f"{entry_n}-day high breakout buy",
                         })
         else:
             stop_price = entry_price * (1 + stop_loss_pct / 100)
@@ -172,7 +172,7 @@ def _run_box_breakout(bars, seed, params):
                 cash += qty * sell_price
                 trades.append({
                     "date": date, "action": "sell", "price": round(sell_price, 2), "qty": qty,
-                    "note": f"손절매도({stop_loss_pct}%)",
+                    "note": f"Stop-loss sell ({stop_loss_pct}%)",
                     "pnlPct": round((sell_price - entry_price) / entry_price * 100, 2),
                     "holdDays": i - entry_idx,
                 })
@@ -184,7 +184,7 @@ def _run_box_breakout(bars, seed, params):
                     cash += qty * c
                     trades.append({
                         "date": date, "action": "sell", "price": round(c, 2), "qty": qty,
-                        "note": f"{exit_n}일 신저가 이탈 매도",
+                        "note": f"{exit_n}-day low breakdown sell",
                         "pnlPct": round((c - entry_price) / entry_price * 100, 2),
                         "holdDays": i - entry_idx,
                     })
@@ -231,7 +231,7 @@ def _run_ma_pullback(bars, seed, params):
                         entry_idx = i
                         trades.append({
                             "date": date, "action": "buy", "price": round(c, 2), "qty": buy_qty,
-                            "note": f"{long_period}일선 상승추세 눌림목({short_period}일선) 반등 매수",
+                            "note": f"MA{long_period} uptrend pullback to MA{short_period}, rebound buy",
                         })
         else:
             stop_price = entry_price * (1 + stop_loss_pct / 100)
@@ -241,7 +241,7 @@ def _run_ma_pullback(bars, seed, params):
                 cash += qty * sell_price
                 trades.append({
                     "date": date, "action": "sell", "price": round(sell_price, 2), "qty": qty,
-                    "note": f"손절매도({stop_loss_pct}%)",
+                    "note": f"Stop-loss sell ({stop_loss_pct}%)",
                     "pnlPct": round((sell_price - entry_price) / entry_price * 100, 2),
                     "holdDays": i - entry_idx,
                 })
@@ -252,7 +252,7 @@ def _run_ma_pullback(bars, seed, params):
                 cash += qty * sell_price
                 trades.append({
                     "date": date, "action": "sell", "price": round(sell_price, 2), "qty": qty,
-                    "note": f"목표수익률({target_pct}%) 도달 매도",
+                    "note": f"Target return ({target_pct}%) reached, sell",
                     "pnlPct": round((sell_price - entry_price) / entry_price * 100, 2),
                     "holdDays": i - entry_idx,
                 })
@@ -262,7 +262,7 @@ def _run_ma_pullback(bars, seed, params):
                 cash += qty * c
                 trades.append({
                     "date": date, "action": "sell", "price": round(c, 2), "qty": qty,
-                    "note": f"{short_period}일선 이탈 매도",
+                    "note": f"MA{short_period} breakdown sell",
                     "pnlPct": round((c - entry_price) / entry_price * 100, 2),
                     "holdDays": i - entry_idx,
                 })
@@ -328,7 +328,7 @@ def _run_combo(bars, seed, params):
                             entry_idx = i
                             trades.append({
                                 "date": date, "action": "buy", "price": round(fill, 2), "qty": buy_qty,
-                                "note": f"추세({trend_period}일선)+눌림목({pullback_period}일선)+모멘텀(K={breakout_k}) 확인 매수",
+                                "note": f"Trend(MA{trend_period})+pullback(MA{pullback_period})+momentum(K={breakout_k}) confirmed buy",
                             })
         else:
             stop_price = entry_price * (1 + stop_loss_pct / 100)
@@ -337,7 +337,7 @@ def _run_combo(bars, seed, params):
                 cash += qty * sell_price
                 trades.append({
                     "date": date, "action": "sell", "price": round(sell_price, 2), "qty": qty,
-                    "note": f"손절매도({stop_loss_pct}%)",
+                    "note": f"Stop-loss sell ({stop_loss_pct}%)",
                     "pnlPct": round((sell_price - entry_price) / entry_price * 100, 2),
                     "holdDays": i - entry_idx,
                 })
@@ -349,7 +349,7 @@ def _run_combo(bars, seed, params):
                     cash += qty * c
                     trades.append({
                         "date": date, "action": "sell", "price": round(c, 2), "qty": qty,
-                        "note": f"{trailing_exit_n}일 신저가 이탈(추세 종료) 매도",
+                        "note": f"{trailing_exit_n}-day low breakdown (trend end) sell",
                         "pnlPct": round((c - entry_price) / entry_price * 100, 2),
                         "holdDays": i - entry_idx,
                     })
@@ -474,7 +474,7 @@ def run_kr_swing_backtest(strategy, code, start, end, seed, params):
         "mddPct": strategy_mdd,
         "alphaPct": alpha_pct,
         "benchmark": {
-            "label": f"{resolved_ticker} 매수후보유",
+            "label": f"{resolved_ticker} Buy & Hold",
             "returnPct": bh_return_pct,
             "mddPct": bh_mdd,
             "equityCurve": bh_curve,

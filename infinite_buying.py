@@ -157,7 +157,7 @@ def build_guide(state):
     if holding_qty == 0:
         return {
             "holding": False, "lossCutMode": False,
-            "orders": [{"action": "buy", "orderType": "MOC", "label": "1일차 매수", "price": None, "qty": None}],
+            "orders": [{"action": "buy", "orderType": "MOC", "label": "Day 1 Buy", "price": None, "qty": None}],
             "note": "보유 중인 수량이 없습니다 — 새 사이클 1일차(원금/분할수 만큼 종가 매수)를 시작하세요",
         }
 
@@ -165,7 +165,7 @@ def build_guide(state):
         qty_moc = math.floor(holding_qty * 0.25)
         return {
             "holding": True, "lossCutMode": True,
-            "orders": [{"action": "sell", "orderType": "MOC", "label": "손절모드 강제매도(1/4)", "price": None, "qty": qty_moc}],
+            "orders": [{"action": "sell", "orderType": "MOC", "label": "Stop-Loss Forced Sell (1/4)", "price": None, "qty": qty_moc}],
             "note": (
                 f"분할을 모두 소진했습니다(T={t_value:.2f}/{splits}) — "
                 f"보유수량의 1/4인 {qty_moc}주를 오늘 종가로 무조건(MOC) 매도하는 것을 검토하세요"
@@ -182,28 +182,28 @@ def build_guide(state):
         buy_price_a = round(avg_price - 0.01, 4)
         buy_price_b = round(avg_price * (1 + star / 100) - 0.01, 4)
         orders.append({
-            "action": "buy", "orderType": "LOC", "label": "매수(평단가)", "pct": 0.0,
+            "action": "buy", "orderType": "LOC", "label": "Buy (Avg Price)", "pct": 0.0,
             "price": buy_price_a, "qty": math.floor(order_amt_half / buy_price_a) if buy_price_a > 0 else 0,
         })
         orders.append({
-            "action": "buy", "orderType": "LOC", "label": "매수(임계값)", "pct": round(star, 2),
+            "action": "buy", "orderType": "LOC", "label": "Buy (Threshold)", "pct": round(star, 2),
             "price": buy_price_b, "qty": math.floor(order_amt_half / buy_price_b) if buy_price_b > 0 else 0,
         })
     else:
         buy_price = round(avg_price * (1 + star / 100) - 0.01, 4)
         orders.append({
-            "action": "buy", "orderType": "LOC", "label": "매수(임계값)", "pct": round(star, 2),
+            "action": "buy", "orderType": "LOC", "label": "Buy (Threshold)", "pct": round(star, 2),
             "price": buy_price, "qty": math.floor(order_amt_full / buy_price) if buy_price > 0 else 0,
         })
 
     qty_quarter = math.floor(holding_qty * 0.25)
     qty_target = holding_qty - qty_quarter
     orders.append({
-        "action": "sell", "orderType": "LOC", "label": "매도(쿼터 1/4)", "pct": round(star, 2),
+        "action": "sell", "orderType": "LOC", "label": "Sell (Quarter 1/4)", "pct": round(star, 2),
         "price": round(avg_price * (1 + star / 100), 4), "qty": qty_quarter,
     })
     orders.append({
-        "action": "sell", "orderType": "지정가", "label": "매도(목표 3/4)", "pct": target,
+        "action": "sell", "orderType": "LIMIT", "label": "Sell (Target 3/4)", "pct": target,
         "price": round(avg_price * (1 + target / 100), 4), "qty": qty_target,
     })
 

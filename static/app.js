@@ -21,7 +21,7 @@ function formatAsOf(iso) {
 // ─── 테마(라이트/다크/시스템) ─────────────────────────────────────────────────
 
 const THEME_ICONS = { system: 'ti-device-desktop', light: 'ti-sun', dark: 'ti-moon' };
-const THEME_LABELS = { system: '시스템 기본', light: '라이트 모드', dark: '다크 모드' };
+const THEME_LABELS = { system: 'System Default', light: 'Light Mode', dark: 'Dark Mode' };
 
 function applyTheme(theme) {
   if (theme === 'light' || theme === 'dark') {
@@ -32,7 +32,7 @@ function applyTheme(theme) {
   const icon = document.getElementById('theme-icon');
   const btn = document.getElementById('theme-toggle-btn');
   if (icon) icon.className = 'ti ' + THEME_ICONS[theme];
-  if (btn) btn.title = `테마: ${THEME_LABELS[theme]} (클릭하여 변경)`;
+  if (btn) btn.title = `Theme: ${THEME_LABELS[theme]} (click to change)`;
 }
 
 function cycleTheme() {
@@ -41,7 +41,7 @@ function cycleTheme() {
   const next = order[(order.indexOf(current) + 1) % order.length];
   localStorage.setItem('theme', next);
   applyTheme(next);
-  showToast(`테마: ${THEME_LABELS[next]}`);
+  showToast(`Theme: ${THEME_LABELS[next]}`);
 }
 
 document.addEventListener('DOMContentLoaded', () => applyTheme(localStorage.getItem('theme') || 'dark'));
@@ -93,13 +93,13 @@ function showKeyBanner() {
   banner.innerHTML = `
     <div class="api-banner-inner">
       <div>
-        <strong>Finnhub API 키 변경</strong>
-        <p><a href="https://finnhub.io/dashboard" target="_blank" rel="noopener">finnhub.io 대시보드</a>에서 API Key를 복사하세요</p>
+        <strong>Finnhub API Key</strong>
+        <p>Copy your API key from the <a href="https://finnhub.io/dashboard" target="_blank" rel="noopener">finnhub.io dashboard</a></p>
       </div>
       <div class="api-key-row">
-        <input type="text" id="api-key-input" placeholder="API 키 붙여넣기" style="width:280px;" />
-        <button class="btn-primary" onclick="saveApiKey()">저장 및 확인</button>
-        <button class="btn-secondary" onclick="document.getElementById('api-key-banner').remove()">취소</button>
+        <input type="text" id="api-key-input" placeholder="Paste API key" style="width:280px;" />
+        <button class="btn-primary" onclick="saveApiKey()">Save &amp; Verify</button>
+        <button class="btn-secondary" onclick="document.getElementById('api-key-banner').remove()">Cancel</button>
       </div>
       <div id="key-error" class="key-error" style="display:none;"></div>
     </div>`;
@@ -113,17 +113,17 @@ async function saveApiKey() {
 
   const btn = document.querySelector('#api-key-banner .btn-primary');
   btn.disabled = true;
-  btn.textContent = '확인 중...';
+  btn.textContent = 'Verifying...';
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
 
   try {
     await api('POST', '/api/settings/key', { key });
     document.getElementById('api-key-banner')?.remove();
-    showToast('API 키가 저장되었습니다');
+    showToast('API key saved');
   } catch (e) {
     if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '저장 및 확인'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Save & Verify'; }
   }
 }
 
@@ -153,7 +153,7 @@ document.addEventListener('DOMContentLoaded', () => loadMacro());
 async function loadMacro() {
   const el = document.getElementById('macro-content');
   if (!el || el.dataset.loaded === '1') return;
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>주요 시황 불러오는 중...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading market overview...</div>`;
 
   const maxAttempts = 3;
   let lastData = null;
@@ -172,7 +172,7 @@ async function loadMacro() {
       if (attempt === maxAttempts) {
         el.innerHTML = `
           <div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>
-          <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> 다시 시도</button>`;
+          <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> Retry</button>`;
         return;
       }
     }
@@ -196,8 +196,8 @@ function renderMacro(data) {
 
   el.innerHTML = `
     <div class="add-form" style="justify-content:flex-end;align-items:center;">
-      ${asOfText ? `<span style="font-size:12px;color:var(--text-muted);margin-right:auto;">기준 ${asOfText}</span>` : ''}
-      <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> 새로고침</button>
+      ${asOfText ? `<span style="font-size:12px;color:var(--text-muted);margin-right:auto;">As of ${asOfText}</span>` : ''}
+      <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> Refresh</button>
     </div>
     ${data.fearGreed ? renderFearGreedCard(data.fearGreed) : ''}
     ${Object.entries(groups).map(([group, list]) => `
@@ -221,7 +221,7 @@ function renderMacro(data) {
                   ${changeText}
                 </div>
                 ${hasSeries ? buildMacroSparklineSvg(m.series, isPos) : ''}
-              ` : `<div class="macro-price" style="color:var(--text-muted);font-size:13px;">데이터 없음</div>`}
+              ` : `<div class="macro-price" style="color:var(--text-muted);font-size:13px;">No data</div>`}
             </div>`;
           }).join('')}
         </div>
@@ -273,11 +273,11 @@ const FEAR_GREED_SEGMENTS = [
 ];
 
 const FEAR_GREED_RATING_KO = {
-  'extreme fear': { label: '극단적 공포', color: '#e5484d' },
-  'fear': { label: '공포', color: '#f0a058' },
-  'neutral': { label: '중립', color: '#dfb945' },
-  'greed': { label: '탐욕', color: '#8fc46a' },
-  'extreme greed': { label: '극단적 탐욕', color: '#38a973' },
+  'extreme fear': { label: 'Extreme Fear', color: '#e5484d' },
+  'fear': { label: 'Fear', color: '#f0a058' },
+  'neutral': { label: 'Neutral', color: '#dfb945' },
+  'greed': { label: 'Greed', color: '#8fc46a' },
+  'extreme greed': { label: 'Extreme Greed', color: '#38a973' },
 };
 
 function fearGreedRatingInfo(rating) {
@@ -330,14 +330,14 @@ function animateFearGreedRing(root) {
 
 function renderFearGreedCard(fg) {
   const history = [
-    { label: '전일 종가', value: fg.previousClose },
-    { label: '1주일 전', value: fg.previousWeek },
-    { label: '1개월 전', value: fg.previousMonth },
-    { label: '1년 전', value: fg.previousYear },
+    { label: 'Previous Close', value: fg.previousClose },
+    { label: '1 Week Ago', value: fg.previousWeek },
+    { label: '1 Month Ago', value: fg.previousMonth },
+    { label: '1 Year Ago', value: fg.previousYear },
   ];
   return `
     <div class="card fear-greed-card">
-      <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">공포 탐욕 지수 (CNN Fear &amp; Greed Index)</div>
+      <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Fear &amp; Greed Index (CNN)</div>
       <div class="fear-greed-body">
         <div class="fear-greed-gauge">
           <div class="fg-live-badge"><span class="fg-live-dot" aria-hidden="true"></span>LIVE</div>
@@ -427,7 +427,7 @@ async function searchStock() {
   if (!ticker) return;
 
   const el = document.getElementById('search-result');
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${ticker} 데이터 불러오는 중...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading ${ticker} data...</div>`;
 
   try {
     const data = await api('GET', `/api/stock/${ticker}`);
@@ -464,44 +464,44 @@ function renderStockCard(d, el) {
       </div>
 
       <div class="ohlc-grid">
-        <div class="ohlc-item"><div class="ohlc-label">시가</div><div class="ohlc-value">$${d.open.toFixed(2)}</div></div>
-        <div class="ohlc-item"><div class="ohlc-label">고가</div><div class="ohlc-value positive">$${d.high.toFixed(2)}</div></div>
-        <div class="ohlc-item"><div class="ohlc-label">저가</div><div class="ohlc-value negative">$${d.low.toFixed(2)}</div></div>
-        <div class="ohlc-item"><div class="ohlc-label">전일종가</div><div class="ohlc-value">$${d.prevClose.toFixed(2)}</div></div>
+        <div class="ohlc-item"><div class="ohlc-label">Open</div><div class="ohlc-value">$${d.open.toFixed(2)}</div></div>
+        <div class="ohlc-item"><div class="ohlc-label">High</div><div class="ohlc-value positive">$${d.high.toFixed(2)}</div></div>
+        <div class="ohlc-item"><div class="ohlc-label">Low</div><div class="ohlc-value negative">$${d.low.toFixed(2)}</div></div>
+        <div class="ohlc-item"><div class="ohlc-label">Prev Close</div><div class="ohlc-value">$${d.prevClose.toFixed(2)}</div></div>
       </div>
 
       ${d.targetMean ? `
         <div class="meta-grid">
           <div class="meta-item">
-            <div class="meta-label">평균 목표가</div>
+            <div class="meta-label">Avg Target</div>
             <div class="meta-value" style="color:${upsideColor};">$${d.targetMean.toFixed(2)}</div>
           </div>
           <div class="meta-item">
-            <div class="meta-label">최저 목표가</div>
+            <div class="meta-label">Low Target</div>
             <div class="meta-value">$${d.targetLow?.toFixed(2) ?? '-'}</div>
           </div>
           <div class="meta-item">
-            <div class="meta-label">최고 목표가</div>
+            <div class="meta-label">High Target</div>
             <div class="meta-value">$${d.targetHigh?.toFixed(2) ?? '-'}</div>
           </div>
         </div>
         <div class="upside-bar-wrap">
           <div class="bar-label">
-            <span>저 $${d.targetLow?.toFixed(0)}</span>
-            <span style="color:${upsideColor};font-weight:600;">상승여력 ${upside >= 0 ? '+' : ''}${upside.toFixed(1)}%</span>
-            <span>고 $${d.targetHigh?.toFixed(0)}</span>
+            <span>Low $${d.targetLow?.toFixed(0)}</span>
+            <span style="color:${upsideColor};font-weight:600;">Upside ${upside >= 0 ? '+' : ''}${upside.toFixed(1)}%</span>
+            <span>High $${d.targetHigh?.toFixed(0)}</span>
           </div>
           <div class="bar-track">
             <div class="bar-fill" style="width:${barPct}%;background:${upside >= 0 ? '#639922' : '#E24B4A'};"></div>
           </div>
-          <div class="bar-hint">현재가의 저가-고가 목표범위 내 위치 ${d.targetUpdated ? '· 업데이트 ' + d.targetUpdated : ''}</div>
+          <div class="bar-hint">Current price position within target range ${d.targetUpdated ? '· Updated ' + d.targetUpdated : ''}</div>
         </div>
-      ` : `<div style="padding:14px 0;color:var(--text-secondary);font-size:13px;"><i class="ti ti-info-circle" aria-hidden="true"></i> 목표가 데이터 없음</div>`}
+      ` : `<div style="padding:14px 0;color:var(--text-secondary);font-size:13px;"><i class="ti ti-info-circle" aria-hidden="true"></i> No target price data</div>`}
 
       ${total > 0 ? `
         <div class="analyst-breakdown">
           <div class="breakdown-header">
-            <span>애널리스트 ${total}명 의견${d.recPeriod ? ' · ' + d.recPeriod : ''}</span>
+            <span>${total} Analysts${d.recPeriod ? ' · ' + d.recPeriod : ''}</span>
             ${recLabel ? `<span class="pill pill-rec">${recLabel}</span>` : ''}
           </div>
           <div class="breakdown-bar">
@@ -510,34 +510,34 @@ function renderStockCard(d, el) {
             <div style="flex:${d.recSell};background:#E24B4A;border-radius:0 3px 3px 0;"></div>
           </div>
           <div class="analyst-pills">
-            ${d.recBuy > 0 ? `<span class="pill pill-buy"><i class="ti ti-thumb-up" aria-hidden="true"></i>매수 ${d.recBuy}명</span>` : ''}
-            ${d.recHold > 0 ? `<span class="pill pill-hold"><i class="ti ti-minus" aria-hidden="true"></i>중립 ${d.recHold}명</span>` : ''}
-            ${d.recSell > 0 ? `<span class="pill pill-sell"><i class="ti ti-thumb-down" aria-hidden="true"></i>매도 ${d.recSell}명</span>` : ''}
+            ${d.recBuy > 0 ? `<span class="pill pill-buy"><i class="ti ti-thumb-up" aria-hidden="true"></i>Buy ${d.recBuy}</span>` : ''}
+            ${d.recHold > 0 ? `<span class="pill pill-hold"><i class="ti ti-minus" aria-hidden="true"></i>Hold ${d.recHold}</span>` : ''}
+            ${d.recSell > 0 ? `<span class="pill pill-sell"><i class="ti ti-thumb-down" aria-hidden="true"></i>Sell ${d.recSell}</span>` : ''}
           </div>
         </div>
       ` : ''}
 
       <div class="action-row">
         <button class="btn-primary" onclick="addToPortfolioFromSearch('${d.ticker}', ${d.price})">
-          <i class="ti ti-plus" aria-hidden="true"></i> 포트폴리오 추가
+          <i class="ti ti-plus" aria-hidden="true"></i> Add to Portfolio
         </button>
         <button class="btn-secondary" onclick="addAlertFromSearch('${d.ticker}', ${d.targetMean || d.price})">
-          <i class="ti ti-bell" aria-hidden="true"></i> 알림 설정
+          <i class="ti ti-bell" aria-hidden="true"></i> Set Alert
         </button>
       </div>
     </div>
 
     ${d.targetMean ? `
       <div class="card">
-        <div style="font-size:13px;font-weight:600;margin-bottom:10px;"><i class="ti ti-chart-bar" aria-hidden="true"></i> 가격 vs 목표가 비교</div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;"><i class="ti ti-chart-bar" aria-hidden="true"></i> Price vs. Target</div>
         <div class="chart-legend">
-          <span><span class="legend-dot" style="background:#378ADD;"></span>현재가</span>
-          <span><span class="legend-dot" style="background:#F09595;"></span>최저 목표가</span>
-          <span><span class="legend-dot" style="background:#97C459;"></span>평균 목표가</span>
-          <span><span class="legend-dot" style="background:#5DCAA5;"></span>최고 목표가</span>
+          <span><span class="legend-dot" style="background:#378ADD;"></span>Current</span>
+          <span><span class="legend-dot" style="background:#F09595;"></span>Low Target</span>
+          <span><span class="legend-dot" style="background:#97C459;"></span>Avg Target</span>
+          <span><span class="legend-dot" style="background:#5DCAA5;"></span>High Target</span>
         </div>
         <div class="chart-wrap">
-          <canvas id="target-chart" role="img" aria-label="${d.ticker} 현재가 vs 목표가 비교 차트"></canvas>
+          <canvas id="target-chart" role="img" aria-label="${d.ticker} current price vs. target chart"></canvas>
         </div>
       </div>
     ` : ''}
@@ -563,7 +563,7 @@ function drawChart(cur, low, mean, high) {
   priceChart = new Chart(canvas, {
     type: 'bar',
     data: {
-      labels: ['현재가', '최저 목표가', '평균 목표가', '최고 목표가'],
+      labels: ['Current', 'Low Target', 'Avg Target', 'High Target'],
       datasets: [{ data: [cur, low, mean, high], backgroundColor: ['#378ADD','#F09595','#97C459','#5DCAA5'], borderRadius: 5, borderSkipped: false }]
     },
     options: {
@@ -599,7 +599,7 @@ async function addPortfolioItem() {
 
 async function loadPortfolio() {
   const el = document.getElementById('portfolio-content');
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>불러오는 중...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div>`;
   try {
     const data = await api('GET', '/api/portfolio');
     renderPortfolio(data);
@@ -610,7 +610,7 @@ async function loadPortfolio() {
 
 async function refreshPortfolio() {
   const el = document.getElementById('portfolio-content');
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>가격 업데이트 중...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Updating prices...</div>`;
   try {
     const data = await api('POST', '/api/portfolio/refresh');
     renderPortfolio(data);
@@ -622,7 +622,7 @@ async function refreshPortfolio() {
 function renderPortfolio(portfolio) {
   const el = document.getElementById('portfolio-content');
   if (!portfolio.length) {
-    el.innerHTML = `<div class="empty-state"><i class="ti ti-briefcase" aria-hidden="true"></i><p>포트폴리오가 비어 있습니다</p><small>종목 검색 후 추가하거나 위에서 직접 입력하세요</small></div>`;
+    el.innerHTML = `<div class="empty-state"><i class="ti ti-briefcase" aria-hidden="true"></i><p>Your portfolio is empty</p><small>Search for a stock or add one above</small></div>`;
     return;
   }
 
@@ -638,13 +638,13 @@ function renderPortfolio(portfolio) {
 
   el.innerHTML = `
     <div class="summary-grid">
-      <div class="meta-item"><div class="meta-label">총 평가금액</div><div class="meta-value">$${totalValue.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
-      <div class="meta-item"><div class="meta-label">총 매입금액</div><div class="meta-value">$${totalCost.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
-      <div class="meta-item"><div class="meta-label">총 손익</div><div class="meta-value ${pnl >= 0 ? 'positive' : 'negative'}">${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toLocaleString('en-US', {maximumFractionDigits:0})} <span style="font-size:13px;">(${pnlPct.toFixed(1)}%)</span></div></div>
+      <div class="meta-item"><div class="meta-label">Total Value</div><div class="meta-value">$${totalValue.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
+      <div class="meta-item"><div class="meta-label">Total Cost</div><div class="meta-value">$${totalCost.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
+      <div class="meta-item"><div class="meta-label">Total P/L</div><div class="meta-value ${pnl >= 0 ? 'positive' : 'negative'}">${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toLocaleString('en-US', {maximumFractionDigits:0})} <span style="font-size:13px;">(${pnlPct.toFixed(1)}%)</span></div></div>
     </div>
     <div class="pf-table-wrap">
       <table class="pf-table">
-        <thead><tr><th>종목</th><th>현재가</th><th>목표가</th><th>상승여력</th><th>수량</th><th>손익</th><th></th></tr></thead>
+        <thead><tr><th>Stock</th><th>Price</th><th>Target</th><th>Upside</th><th>Qty</th><th>P/L</th><th></th></tr></thead>
         <tbody>
           ${portfolio.map(p => {
             const cur = p.currentPrice || 0;
@@ -660,7 +660,7 @@ function renderPortfolio(portfolio) {
               <td>${upside !== null ? `<span style="color:${upside>=0?'var(--green)':'var(--red)'};font-weight:600;">${upside>=0?'+':''}${upside.toFixed(1)}%</span>` : '-'}</td>
               <td>${p.qty || '-'}</td>
               <td>${itemPnl !== null ? `<div class="${itemPnl>=0?'positive':'negative'}" style="font-weight:600;">${itemPnl>=0?'+':''}$${Math.abs(itemPnl).toFixed(0)}</div><div style="font-size:11px;color:var(--text-secondary);">(${itemPnlPct>=0?'+':''}${itemPnlPct.toFixed(1)}%)</div>` : '-'}</td>
-              <td><button class="btn-icon" onclick="removePortfolioItem('${p.ticker}')" aria-label="${p.ticker} 삭제"><i class="ti ti-trash" aria-hidden="true"></i></button></td>
+              <td><button class="btn-icon" onclick="removePortfolioItem('${p.ticker}')" aria-label="Delete ${p.ticker}"><i class="ti ti-trash" aria-hidden="true"></i></button></td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -714,17 +714,17 @@ function renderAlerts(alerts) {
   badge.textContent = active;
 
   if (!alerts.length) {
-    el.innerHTML = `<div class="empty-state"><i class="ti ti-bell-off" aria-hidden="true"></i><p>설정된 알림이 없습니다</p><small>위에서 종목과 가격 기준을 입력해 추가하세요</small></div>`;
+    el.innerHTML = `<div class="empty-state"><i class="ti ti-bell-off" aria-hidden="true"></i><p>No alerts set</p><small>Add a ticker and price threshold above</small></div>`;
     return;
   }
 
   el.innerHTML = `<div class="notif-list">${alerts.map(a => `
     <div class="notif-item">
       <div>
-        <div class="notif-ticker">${escapeHtml(a.ticker)} <span class="${a.triggered ? 'badge-done' : 'badge-active'}">${a.triggered ? '달성됨' : '대기중'}</span></div>
-        <div class="notif-info">$${a.price.toFixed(2)} ${a.type === 'above' ? '이상 도달' : '이하 하락'} 시 알림 · ${a.created}${a.triggeredAt ? ` · <span style="color:var(--green)">달성 ${a.triggeredAt}</span>` : ''}</div>
+        <div class="notif-ticker">${escapeHtml(a.ticker)} <span class="${a.triggered ? 'badge-done' : 'badge-active'}">${a.triggered ? 'Triggered' : 'Active'}</span></div>
+        <div class="notif-info">Alert when price ${a.type === 'above' ? 'rises above' : 'falls below'} $${a.price.toFixed(2)} · ${a.created}${a.triggeredAt ? ` · <span style="color:var(--green)">Triggered ${a.triggeredAt}</span>` : ''}</div>
       </div>
-      <button class="btn-icon" onclick="removeAlert(${a.id})" aria-label="알림 삭제"><i class="ti ti-trash" aria-hidden="true"></i></button>
+      <button class="btn-icon" onclick="removeAlert(${a.id})" aria-label="Delete alert"><i class="ti ti-trash" aria-hidden="true"></i></button>
     </div>`).join('')}</div>`;
 }
 
@@ -786,7 +786,7 @@ async function runBacktest() {
   if (!splits || splits < 2) { alert('분할수를 확인하세요'); return; }
   if (!targetReturn || targetReturn <= 0) { alert('목표수익률을 확인하세요'); return; }
 
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${ticker} 백테스트 진행 중...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Running backtest for ${ticker}...</div>`;
 
   try {
     const data = await api('POST', '/api/backtest/infinite-buying', { ticker, start, end, seed, splits, targetReturn, version });
@@ -804,63 +804,63 @@ function renderBacktestResult(d) {
   el.innerHTML = `
     <div class="card">
       <div class="bt-summary-grid">
-        <div class="meta-item"><div class="meta-label">시드</div><div class="meta-value">$${d.seed.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
-        <div class="meta-item"><div class="meta-label">총 매수 수량</div><div class="meta-value">${d.totalBuyQty.toLocaleString('en-US')}주</div></div>
-        <div class="meta-item"><div class="meta-label">총 매도 수량</div><div class="meta-value">${d.totalSellQty.toLocaleString('en-US')}주</div></div>
-        <div class="meta-item"><div class="meta-label">보유 수량</div><div class="meta-value">${holding.qty.toLocaleString('en-US')}주</div></div>
-        <div class="meta-item"><div class="meta-label">평단가</div><div class="meta-value">${holding.qty > 0 ? '$' + holding.avgPrice.toFixed(2) : '-'}</div></div>
-        <div class="meta-item"><div class="meta-label">매입 금액</div><div class="meta-value">$${d.totalBuyAmount.toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
-        <div class="meta-item"><div class="meta-label">매도 금액</div><div class="meta-value">$${d.totalSellAmount.toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
-        <div class="meta-item"><div class="meta-label">평가 손익</div><div class="meta-value ${pnlCls}">${d.evalPnl>=0?'+':''}$${Math.abs(d.evalPnl).toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
-        <div class="meta-item"><div class="meta-label">수익률</div><div class="meta-value ${pnlCls}">${d.returnPct>=0?'+':''}${d.returnPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">시드 대비 수익률</div><div class="meta-value ${pnlCls}">${d.seedReturnPct>=0?'+':''}${d.seedReturnPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">목표 수익률</div><div class="meta-value">${d.targetReturnPct}%</div></div>
-        <div class="meta-item"><div class="meta-label">분할수</div><div class="meta-value">${d.splits}</div></div>
-        <div class="meta-item"><div class="meta-label">전략 MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)} 수익률</div><div class="meta-value ${d.benchmark.returnPct>=0?'positive':'negative'}">${d.benchmark.returnPct>=0?'+':''}${d.benchmark.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">Capital</div><div class="meta-value">$${d.seed.toLocaleString('en-US', {maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">Total Buy Qty</div><div class="meta-value">${d.totalBuyQty.toLocaleString('en-US')} sh</div></div>
+        <div class="meta-item"><div class="meta-label">Total Sell Qty</div><div class="meta-value">${d.totalSellQty.toLocaleString('en-US')} sh</div></div>
+        <div class="meta-item"><div class="meta-label">Holding Qty</div><div class="meta-value">${holding.qty.toLocaleString('en-US')} sh</div></div>
+        <div class="meta-item"><div class="meta-label">Avg Price</div><div class="meta-value">${holding.qty > 0 ? '$' + holding.avgPrice.toFixed(2) : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">Buy Amount</div><div class="meta-value">$${d.totalBuyAmount.toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
+        <div class="meta-item"><div class="meta-label">Sell Amount</div><div class="meta-value">$${d.totalSellAmount.toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
+        <div class="meta-item"><div class="meta-label">Unrealized P/L</div><div class="meta-value ${pnlCls}">${d.evalPnl>=0?'+':''}$${Math.abs(d.evalPnl).toLocaleString('en-US', {maximumFractionDigits:2})}</div></div>
+        <div class="meta-item"><div class="meta-label">Return</div><div class="meta-value ${pnlCls}">${d.returnPct>=0?'+':''}${d.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">Return on Capital</div><div class="meta-value ${pnlCls}">${d.seedReturnPct>=0?'+':''}${d.seedReturnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">Target Return</div><div class="meta-value">${d.targetReturnPct}%</div></div>
+        <div class="meta-item"><div class="meta-label">Splits</div><div class="meta-value">${d.splits}</div></div>
+        <div class="meta-item"><div class="meta-label">Strategy MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)} Return</div><div class="meta-value ${d.benchmark.returnPct>=0?'positive':'negative'}">${d.benchmark.returnPct>=0?'+':''}${d.benchmark.returnPct.toFixed(1)}%</div></div>
         <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)} MDD</div><div class="meta-value negative">-${d.benchmark.mddPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">알파(초과수익)</div><div class="meta-value ${d.alphaPct>=0?'positive':'negative'}">${d.alphaPct>=0?'+':''}${d.alphaPct.toFixed(1)}%p</div></div>
+        <div class="meta-item"><div class="meta-label">Alpha (Excess Return)</div><div class="meta-value ${d.alphaPct>=0?'positive':'negative'}">${d.alphaPct>=0?'+':''}${d.alphaPct.toFixed(1)}%p</div></div>
       </div>
 
       <div class="bt-holding-box">
         <span class="cycle-pill">${d.version.toUpperCase()}</span>
-        <span class="cycle-pill">완료 사이클 ${d.completedCycles}회</span>
-        ${holding.lossCutMode ? `<span class="cycle-pill" style="background:var(--red-bg);color:var(--red);">쿼터손절모드</span>` : ''}
+        <span class="cycle-pill">${d.completedCycles} Cycles Completed</span>
+        ${holding.lossCutMode ? `<span class="cycle-pill" style="background:var(--red-bg);color:var(--red);">Quarter Stop-Loss</span>` : ''}
         ${holding.qty > 0
-          ? ` · 현재 보유 중: ${holding.qty}주 @ 평단 $${holding.avgPrice.toFixed(2)} · 현재가 $${holding.currentPrice.toFixed(2)} · 평가금액 $${holding.value.toLocaleString('en-US',{maximumFractionDigits:2})} (T값 ${holding.tValue}/${d.splits})`
-          : ` · 백테스트 종료 시점 보유 없음 (전량 매도 완료)`}
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">기간: ${d.start} ~ ${d.end}</div>
+          ? ` · Currently holding: ${holding.qty} sh @ avg $${holding.avgPrice.toFixed(2)} · Price $${holding.currentPrice.toFixed(2)} · Value $${holding.value.toLocaleString('en-US',{maximumFractionDigits:2})} (T ${holding.tValue}/${d.splits})`
+          : ` · No position at end of backtest (fully exited)`}
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Period: ${d.start} – ${d.end}</div>
       </div>
 
-      <div style="font-size:13px;font-weight:600;margin:14px 0 8px;">수익률 비교 (전략 vs ${escapeHtml(d.benchmark.label)})</div>
+      <div style="font-size:13px;font-weight:600;margin:14px 0 8px;">Return Comparison (Strategy vs. ${escapeHtml(d.benchmark.label)})</div>
       <div class="chart-wrap">
-        <canvas id="return-chart" role="img" aria-label="수익률 비교 차트"></canvas>
+        <canvas id="return-chart" role="img" aria-label="Return comparison chart"></canvas>
       </div>
     </div>
 
     <div class="card">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${escapeHtml(d.ticker)} 가격 차트 (매수·매도 시점 표시)</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${escapeHtml(d.ticker)} Price Chart (buy/sell markers)</div>
       <div class="chart-wrap">
-        <canvas id="price-chart" role="img" aria-label="${escapeHtml(d.ticker)} 가격 차트"></canvas>
+        <canvas id="price-chart" role="img" aria-label="${escapeHtml(d.ticker)} price chart"></canvas>
       </div>
     </div>
 
     <div class="pf-table-wrap">
       <table class="pf-table">
-        <thead><tr><th>회차</th><th>날짜</th><th>구분</th><th>가격</th><th>수량</th><th>누적수량</th><th>평단가</th><th>수익률</th><th>메모</th></tr></thead>
+        <thead><tr><th>Cycle</th><th>Date</th><th>Type</th><th>Price</th><th>Qty</th><th>Cum. Qty</th><th>Avg Price</th><th>Return</th><th>Note</th></tr></thead>
         <tbody>
           ${d.trades.length ? d.trades.map(t => `
             <tr>
               <td>${t.cycle}</td>
               <td>${t.date}</td>
-              <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? '매수' : '매도'}</span></td>
+              <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? 'Buy' : 'Sell'}</span></td>
               <td>$${t.price.toFixed(2)}</td>
               <td>${t.qty}</td>
               <td>${t.qtyAfter}</td>
               <td>${t.avgPriceAfter !== null ? '$' + t.avgPriceAfter.toFixed(2) : '-'}</td>
               <td class="${t.returnPctAfter >= 0 ? 'positive' : 'negative'}">${t.returnPctAfter>=0?'+':''}${t.returnPctAfter.toFixed(1)}%</td>
               <td style="font-size:12px;color:var(--text-secondary);">${escapeHtml(t.note)}</td>
-            </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">해당 기간 동안 체결된 거래가 없습니다</td></tr>`}
+            </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">No trades executed in this period</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -878,7 +878,7 @@ function drawReturnChart(curve, benchmark, seed) {
   if (equityChart) equityChart.destroy();
   const toPct = v => (v - seed) / seed * 100;
   const datasets = [{
-    label: '무한매수법',
+    label: 'Infinite Buying',
     data: curve.map(p => toPct(p.value)),
     borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
     fill: true, pointRadius: 0, borderWidth: 2, tension: 0.15,
@@ -926,17 +926,17 @@ function drawPriceChart(priceCurve, trades, ticker) {
       labels: priceCurve.map(p => p.date),
       datasets: [
         {
-          label: `${ticker} 종가`, data: priceCurve.map(p => p.close),
+          label: `${ticker} Close`, data: priceCurve.map(p => p.close),
           borderColor: '#888780', backgroundColor: 'transparent',
           fill: false, pointRadius: 0, borderWidth: 1.5, tension: 0.1, order: 3,
         },
         {
-          label: '매수', data: buyPoints, type: 'scatter',
+          label: 'Buy', data: buyPoints, type: 'scatter',
           backgroundColor: '#E24B4A', borderColor: '#E24B4A',
           pointRadius: 4, pointStyle: 'triangle', order: 1,
         },
         {
-          label: '매도', data: sellPoints, type: 'scatter',
+          label: 'Sell', data: sellPoints, type: 'scatter',
           backgroundColor: '#378ADD', borderColor: '#378ADD',
           pointRadius: 4, pointStyle: 'rectRot', order: 2,
         },
@@ -964,10 +964,10 @@ const krSwingReturnPanState = { cleanup: null };
 const krSwingPricePanState = { cleanup: null };
 
 const KR_SWING_STRATEGY_LABEL = {
-  volatility_breakout: '변동성 돌파',
-  box_breakout: '박스권 돌파',
-  ma_pullback: '이동평균 눌림목',
-  combo: '복합전략(추세+눌림목+모멘텀)',
+  volatility_breakout: 'Volatility Breakout',
+  box_breakout: 'Range Breakout',
+  ma_pullback: 'MA Pullback',
+  combo: 'Combo (Trend + Pullback + Momentum)',
 };
 
 function initKrSwingDates() {
@@ -1017,7 +1017,7 @@ function renderKrSwingAutocomplete() {
   const list = document.getElementById('ks-autocomplete-list');
   if (!list) return;
   if (!krSwingSuggestions.length) {
-    list.innerHTML = `<div class="ks-autocomplete-empty">일치하는 종목이 없습니다</div>`;
+    list.innerHTML = `<div class="ks-autocomplete-empty">No matching stocks</div>`;
     list.style.display = 'block';
     return;
   }
@@ -1101,7 +1101,7 @@ function getKrSwingParams(strategy) {
 }
 
 function formatKrw(v) {
-  return Math.round(v).toLocaleString('ko-KR') + '원';
+  return '₩' + Math.round(v).toLocaleString('en-US');
 }
 
 async function runKrSwingBacktest() {
@@ -1121,7 +1121,7 @@ async function runKrSwingBacktest() {
   if (!seed || seed <= 0) { alert('시드를 입력하세요'); return; }
 
   const params = getKrSwingParams(strategy);
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${escapeHtml(krSwingSelectedName)} 백테스트 진행 중...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Running backtest for ${escapeHtml(krSwingSelectedName)}...</div>`;
 
   try {
     const data = await api('POST', '/api/kr-swing/backtest', { strategy, code, start, end, seed, params });
@@ -1139,62 +1139,62 @@ function renderKrSwingResult(d) {
   el.innerHTML = `
     <div class="card">
       <div class="bt-summary-grid">
-        <div class="meta-item"><div class="meta-label">시드</div><div class="meta-value">${formatKrw(d.seed)}</div></div>
-        <div class="meta-item"><div class="meta-label">종목</div><div class="meta-value">${escapeHtml(d.ticker)} (${escapeHtml(d.market)})</div></div>
-        <div class="meta-item"><div class="meta-label">거래 횟수</div><div class="meta-value">${d.tradeCount}회</div></div>
-        <div class="meta-item"><div class="meta-label">승률</div><div class="meta-value">${d.winCount}승 / ${d.tradeCount}전 (${d.winRatePct.toFixed(1)}%)</div></div>
-        <div class="meta-item"><div class="meta-label">평균 보유일</div><div class="meta-value">${d.avgHoldDays.toFixed(1)}일</div></div>
-        <div class="meta-item"><div class="meta-label">매입 금액</div><div class="meta-value">${formatKrw(d.totalBuyAmount)}</div></div>
-        <div class="meta-item"><div class="meta-label">매도 금액</div><div class="meta-value">${formatKrw(d.totalSellAmount)}</div></div>
-        <div class="meta-item"><div class="meta-label">평가 손익</div><div class="meta-value ${pnlCls}">${d.evalPnl>=0?'+':''}${formatKrw(Math.abs(d.evalPnl))}</div></div>
-        <div class="meta-item"><div class="meta-label">시드 대비 수익률</div><div class="meta-value ${pnlCls}">${d.seedReturnPct>=0?'+':''}${d.seedReturnPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">전략 MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)} 수익률</div><div class="meta-value ${d.benchmark.returnPct>=0?'positive':'negative'}">${d.benchmark.returnPct>=0?'+':''}${d.benchmark.returnPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">알파(초과수익)</div><div class="meta-value ${d.alphaPct>=0?'positive':'negative'}">${d.alphaPct>=0?'+':''}${d.alphaPct.toFixed(1)}%p</div></div>
+        <div class="meta-item"><div class="meta-label">Capital</div><div class="meta-value">${formatKrw(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">Stock</div><div class="meta-value">${escapeHtml(d.ticker)} (${escapeHtml(d.market)})</div></div>
+        <div class="meta-item"><div class="meta-label">Trades</div><div class="meta-value">${d.tradeCount}</div></div>
+        <div class="meta-item"><div class="meta-label">Win Rate</div><div class="meta-value">${d.winCount}W / ${d.tradeCount} (${d.winRatePct.toFixed(1)}%)</div></div>
+        <div class="meta-item"><div class="meta-label">Avg Hold Days</div><div class="meta-value">${d.avgHoldDays.toFixed(1)}d</div></div>
+        <div class="meta-item"><div class="meta-label">Buy Amount</div><div class="meta-value">${formatKrw(d.totalBuyAmount)}</div></div>
+        <div class="meta-item"><div class="meta-label">Sell Amount</div><div class="meta-value">${formatKrw(d.totalSellAmount)}</div></div>
+        <div class="meta-item"><div class="meta-label">Unrealized P/L</div><div class="meta-value ${pnlCls}">${d.evalPnl>=0?'+':''}${formatKrw(Math.abs(d.evalPnl))}</div></div>
+        <div class="meta-item"><div class="meta-label">Return on Capital</div><div class="meta-value ${pnlCls}">${d.seedReturnPct>=0?'+':''}${d.seedReturnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">Strategy MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)} Return</div><div class="meta-value ${d.benchmark.returnPct>=0?'positive':'negative'}">${d.benchmark.returnPct>=0?'+':''}${d.benchmark.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">Alpha (Excess Return)</div><div class="meta-value ${d.alphaPct>=0?'positive':'negative'}">${d.alphaPct>=0?'+':''}${d.alphaPct.toFixed(1)}%p</div></div>
       </div>
 
       <div class="bt-holding-box">
         <span class="cycle-pill">${escapeHtml(KR_SWING_STRATEGY_LABEL[d.strategy] || d.strategy)}</span>
         ${holding.qty > 0
-          ? ` · 현재 보유 중: ${holding.qty.toLocaleString('ko-KR')}주 @ 평단 ${formatKrw(holding.avgPrice)} · 현재가 ${formatKrw(holding.currentPrice)} · 평가금액 ${formatKrw(holding.value)}`
-          : ` · 백테스트 종료 시점 보유 없음 (전량 매도 완료)`}
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">기간: ${d.start} ~ ${d.end}</div>
+          ? ` · Currently holding: ${holding.qty.toLocaleString('en-US')} sh @ avg ${formatKrw(holding.avgPrice)} · Price ${formatKrw(holding.currentPrice)} · Value ${formatKrw(holding.value)}`
+          : ` · No position at end of backtest (fully exited)`}
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Period: ${d.start} – ${d.end}</div>
       </div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 8px;">
-        <div style="font-size:13px;font-weight:600;">수익률 비교 (전략 vs ${escapeHtml(d.benchmark.label)})</div>
-        <button class="btn-secondary" onclick="resetKrSwingReturnZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> 줌 초기화</button>
+        <div style="font-size:13px;font-weight:600;">Return Comparison (Strategy vs. ${escapeHtml(d.benchmark.label)})</div>
+        <button class="btn-secondary" onclick="resetKrSwingReturnZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> Reset Zoom</button>
       </div>
       <div class="chart-wrap">
-        <canvas id="krswing-return-chart" role="img" aria-label="수익률 비교 차트"></canvas>
+        <canvas id="krswing-return-chart" role="img" aria-label="Return comparison chart"></canvas>
       </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">마우스 휠로 확대/축소, 드래그로 이동할 수 있습니다</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">Scroll to zoom, drag to pan</div>
     </div>
 
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
-        <div style="font-size:13px;font-weight:600;">${escapeHtml(d.ticker)} 가격 차트 (매수·매도 시점 표시)</div>
-        <button class="btn-secondary" onclick="resetKrSwingPriceZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> 줌 초기화</button>
+        <div style="font-size:13px;font-weight:600;">${escapeHtml(d.ticker)} Price Chart (buy/sell markers)</div>
+        <button class="btn-secondary" onclick="resetKrSwingPriceZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> Reset Zoom</button>
       </div>
       <div class="chart-wrap">
-        <canvas id="krswing-price-chart" role="img" aria-label="${escapeHtml(d.ticker)} 가격 차트"></canvas>
+        <canvas id="krswing-price-chart" role="img" aria-label="${escapeHtml(d.ticker)} price chart"></canvas>
       </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">마우스 휠로 확대/축소, 드래그로 이동할 수 있습니다</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">Scroll to zoom, drag to pan</div>
     </div>
 
     <div class="pf-table-wrap">
       <table class="pf-table">
-        <thead><tr><th>날짜</th><th>구분</th><th>가격</th><th>수량</th><th>손익률</th><th>메모</th></tr></thead>
+        <thead><tr><th>Date</th><th>Type</th><th>Price</th><th>Qty</th><th>P/L %</th><th>Note</th></tr></thead>
         <tbody>
           ${d.trades.length ? d.trades.map(t => `
             <tr>
               <td>${t.date}</td>
-              <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? '매수' : '매도'}</span></td>
+              <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? 'Buy' : 'Sell'}</span></td>
               <td>${formatKrw(t.price)}</td>
-              <td>${t.qty.toLocaleString('ko-KR')}</td>
+              <td>${t.qty.toLocaleString('en-US')}</td>
               <td>${t.pnlPct !== undefined ? `<span class="${t.pnlPct >= 0 ? 'positive' : 'negative'}">${t.pnlPct>=0?'+':''}${t.pnlPct.toFixed(1)}%</span>` : '-'}</td>
               <td style="font-size:12px;color:var(--text-secondary);">${escapeHtml(t.note)}</td>
-            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">해당 기간 동안 체결된 거래가 없습니다</td></tr>`}
+            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">No trades executed in this period</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -1213,7 +1213,7 @@ function drawKrSwingReturnChart(curve, benchmark, seed) {
   const dates = curve.map(p => p.date);
   const toPct = v => (v - seed) / seed * 100;
   const datasets = [{
-    label: '전략',
+    label: 'Strategy',
     data: curve.map((p, i) => ({ x: i, y: toPct(p.value) })),
     borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
     fill: true, pointRadius: 0, borderWidth: 2, tension: 0.15,
@@ -1281,17 +1281,17 @@ function drawKrSwingPriceChart(priceCurve, trades, ticker) {
     data: {
       datasets: [
         {
-          label: `${ticker} 종가`, data: priceCurve.map((p, i) => ({ x: i, y: p.close })),
+          label: `${ticker} Close`, data: priceCurve.map((p, i) => ({ x: i, y: p.close })),
           borderColor: '#888780', backgroundColor: 'transparent',
           fill: false, pointRadius: 0, borderWidth: 1.5, tension: 0.1, order: 3,
         },
         {
-          label: '매수', data: buyPoints, type: 'scatter',
+          label: 'Buy', data: buyPoints, type: 'scatter',
           backgroundColor: '#E24B4A', borderColor: '#E24B4A',
           pointRadius: 4, pointStyle: 'triangle', order: 1,
         },
         {
-          label: '매도', data: sellPoints, type: 'scatter',
+          label: 'Sell', data: sellPoints, type: 'scatter',
           backgroundColor: '#378ADD', borderColor: '#378ADD',
           pointRadius: 4, pointStyle: 'rectRot', order: 2,
         },
@@ -1314,7 +1314,7 @@ function drawKrSwingPriceChart(priceCurve, trades, ticker) {
         },
       },
       scales: {
-        y: { ticks: { callback: v => Number(v).toLocaleString('ko-KR') }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        y: { ticks: { callback: v => Number(v).toLocaleString('en-US') }, grid: { color: 'rgba(128,128,128,0.1)' } },
         x: {
           type: 'linear', min: 0, max: Math.max(dates.length - 1, 0),
           ticks: { maxTicksLimit: 8, callback: v => dates[Math.round(v)] ?? '' },
@@ -1346,9 +1346,9 @@ async function loadKrQuantStatus() {
   try {
     const data = await api('GET', '/api/kr-quant/status');
     const priceInfo = data.priceCacheReady
-      ? `현재가 캐시 ${data.priceCacheCount.toLocaleString('ko-KR')}개 종목 준비됨(${Math.round(data.priceCacheAgeSeconds / 60)}분 전 갱신)`
-      : `현재가 캐시 준비 중(서버 시작 후 몇 분 정도 걸립니다) — 스크리닝은 캐시가 준비된 뒤 가능합니다`;
-    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> 재무데이터: ${data.stockCount.toLocaleString('ko-KR')}개 종목(${data.fundamentalRows.toLocaleString('ko-KR')}건) 확보됨. ${priceInfo}.`;
+      ? `Price cache ready for ${data.priceCacheCount.toLocaleString('en-US')} stocks (updated ${Math.round(data.priceCacheAgeSeconds / 60)}m ago)`
+      : `Price cache warming up (takes a few minutes after server start) — screening will be available once ready`;
+    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> Fundamentals: ${data.stockCount.toLocaleString('en-US')} stocks (${data.fundamentalRows.toLocaleString('en-US')} records) loaded. ${priceInfo}.`;
   } catch (e) {
     el.innerHTML = `<i class="ti ti-alert-circle" aria-hidden="true"></i> ${escapeHtml(e.message)}`;
   }
@@ -1360,7 +1360,7 @@ async function runKrQuantScreen() {
   const topN = parseInt(document.getElementById('kq-screen-topn').value, 10) || 20;
   const minMarketCap = (parseFloat(document.getElementById('kq-screen-mcap').value) || 0) * 100000000;
 
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>스크리닝 중...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Screening...</div>`;
   try {
     const data = await api('GET', `/api/kr-quant/screen?topN=${topN}&minMarketCap=${minMarketCap}`);
     renderKrQuantScreenResult(data);
@@ -1373,14 +1373,14 @@ function renderKrQuantScreenResult(data) {
   const el = document.getElementById('krquant-screen-result');
   const picks = data.picks || [];
   if (!picks.length) {
-    el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>조건을 만족하는 종목이 없습니다</p></div>`;
+    el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>No stocks match the criteria</p></div>`;
     return;
   }
   el.innerHTML = `
-    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">기준일: ${escapeHtml(data.date)}</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">As of: ${escapeHtml(data.date)}</div>
     <div class="pf-table-wrap">
       <table class="pf-table">
-        <thead><tr><th>종합순위</th><th>종목명</th><th>코드</th><th>PER</th><th>ROE</th><th>시가총액</th><th>기준연도</th></tr></thead>
+        <thead><tr><th>Rank</th><th>Name</th><th>Code</th><th>P/E</th><th>ROE</th><th>Market Cap</th><th>Fiscal Year</th></tr></thead>
         <tbody>
           ${picks.map(p => `
             <tr>
@@ -1412,7 +1412,7 @@ async function runKrQuantBacktest() {
   // 전체 시장의 과거 시점 가격을 조회해야 해서 몇 분씩 걸릴 수 있어, 서버가
   // 요청 안에서 바로 계산하지 않고 작업(job)만 만들어 즉시 id를 돌려준다.
   // 여기서는 그 작업이 끝날 때까지 몇 초 간격으로 상태를 확인(폴링)한다.
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>연간 리밸런싱 백테스트 진행 중... (전체 시장 가격을 조회하고 있어 기간에 따라 5~15분 정도 걸릴 수 있습니다)</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Running annual rebalance backtest... (querying market-wide prices, may take 5–15 minutes depending on the period)</div>`;
   try {
     const { jobId } = await api('POST', '/api/kr-quant/backtest', { startYear, endYear, seed, topN, minMarketCap });
     await pollKrQuantBacktestJob(jobId, el);
@@ -1451,35 +1451,35 @@ function renderKrQuantBacktestResult(d) {
   el.innerHTML = `
     <div class="card">
       <div class="bt-summary-grid">
-        <div class="meta-item"><div class="meta-label">시드</div><div class="meta-value">${formatKrw(d.seed)}</div></div>
-        <div class="meta-item"><div class="meta-label">최종 평가금액</div><div class="meta-value">${formatKrw(d.finalValue)}</div></div>
-        <div class="meta-item"><div class="meta-label">총 수익률</div><div class="meta-value ${pnlCls}">${d.totalReturnPct>=0?'+':''}${d.totalReturnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">Capital</div><div class="meta-value">${formatKrw(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">Final Value</div><div class="meta-value">${formatKrw(d.finalValue)}</div></div>
+        <div class="meta-item"><div class="meta-label">Total Return</div><div class="meta-value ${pnlCls}">${d.totalReturnPct>=0?'+':''}${d.totalReturnPct.toFixed(1)}%</div></div>
         <div class="meta-item"><div class="meta-label">MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
         <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmark.label)}</div><div class="meta-value ${(d.benchmark.returnPct ?? 0) >= 0 ? 'positive' : 'negative'}">${d.benchmark.returnPct !== null && d.benchmark.returnPct !== undefined ? (d.benchmark.returnPct >= 0 ? '+' : '') + d.benchmark.returnPct.toFixed(1) + '%' : '-'}</div></div>
-        <div class="meta-item"><div class="meta-label">리밸런싱 횟수</div><div class="meta-value">${d.rebalanceDates.length}회</div></div>
+        <div class="meta-item"><div class="meta-label">Rebalances</div><div class="meta-value">${d.rebalanceDates.length}</div></div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 8px;">
-        <div style="font-size:13px;font-weight:600;">자산 추이 (전략 vs ${escapeHtml(d.benchmark.label)})</div>
-        <button class="btn-secondary" onclick="resetKrQuantZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> 줌 초기화</button>
+        <div style="font-size:13px;font-weight:600;">Equity Curve (Strategy vs. ${escapeHtml(d.benchmark.label)})</div>
+        <button class="btn-secondary" onclick="resetKrQuantZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> Reset Zoom</button>
       </div>
       <div class="chart-wrap">
-        <canvas id="krquant-chart" role="img" aria-label="자산 추이 차트"></canvas>
+        <canvas id="krquant-chart" role="img" aria-label="Equity curve chart"></canvas>
       </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">마우스 휠로 확대/축소, 드래그로 이동할 수 있습니다</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">Scroll to zoom, drag to pan</div>
     </div>
 
     <div class="card">
-      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">리밸런싱 시점별 선정 종목</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Selected Stocks by Rebalance Date</div>
       ${d.picksLog.map(pl => `
         <div style="margin-bottom:14px;">
-          <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">${escapeHtml(pl.date)} (${pl.picks.length}종목)</div>
+          <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">${escapeHtml(pl.date)} (${pl.picks.length} stocks)</div>
           <div class="pf-table-wrap">
             <table class="pf-table">
-              <thead><tr><th>순위</th><th>종목명</th><th>PER</th><th>ROE</th><th>시가총액</th></tr></thead>
+              <thead><tr><th>Rank</th><th>Name</th><th>P/E</th><th>ROE</th><th>Market Cap</th></tr></thead>
               <tbody>
                 ${pl.picks.length ? pl.picks.map(p => `
                   <tr><td>${p.combinedRank}</td><td>${escapeHtml(p.name)}</td><td>${p.per.toFixed(2)}</td><td>${p.roe.toFixed(2)}%</td><td>${formatKrw(p.marketCap)}</td></tr>
-                `).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">선정된 종목 없음</td></tr>`}
+                `).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">No stocks selected</td></tr>`}
               </tbody>
             </table>
           </div>
@@ -1488,17 +1488,17 @@ function renderKrQuantBacktestResult(d) {
 
     <div class="pf-table-wrap">
       <table class="pf-table">
-        <thead><tr><th>날짜</th><th>구분</th><th>종목명</th><th>가격</th><th>수량</th><th>손익률</th></tr></thead>
+        <thead><tr><th>Date</th><th>Type</th><th>Name</th><th>Price</th><th>Qty</th><th>P/L %</th></tr></thead>
         <tbody>
           ${d.trades.length ? d.trades.map(t => `
             <tr>
               <td>${t.date}</td>
-              <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? '매수' : '매도'}</span></td>
+              <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? 'Buy' : 'Sell'}</span></td>
               <td>${escapeHtml(t.name)}</td>
               <td>${formatKrw(t.price)}</td>
-              <td>${t.qty.toLocaleString('ko-KR')}</td>
+              <td>${t.qty.toLocaleString('en-US')}</td>
               <td>${t.pnlPct !== undefined ? `<span class="${t.pnlPct >= 0 ? 'positive' : 'negative'}">${t.pnlPct>=0?'+':''}${t.pnlPct.toFixed(1)}%</span>` : '-'}</td>
-            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">거래 내역이 없습니다</td></tr>`}
+            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">No trade history</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -1514,7 +1514,7 @@ function drawKrQuantChart(curve, benchmark, seed) {
   const dates = curve.map(p => p.date);
   const toPct = v => (v - seed) / seed * 100;
   const datasets = [{
-    label: '퀀트 전략',
+    label: 'Quant Strategy',
     data: curve.map((p, i) => ({ x: i, y: toPct(p.value) })),
     borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
     fill: true, pointRadius: 3, borderWidth: 2, tension: 0.1,
@@ -1566,18 +1566,18 @@ function resetKrQuantZoom() {
 // ─── 트렌드 템플릿(미너비니 스타일) 스크리닝 ──────────────────────────────────
 
 const TREND_CONDITION_LABELS = [
-  ['priceAboveMa150And200', '① 현재가 > 150·200일선'],
-  ['ma150AboveMa200', '② 150일선 > 200일선'],
-  ['ma200Rising', '③ 200일선 1개월+ 상승'],
-  ['ma50AboveMa150And200', '④ 50일선 > 150·200일선'],
-  ['priceAboveMa50', '⑤ 현재가 > 50일선'],
-  ['priceAbove52wLowBy30pct', '⑥ 52주 신저가 대비 +30%'],
-  ['priceWithin25pctOf52wHigh', '⑦ 52주 신고가 25% 이내'],
-  ['rsAboveThreshold', '⑧ RS Rating 70 이상'],
+  ['priceAboveMa150And200', '① Price > MA150 &amp; MA200'],
+  ['ma150AboveMa200', '② MA150 > MA200'],
+  ['ma200Rising', '③ MA200 rising 1mo+'],
+  ['ma50AboveMa150And200', '④ MA50 > MA150 &amp; MA200'],
+  ['priceAboveMa50', '⑤ Price > MA50'],
+  ['priceAbove52wLowBy30pct', '⑥ +30% above 52w low'],
+  ['priceWithin25pctOf52wHigh', '⑦ Within 25% of 52w high'],
+  ['rsAboveThreshold', '⑧ RS Rating ≥ 70'],
 ];
 
 function ratingClass(r) {
-  return r === '매수' ? 'buy' : r === '매도' ? 'sell' : r === '중립' ? 'hold' : '';
+  return r === 'Buy' ? 'buy' : r === 'Sell' ? 'sell' : r === 'Hold' ? 'hold' : '';
 }
 
 function initScreenerTab() {
@@ -1625,7 +1625,7 @@ function updateScrDetailStarButton(btn, market, code) {
   const on = isInWatchlist(market, code);
   btn.classList.toggle('on', on);
   btn.querySelector('i').className = `ti ${on ? 'ti-star-filled' : 'ti-star'}`;
-  btn.querySelector('span').textContent = on ? '관심종목 담김' : '관심종목 담기';
+  btn.querySelector('span').textContent = on ? 'Added to Watchlist' : 'Add to Watchlist';
 }
 
 function jumpToKrSwingBacktest(code, name) {
@@ -1642,11 +1642,11 @@ async function loadScreenerStatus() {
     const data = await api('GET', '/api/screener/status');
     const s = data[market];
     if (!s.ready) {
-      el.innerHTML = `<i class="ti ti-loader-2" aria-hidden="true"></i> 데이터 준비 중...`;
+      el.innerHTML = `<i class="ti ti-loader-2" aria-hidden="true"></i> Preparing data...`;
       return;
     }
     const asOfText = s.asOf ? formatAsOf(s.asOf) : null;
-    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> ${s.count.toLocaleString('ko-KR')}종목${asOfText ? ' · 기준 ' + asOfText : ''}`;
+    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> ${s.count.toLocaleString('en-US')} stocks${asOfText ? ' · As of ' + asOfText : ''}`;
   } catch (e) {
     el.innerHTML = `<i class="ti ti-alert-circle" aria-hidden="true"></i> ${escapeHtml(e.message)}`;
   }
@@ -1659,7 +1659,7 @@ async function loadScreenerResults() {
   const market = document.getElementById('scr-market').value;
   const onlyPass = document.getElementById('scr-only-pass').checked;
 
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>불러오는 중...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div>`;
   try {
     const data = await api('GET', `/api/screener/results?market=${market}&onlyPass=${onlyPass}`);
     renderScreenerResults(data);
@@ -1700,46 +1700,46 @@ function renderScreenerResults(data) {
 // 구분한다 - 절대금액은 억원(국내)·백만달러(미국) 단위로 입력받아 원 단위로
 // 환산해서 비교한다(그대로 원 단위로 입력하게 하면 숫자가 너무 커서 비실용적).
 const FIN_FILTER_CATEGORIES = [
-  { key: 'bs', icon: '🧾', title: '재무상태표', items: [
-    { key: 'totalAssets', label: '자산총계', abs: true, get: r => r.metrics?.totalAssets },
-    { key: 'totalLiabilities', label: '부채총계', abs: true, get: r => r.metrics?.totalLiabilities },
-    { key: 'totalEquity', label: '자본총계', abs: true, get: r => r.metrics?.totalEquity },
-    { key: 'equityAttributable', label: '자본총계(지배)', abs: true, get: r => r.metrics?.equityAttributable },
-    { key: 'issuedCapital', label: '자본금', abs: true, get: r => r.metrics?.issuedCapital },
+  { key: 'bs', icon: '🧾', title: 'Balance Sheet', items: [
+    { key: 'totalAssets', label: 'Total Assets', abs: true, get: r => r.metrics?.totalAssets },
+    { key: 'totalLiabilities', label: 'Total Liabilities', abs: true, get: r => r.metrics?.totalLiabilities },
+    { key: 'totalEquity', label: 'Total Equity', abs: true, get: r => r.metrics?.totalEquity },
+    { key: 'equityAttributable', label: 'Equity Attributable to Owners', abs: true, get: r => r.metrics?.equityAttributable },
+    { key: 'issuedCapital', label: 'Issued Capital', abs: true, get: r => r.metrics?.issuedCapital },
   ] },
-  { key: 'ic', icon: '📄', title: '포괄손익계산서', items: [
-    { key: 'revenue', label: '매출액', abs: true, get: r => r.metrics?.revenue },
-    { key: 'grossProfit', label: '매출총이익', abs: true, get: r => r.metrics?.grossProfit },
-    { key: 'operatingIncome', label: '영업이익', abs: true, get: r => r.metrics?.operatingIncome },
-    { key: 'profitBeforeTax', label: '세전계속사업이익', abs: true, get: r => r.metrics?.profitBeforeTax },
-    { key: 'netIncome', label: '당기순이익', abs: true, get: r => r.metrics?.netIncome },
-    { key: 'netIncomeAttributable', label: '당기순이익(지배)', abs: true, get: r => r.metrics?.netIncomeAttributable },
+  { key: 'ic', icon: '📄', title: 'Income Statement', items: [
+    { key: 'revenue', label: 'Revenue', abs: true, get: r => r.metrics?.revenue },
+    { key: 'grossProfit', label: 'Gross Profit', abs: true, get: r => r.metrics?.grossProfit },
+    { key: 'operatingIncome', label: 'Operating Income', abs: true, get: r => r.metrics?.operatingIncome },
+    { key: 'profitBeforeTax', label: 'Pre-Tax Income', abs: true, get: r => r.metrics?.profitBeforeTax },
+    { key: 'netIncome', label: 'Net Income', abs: true, get: r => r.metrics?.netIncome },
+    { key: 'netIncomeAttributable', label: 'Net Income Attributable to Owners', abs: true, get: r => r.metrics?.netIncomeAttributable },
   ] },
-  { key: 'profit', icon: '📈', title: '수익성', items: [
-    { key: 'grossMargin', label: '매출총이익률', unit: '%', get: r => r.metrics?.grossMargin },
-    { key: 'operatingMargin', label: '영업이익률', unit: '%', get: r => r.metrics?.operatingMargin },
-    { key: 'netMargin', label: '순이익률', unit: '%', get: r => r.metrics?.netMargin },
+  { key: 'profit', icon: '📈', title: 'Profitability', items: [
+    { key: 'grossMargin', label: 'Gross Margin', unit: '%', get: r => r.metrics?.grossMargin },
+    { key: 'operatingMargin', label: 'Operating Margin', unit: '%', get: r => r.metrics?.operatingMargin },
+    { key: 'netMargin', label: 'Net Margin', unit: '%', get: r => r.metrics?.netMargin },
     { key: 'roe', label: 'ROE', unit: '%', get: r => r.metrics?.roe },
     { key: 'roa', label: 'ROA', unit: '%', get: r => r.metrics?.roa },
   ] },
-  { key: 'growth', icon: '🌱', title: '성장성 (전년동기대비)', items: [
-    { key: 'revenueGrowth', label: '매출액증가율', unit: '%', get: r => r.metrics?.revenueGrowth },
-    { key: 'opIncomeGrowth', label: '영업이익증가율', unit: '%', get: r => r.metrics?.opIncomeGrowth },
-    { key: 'epsGrowth', label: 'EPS(순이익)증가율', unit: '%', get: r => r.epsGrowth },
+  { key: 'growth', icon: '🌱', title: 'Growth (YoY)', items: [
+    { key: 'revenueGrowth', label: 'Revenue Growth', unit: '%', get: r => r.metrics?.revenueGrowth },
+    { key: 'opIncomeGrowth', label: 'Operating Income Growth', unit: '%', get: r => r.metrics?.opIncomeGrowth },
+    { key: 'epsGrowth', label: 'EPS Growth', unit: '%', get: r => r.epsGrowth },
   ] },
-  { key: 'stability', icon: '🛡️', title: '안정성', items: [
-    { key: 'currentRatio', label: '유동비율', unit: '%', get: r => r.metrics?.currentRatio },
-    { key: 'quickRatio', label: '당좌비율', unit: '%', get: r => r.metrics?.quickRatio },
-    { key: 'debtRatio', label: '부채비율', unit: '%', get: r => r.metrics?.debtRatio },
-    { key: 'netDebtRatio', label: '순부채비율', unit: '%', get: r => r.metrics?.netDebtRatio },
+  { key: 'stability', icon: '🛡️', title: 'Stability', items: [
+    { key: 'currentRatio', label: 'Current Ratio', unit: '%', get: r => r.metrics?.currentRatio },
+    { key: 'quickRatio', label: 'Quick Ratio', unit: '%', get: r => r.metrics?.quickRatio },
+    { key: 'debtRatio', label: 'Debt Ratio', unit: '%', get: r => r.metrics?.debtRatio },
+    { key: 'netDebtRatio', label: 'Net Debt Ratio', unit: '%', get: r => r.metrics?.netDebtRatio },
   ] },
-  { key: 'value', icon: '💰', title: '가치지표', items: [
-    { key: 'marketCap', label: '시가총액', abs: true, get: r => r.marketCap },
-    { key: 'peRatio', label: 'P/E', unit: '배', get: r => r.peRatio },
-    { key: 'pbr', label: 'PBR', unit: '배', get: r => r.metrics?.pbr },
-    { key: 'psr', label: 'PSR', unit: '배', get: r => r.metrics?.psr },
-    { key: 'evEbitda', label: 'EV/EBITDA', unit: '배', get: r => r.metrics?.evEbitda },
-    { key: 'dividendYield', label: '배당수익률', unit: '%', get: r => r.dividendYield },
+  { key: 'value', icon: '💰', title: 'Valuation', items: [
+    { key: 'marketCap', label: 'Market Cap', abs: true, get: r => r.marketCap },
+    { key: 'peRatio', label: 'P/E', unit: 'x', get: r => r.peRatio },
+    { key: 'pbr', label: 'P/B', unit: 'x', get: r => r.metrics?.pbr },
+    { key: 'psr', label: 'P/S', unit: 'x', get: r => r.metrics?.psr },
+    { key: 'evEbitda', label: 'EV/EBITDA', unit: 'x', get: r => r.metrics?.evEbitda },
+    { key: 'dividendYield', label: 'Dividend Yield', unit: '%', get: r => r.dividendYield },
   ] },
 ];
 
@@ -1747,7 +1747,7 @@ let scrActiveFilters = {}; // { [itemKey]: {min, max} }
 let scrActiveRatings = new Set(); // 컨센서스(투자의견) 다중 선택
 
 function absScale() { return scrIsUS ? 1e6 : 1e8; }
-function absUnitLabel() { return scrIsUS ? '백만달러' : '억원'; }
+function absUnitLabel() { return scrIsUS ? '$M' : '₩100M'; }
 
 function buildFinFilterPanel() {
   const panel = document.getElementById('scr-filter-panel');
@@ -1761,9 +1761,9 @@ function buildFinFilterPanel() {
         <div class="ffrow">
           <span class="fflabel">${escapeHtml(item.label)} <span class="ffunit">${unitLabel}</span></span>
           <span class="ffrange">
-            <input type="number" placeholder="최소" data-fkey="${item.key}" data-bound="min" value="${cur.min ?? ''}">
+            <input type="number" placeholder="Min" data-fkey="${item.key}" data-bound="min" value="${cur.min ?? ''}">
             <span>~</span>
-            <input type="number" placeholder="최대" data-fkey="${item.key}" data-bound="max" value="${cur.max ?? ''}">
+            <input type="number" placeholder="Max" data-fkey="${item.key}" data-bound="max" value="${cur.max ?? ''}">
           </span>
         </div>`;
     }).join('');
@@ -1781,13 +1781,13 @@ function buildFinFilterPanel() {
     <div class="ffcat" data-cat="consensus">
       <div class="ffcat-head" onclick="toggleFinFilterCat(this)">
         <span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>
-        <span class="name">🎯 컨센서스</span>
+        <span class="name">🎯 Consensus</span>
       </div>
       <div class="ffcat-body"><div class="ffcat-body-inner">
         <div class="ffrow">
-          <span class="fflabel">투자의견</span>
+          <span class="fflabel">Rating</span>
           <span class="ffchips">
-            ${['매수', '중립', '매도'].map(label => `
+            ${['Buy', 'Hold', 'Sell'].map(label => `
               <span class="ffchip ${scrActiveRatings.has(label) ? 'selected' : ''}" onclick="toggleFinFilterRating('${label}')">${label}</span>
             `).join('')}
           </span>
@@ -1797,13 +1797,13 @@ function buildFinFilterPanel() {
 
   panel.innerHTML = `
     <div class="ffpanel-head">
-      <span class="ffpanel-title">재무 지표 필터</span>
+      <span class="ffpanel-title">Financial Filters</span>
       <div class="ffpanel-actions">
-        <span class="ffbtn" onclick="resetFinFilters()">초기화</span>
-        <span class="ffbtn primary" onclick="applyFinFilters()">적용</span>
+        <span class="ffbtn" onclick="resetFinFilters()">Reset</span>
+        <span class="ffbtn primary" onclick="applyFinFilters()">Apply</span>
       </div>
     </div>
-    ${!scrIsUS ? '<div class="ffnote">국내 종목은 안정성·컨센서스·EV/EBITDA 등 일부 지표가 제공되지 않습니다.</div>' : ''}
+    ${!scrIsUS ? '<div class="ffnote">Some metrics (stability, consensus, EV/EBITDA, etc.) aren\'t available for KR stocks.</div>' : ''}
     <div class="ffcat-list">${catsHtml}${ratingHtml}</div>`;
 }
 
@@ -1896,7 +1896,7 @@ function renderFilteredScreenerRows() {
     return r.name.toLowerCase().includes(query) || r.code.toLowerCase().includes(query);
   });
 
-  const fmtPrice = v => v == null ? '-' : (scrIsUS ? `$${Number(v).toFixed(2)}` : `${Math.round(v).toLocaleString('ko-KR')}원`);
+  const fmtPrice = v => v == null ? '-' : (scrIsUS ? `$${Number(v).toFixed(2)}` : `₩${Math.round(v).toLocaleString('en-US')}`);
   const fmtMarketCap = v => {
     if (v == null) return '-';
     if (scrIsUS) {
@@ -1905,44 +1905,45 @@ function renderFilteredScreenerRows() {
       if (usd >= 1e9) return `$${(usd / 1e9).toFixed(2)}B`;
       return `$${(usd / 1e6).toFixed(0)}M`;
     }
-    const jo = v / 1e12; // 1조 = 1e12원
-    if (jo >= 1) return `${jo.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}조`;
-    return `${(v / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 0 })}억`;
+    if (v >= 1e12) return `₩${(v / 1e12).toFixed(2)}T`;
+    if (v >= 1e9) return `₩${(v / 1e9).toFixed(1)}B`;
+    return `₩${(v / 1e6).toFixed(0)}M`;
   };
   const fmtPe = v => v == null ? '-' : Number(v).toFixed(1);
   const fmtPct1 = v => v == null ? '-' : `${v > 0 ? '+' : ''}${Number(v).toFixed(1)}%`;
   const fmtVolume = v => {
     if (v == null) return '-';
-    if (v >= 1e8) return `${(v / 1e8).toFixed(1)}억`;
-    if (v >= 1e4) return `${(v / 1e4).toFixed(1)}만`;
-    return `${Math.round(v).toLocaleString('ko-KR')}`;
+    if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
+    if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+    if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+    return `${Math.round(v).toLocaleString('en-US')}`;
   };
 
   if (!scrRawResults.length) {
-    el.innerHTML = `<div class="empty-state" style="padding:2.5rem 1.5rem;"><i class="ti ti-filter-off" aria-hidden="true"></i><p>조건을 만족하는 종목이 없습니다</p></div>`;
+    el.innerHTML = `<div class="empty-state" style="padding:2.5rem 1.5rem;"><i class="ti ti-filter-off" aria-hidden="true"></i><p>No stocks match the criteria</p></div>`;
     return;
   }
   if (!filtered.length) {
-    el.innerHTML = `<div class="empty-state" style="padding:2.5rem 1.5rem;"><i class="ti ti-search-off" aria-hidden="true"></i><p>검색/필터 조건에 맞는 종목이 없습니다</p></div>`;
+    el.innerHTML = `<div class="empty-state" style="padding:2.5rem 1.5rem;"><i class="ti ti-search-off" aria-hidden="true"></i><p>No stocks match your search/filter</p></div>`;
     return;
   }
 
   el.innerHTML = `
-    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">${filtered.length.toLocaleString('ko-KR')}개 종목${filtered.length !== scrRawResults.length ? ` (전체 ${scrRawResults.length.toLocaleString('ko-KR')}개 중)` : ''}</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">${filtered.length.toLocaleString('en-US')} stocks${filtered.length !== scrRawResults.length ? ` (of ${scrRawResults.length.toLocaleString('en-US')} total)` : ''}</div>
     <div class="scr-table-outer">
     <div class="scr-table-wrap" id="scr-table-wrap">
       <table class="scr-table">
         <thead>
           <tr>
             <th style="width:32px;"></th>
-            <th>종목명</th><th>코드</th><th>섹터</th><th style="text-align:right;">현재가</th><th>RS</th><th>조건</th>
-            <th style="text-align:right;">거래량(상대)</th>
-            <th style="text-align:right;">시가총액</th>
+            <th>Name</th><th>Code</th><th>Sector</th><th style="text-align:right;">Price</th><th>RS</th><th>Conditions</th>
+            <th style="text-align:right;">Vol (Rel)</th>
+            <th style="text-align:right;">Market Cap</th>
             <th style="text-align:right;">P/E</th>
-            <th style="text-align:right;">EPS성장률</th>
-            <th style="text-align:right;">배당수익률</th>
-            <th>애널리스트</th>
-            <th style="text-align:right;">52주저 대비</th><th style="text-align:right;">52주고 대비</th>
+            <th style="text-align:right;">EPS Growth</th>
+            <th style="text-align:right;">Div Yield</th>
+            <th>Analyst</th>
+            <th style="text-align:right;">vs 52w Low</th><th style="text-align:right;">vs 52w High</th>
           </tr>
         </thead>
         <tbody>
@@ -2046,7 +2047,7 @@ async function openScreenerDetail(code) {
   const overlay = document.getElementById('scr-detail-overlay');
   const body = document.getElementById('scr-detail-body');
   overlay.style.display = 'flex';
-  body.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>불러오는 중...</div>`;
+  body.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div>`;
   document.addEventListener('keydown', scrDetailEscHandler);
 
   try {
@@ -2083,7 +2084,7 @@ function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
   const m = d.metrics || {};
   const fmtPct = v => v == null ? null : `${v > 0 ? '+' : ''}${Number(v).toFixed(1)}%`;
   const fmtPctPlain = v => v == null ? null : `${Number(v).toFixed(1)}%`;
-  const fmtMult = v => v == null ? null : `${Number(v).toFixed(1)}배`;
+  const fmtMult = v => v == null ? null : `${Number(v).toFixed(1)}x`;
   // 재무상태표/포괄손익계산서 절대금액 포맷 - 시가총액과 달리 Finnhub
   // financials-reported는 "백만 달러"가 아니라 달러 원단위 그대로 온다.
   const fmtAbs = v => {
@@ -2097,76 +2098,77 @@ function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
       else if (av >= 1e6) s = `$${(av / 1e6).toFixed(0)}M`;
       else s = `$${Math.round(av).toLocaleString('en-US')}`;
     } else {
-      const jo = av / 1e12;
-      s = jo >= 1 ? `${jo.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}조` : `${(av / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 0 })}억`;
+      if (av >= 1e12) s = `₩${(av / 1e12).toFixed(2)}T`;
+      else if (av >= 1e9) s = `₩${(av / 1e9).toFixed(1)}B`;
+      else s = `₩${(av / 1e6).toFixed(0)}M`;
     }
     return neg ? `-${s}` : s;
   };
 
   const categories = [
     {
-      key: 'bs', icon: '🧾', title: '재무상태표',
+      key: 'bs', icon: '🧾', title: 'Balance Sheet',
       items: [
-        ['자산총계', fmtAbs(m.totalAssets)],
-        ['부채총계', fmtAbs(m.totalLiabilities)],
-        ['자본총계', fmtAbs(m.totalEquity)],
-        ['자본총계(지배)', fmtAbs(m.equityAttributable)],
-        ['자본금', fmtAbs(m.issuedCapital)],
+        ['Total Assets', fmtAbs(m.totalAssets)],
+        ['Total Liabilities', fmtAbs(m.totalLiabilities)],
+        ['Total Equity', fmtAbs(m.totalEquity)],
+        ['Equity Attributable to Owners', fmtAbs(m.equityAttributable)],
+        ['Issued Capital', fmtAbs(m.issuedCapital)],
       ],
     },
     {
-      key: 'ic', icon: '📄', title: '포괄손익계산서',
+      key: 'ic', icon: '📄', title: 'Income Statement',
       items: [
-        ['매출액', fmtAbs(m.revenue)],
-        ['매출총이익', fmtAbs(m.grossProfit)],
-        ['영업이익', fmtAbs(m.operatingIncome)],
-        ['세전계속사업이익', fmtAbs(m.profitBeforeTax)],
-        ['당기순이익', fmtAbs(m.netIncome)],
-        ['당기순이익(지배)', fmtAbs(m.netIncomeAttributable)],
+        ['Revenue', fmtAbs(m.revenue)],
+        ['Gross Profit', fmtAbs(m.grossProfit)],
+        ['Operating Income', fmtAbs(m.operatingIncome)],
+        ['Pre-Tax Income', fmtAbs(m.profitBeforeTax)],
+        ['Net Income', fmtAbs(m.netIncome)],
+        ['Net Income Attributable to Owners', fmtAbs(m.netIncomeAttributable)],
       ],
     },
     {
-      key: 'profit', icon: '📈', title: '수익성',
+      key: 'profit', icon: '📈', title: 'Profitability',
       items: [
-        ['매출총이익률', fmtPctPlain(m.grossMargin)],
-        ['영업이익률', fmtPctPlain(m.operatingMargin)],
-        ['순이익률', fmtPctPlain(m.netMargin)],
+        ['Gross Margin', fmtPctPlain(m.grossMargin)],
+        ['Operating Margin', fmtPctPlain(m.operatingMargin)],
+        ['Net Margin', fmtPctPlain(m.netMargin)],
         ['ROE', fmtPctPlain(m.roe)],
         ['ROA', fmtPctPlain(m.roa)],
       ],
     },
     {
-      key: 'growth', icon: '🌱', title: '성장성 (전년동기대비)',
+      key: 'growth', icon: '🌱', title: 'Growth (YoY)',
       items: [
-        ['매출액증가율', fmtPct(m.revenueGrowth)],
-        ['영업이익증가율', fmtPct(m.opIncomeGrowth)],
-        ['EPS(순이익)증가율', fmtPct(d.epsGrowth)],
+        ['Revenue Growth', fmtPct(m.revenueGrowth)],
+        ['Operating Income Growth', fmtPct(m.opIncomeGrowth)],
+        ['EPS Growth', fmtPct(d.epsGrowth)],
       ],
     },
     {
-      key: 'stability', icon: '🛡️', title: '안정성',
+      key: 'stability', icon: '🛡️', title: 'Stability',
       items: [
-        ['유동비율', fmtPctPlain(m.currentRatio)],
-        ['당좌비율', fmtPctPlain(m.quickRatio)],
-        ['부채비율', fmtPctPlain(m.debtRatio)],
-        ['순부채비율', fmtPctPlain(m.netDebtRatio)],
+        ['Current Ratio', fmtPctPlain(m.currentRatio)],
+        ['Quick Ratio', fmtPctPlain(m.quickRatio)],
+        ['Debt Ratio', fmtPctPlain(m.debtRatio)],
+        ['Net Debt Ratio', fmtPctPlain(m.netDebtRatio)],
       ],
     },
     {
-      key: 'value', icon: '💰', title: '가치지표',
+      key: 'value', icon: '💰', title: 'Valuation',
       items: [
-        ['시가총액', d.marketCap != null ? fmtMarketCapDetail(d.marketCap) : null],
+        ['Market Cap', d.marketCap != null ? fmtMarketCapDetail(d.marketCap) : null],
         ['P/E', d.peRatio != null ? Number(d.peRatio).toFixed(1) : null],
-        ['PBR', fmtMult(m.pbr)],
-        ['PSR', fmtMult(m.psr)],
+        ['P/B', fmtMult(m.pbr)],
+        ['P/S', fmtMult(m.psr)],
         ['EV/EBITDA', fmtMult(m.evEbitda)],
-        ['배당수익률', d.dividendYield != null ? Number(d.dividendYield).toFixed(2) + '%' : null],
+        ['Dividend Yield', d.dividendYield != null ? Number(d.dividendYield).toFixed(2) + '%' : null],
       ],
     },
     {
-      key: 'consensus', icon: '🎯', title: '컨센서스',
+      key: 'consensus', icon: '🎯', title: 'Consensus',
       items: [
-        ['투자의견', d.analystRating || null],
+        ['Rating', d.analystRating || null],
       ],
     },
   ];
@@ -2183,7 +2185,7 @@ function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
             <span class="value ${isPos ? 'positive' : isNeg ? 'negative' : ''}">${value}</span>
           </div>`;
         }).join('')
-      : `<div class="scr-fin-empty">${isUS ? '데이터를 불러오지 못했습니다' : '국내 종목은 이 항목의 데이터 소스가 없어 제공되지 않습니다'}</div>`;
+      : `<div class="scr-fin-empty">${isUS ? 'Failed to load data' : 'Not available for KR stocks (no data source)'}</div>`;
     return `
       <div class="scr-fin-acc" data-cat="${cat.key}">
         <div class="scr-fin-acc-head" onclick="toggleFinAcc(this)">
@@ -2197,10 +2199,10 @@ function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
 
   return `
     <div class="scr-detail-section">
-      <div class="scr-detail-section-title">재무 지표</div>
+      <div class="scr-detail-section-title">Financial Metrics</div>
       <div class="scr-fin-search">
         <i class="ti ti-search" aria-hidden="true"></i>
-        <input type="text" placeholder="지표 이름으로 검색 (예: 부채비율, ROE)" oninput="filterFinAccordion(this.value)">
+        <input type="text" placeholder="Search metrics (e.g. Debt Ratio, ROE)" oninput="filterFinAccordion(this.value)">
       </div>
       <div class="scr-fin-list">${catsHtml}</div>
     </div>`;
@@ -2232,13 +2234,13 @@ function filterFinAccordion(query) {
 function renderScreenerDetail(d) {
   const body = document.getElementById('scr-detail-body');
   const isUS = d.market === 'US';
-  const fmt = v => v == null ? '-' : (isUS ? `$${Number(v).toFixed(2)}` : `${Math.round(v).toLocaleString('ko-KR')}원`);
+  const fmt = v => v == null ? '-' : (isUS ? `$${Number(v).toFixed(2)}` : `₩${Math.round(v).toLocaleString('en-US')}`);
   const fmtBig = v => {
     if (v == null) return '-';
     if (isUS) return `$${(v / 1000).toFixed(1)}B`; // profile2 marketCap 단위=백만달러
-    if (v >= 1e12) return `${(v / 1e12).toFixed(1)}조원`;
-    if (v >= 1e8) return `${Math.round(v / 1e8).toLocaleString('ko-KR')}억원`;
-    return `${Math.round(v).toLocaleString('ko-KR')}원`;
+    if (v >= 1e12) return `₩${(v / 1e12).toFixed(1)}T`;
+    if (v >= 1e8) return `₩${(v / 1e6).toFixed(0)}M`;
+    return `₩${Math.round(v).toLocaleString('en-US')}`;
   };
 
   const condRows = TREND_CONDITION_LABELS.map(([key, label]) => {
@@ -2257,9 +2259,9 @@ function renderScreenerDetail(d) {
       if (usd >= 1e9) return `$${(usd / 1e9).toFixed(2)}B`;
       return `$${(usd / 1e6).toFixed(0)}M`;
     }
-    const jo = v / 1e12;
-    if (jo >= 1) return `${jo.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}조`;
-    return `${(v / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 0 })}억`;
+    if (v >= 1e12) return `₩${(v / 1e12).toFixed(1)}T`;
+    if (v >= 1e9) return `₩${(v / 1e9).toFixed(1)}B`;
+    return `₩${(v / 1e6).toFixed(0)}M`;
   };
 
   const financialAccordionHtml = buildFinancialAccordion(d, isUS, fmtMarketCapDetail);
@@ -2269,11 +2271,11 @@ function renderScreenerDetail(d) {
     const f = d.financials;
     financialsHtml = `
       <div class="scr-detail-section">
-        <div class="scr-detail-section-title">실적 (DART ${escapeHtml(f.bsnsYear || '')}년 사업보고서)</div>
+        <div class="scr-detail-section-title">Financials (DART FY${escapeHtml(f.bsnsYear || '')} Annual Report)</div>
         <div class="scr-detail-grid">
-          <div class="scr-detail-stat"><div class="scr-detail-stat-label">당기순이익</div><div class="scr-detail-stat-value ${f.netIncome < 0 ? 'negative' : ''}">${fmtBig(f.netIncome)}</div></div>
-          <div class="scr-detail-stat"><div class="scr-detail-stat-label">매출액</div><div class="scr-detail-stat-value">${fmtBig(f.revenue)}</div></div>
-          <div class="scr-detail-stat"><div class="scr-detail-stat-label">자본총계</div><div class="scr-detail-stat-value">${fmtBig(f.totalEquity)}</div></div>
+          <div class="scr-detail-stat"><div class="scr-detail-stat-label">Net Income</div><div class="scr-detail-stat-value ${f.netIncome < 0 ? 'negative' : ''}">${fmtBig(f.netIncome)}</div></div>
+          <div class="scr-detail-stat"><div class="scr-detail-stat-label">Revenue</div><div class="scr-detail-stat-value">${fmtBig(f.revenue)}</div></div>
+          <div class="scr-detail-stat"><div class="scr-detail-stat-label">Total Equity</div><div class="scr-detail-stat-value">${fmtBig(f.totalEquity)}</div></div>
         </div>
       </div>`;
   }
@@ -2287,13 +2289,13 @@ function renderScreenerDetail(d) {
     const sellPct = totalRec ? t.recSell / totalRec * 100 : 0;
     targetHtml = `
       <div class="scr-detail-section">
-        <div class="scr-detail-section-title">애널리스트 목표가·추천의견 (Finnhub)</div>
+        <div class="scr-detail-section-title">Analyst Targets &amp; Ratings (Finnhub)</div>
         ${t.targetMean ? `
           <div class="scr-detail-grid" style="margin-bottom:10px;">
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">목표가 평균</div><div class="scr-detail-stat-value">$${t.targetMean.toFixed(2)}</div></div>
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">최고</div><div class="scr-detail-stat-value">$${t.targetHigh?.toFixed(2) ?? '-'}</div></div>
-            <div class="scr-detail-stat"><div class="scr-detail-stat-label">최저</div><div class="scr-detail-stat-value">$${t.targetLow?.toFixed(2) ?? '-'}</div></div>
-          </div>` : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">목표가 수치는 Finnhub 무료 플랜에서 제공되지 않습니다.</div>`}
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">Avg Target</div><div class="scr-detail-stat-value">$${t.targetMean.toFixed(2)}</div></div>
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">High</div><div class="scr-detail-stat-value">$${t.targetHigh?.toFixed(2) ?? '-'}</div></div>
+            <div class="scr-detail-stat"><div class="scr-detail-stat-label">Low</div><div class="scr-detail-stat-value">$${t.targetLow?.toFixed(2) ?? '-'}</div></div>
+          </div>` : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Target price figures aren't available on the Finnhub free plan.</div>`}
         ${totalRec ? `
           <div class="scr-detail-rec-bar">
             <div style="width:${buyPct}%;background:var(--green);"></div>
@@ -2301,26 +2303,26 @@ function renderScreenerDetail(d) {
             <div style="width:${sellPct}%;background:var(--red);"></div>
           </div>
           <div class="scr-detail-rec-legend">
-            <span><span class="scr-detail-rec-dot" style="background:var(--green);"></span>매수 ${t.recBuy}</span>
-            <span><span class="scr-detail-rec-dot" style="background:var(--amber);"></span>보유 ${t.recHold}</span>
-            <span><span class="scr-detail-rec-dot" style="background:var(--red);"></span>매도 ${t.recSell}</span>
+            <span><span class="scr-detail-rec-dot" style="background:var(--green);"></span>Buy ${t.recBuy}</span>
+            <span><span class="scr-detail-rec-dot" style="background:var(--amber);"></span>Hold ${t.recHold}</span>
+            <span><span class="scr-detail-rec-dot" style="background:var(--red);"></span>Sell ${t.recSell}</span>
           </div>` : ''}
       </div>`;
   } else if (d.market === 'US') {
-    targetHtml = `<div class="scr-detail-section"><div class="scr-detail-section-title">애널리스트 목표가·추천의견</div><div style="font-size:12px;color:var(--text-muted);">데이터를 불러오지 못했습니다.</div></div>`;
+    targetHtml = `<div class="scr-detail-section"><div class="scr-detail-section-title">Analyst Targets &amp; Ratings</div><div style="font-size:12px;color:var(--text-muted);">Failed to load data.</div></div>`;
   }
 
   body.innerHTML = `
     <div class="scr-detail-header">
       <span class="scr-detail-name">${escapeHtml(d.name)}</span>
-      <span class="scr-detail-code">${escapeHtml(d.code)} · ${d.market === 'KR' ? '국내' : '미국'}</span>
+      <span class="scr-detail-code">${escapeHtml(d.code)} · ${d.market === 'KR' ? 'KR' : 'US'}</span>
       <span class="scr-rs-badge ${rsBadgeClass(d.rsRating)}">RS ${d.rsRating ?? '-'}</span>
       ${d.industry ? `<span class="scr-industry-tag" style="display:inline-block;">${escapeHtml(d.industry)}</span>` : ''}
     </div>
     <div class="scr-detail-price-row">
       <span class="scr-detail-price">${fmt(d.price)}</span>
-      <span class="scr-pass-badge ${d.passCount < 8 ? 'partial' : ''}">트렌드 템플릿 ${d.passCount}/8</span>
-      ${d.volume != null ? `<span class="scr-detail-volume">거래량 ${Math.round(d.volume).toLocaleString('ko-KR')}${d.relVolume != null ? ` (${Number(d.relVolume).toFixed(2)}x)` : ''}</span>` : ''}
+      <span class="scr-pass-badge ${d.passCount < 8 ? 'partial' : ''}">Trend Template ${d.passCount}/8</span>
+      ${d.volume != null ? `<span class="scr-detail-volume">Volume ${Math.round(d.volume).toLocaleString('en-US')}${d.relVolume != null ? ` (${Number(d.relVolume).toFixed(2)}x)` : ''}</span>` : ''}
     </div>
 
     ${financialAccordionHtml}
@@ -2329,21 +2331,21 @@ function renderScreenerDetail(d) {
       <button type="button" id="scr-detail-star" class="scr-detail-star-btn ${isInWatchlist(d.market, d.code) ? 'on' : ''}"
               onclick="toggleScreenerWatchlist('${d.market}', '${escapeHtml(d.code)}', '${escapeHtml(d.name).replace(/'/g, "\\'")}', event)">
         <i class="ti ${isInWatchlist(d.market, d.code) ? 'ti-star-filled' : 'ti-star'}" aria-hidden="true"></i>
-        <span>${isInWatchlist(d.market, d.code) ? '관심종목 담김' : '관심종목 담기'}</span>
+        <span>${isInWatchlist(d.market, d.code) ? 'Added to Watchlist' : 'Add to Watchlist'}</span>
       </button>
       ${d.market === 'KR' ? `
         <button type="button" class="btn-secondary" onclick="jumpToKrSwingBacktest('${escapeHtml(d.code)}', '${escapeHtml(d.name).replace(/'/g, "\\'")}')">
-          <i class="ti ti-chart-candle" aria-hidden="true"></i> 국내 스윙에서 백테스트
+          <i class="ti ti-chart-candle" aria-hidden="true"></i> Backtest in KR Swing
         </button>` : ''}
     </div>
 
     <div class="chart-wrap" style="height:260px;">
-      <canvas id="scr-detail-chart" role="img" aria-label="${escapeHtml(d.name)} 가격 차트"></canvas>
+      <canvas id="scr-detail-chart" role="img" aria-label="${escapeHtml(d.name)} price chart"></canvas>
     </div>
-    <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">마우스 휠로 확대/축소, 드래그로 이동할 수 있습니다</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">Scroll to zoom, drag to pan</div>
 
     <div class="scr-detail-section">
-      <div class="scr-detail-section-title">트렌드 템플릿 8개 조건</div>
+      <div class="scr-detail-section-title">Trend Template — 8 Conditions</div>
       <div class="scr-detail-cond-list">${condRows}</div>
     </div>
 
@@ -2369,7 +2371,7 @@ function drawScreenerDetailChart(d) {
   const ma150 = smaSeries(closes, 150);
   const ma200 = smaSeries(closes, 200);
   const isUS = d.market === 'US';
-  const fmtY = v => isUS ? `$${v.toFixed(0)}` : `${Number(v).toLocaleString('ko-KR')}`;
+  const fmtY = v => isUS ? `$${v.toFixed(0)}` : `${Number(v).toLocaleString('en-US')}`;
 
   // data 배열 원소를 null과 {x,y} 객체로 섞어서 넣으면 Chart.js가 그 데이터셋
   // 전체를 파싱하지 못해 선이 아예 안 그려진다(50/150/200일선이 안 보이던 원인) -
@@ -2377,7 +2379,7 @@ function drawScreenerDetailChart(d) {
   const mkLine = (data, color, label, dash) => ({
     label, data: data.map((v, i) => ({ x: i, y: v })),
     borderColor: color, backgroundColor: 'transparent', fill: false,
-    pointRadius: 0, borderWidth: label === '종가' ? 1.5 : 1.2, tension: 0.1, spanGaps: false,
+    pointRadius: 0, borderWidth: label === 'Close' ? 1.5 : 1.2, tension: 0.1, spanGaps: false,
     borderDash: dash || [],
   });
 
@@ -2385,10 +2387,10 @@ function drawScreenerDetailChart(d) {
     type: 'line',
     data: {
       datasets: [
-        mkLine(closes, '#888780', '종가'),
-        mkLine(ma50, '#E24B4A', '50일선'),
-        mkLine(ma150, '#EF9F27', '150일선'),
-        mkLine(ma200, '#378ADD', '200일선'),
+        mkLine(closes, '#888780', 'Close'),
+        mkLine(ma50, '#E24B4A', 'MA50'),
+        mkLine(ma150, '#EF9F27', 'MA150'),
+        mkLine(ma200, '#378ADD', 'MA200'),
       ],
     },
     options: {
@@ -2455,7 +2457,7 @@ async function deleteInfinitePosition(id) {
 
 async function loadInfinitePositions() {
   const el = document.getElementById('live-positions');
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>불러오는 중...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div>`;
   try {
     const positions = await api('GET', '/api/infinite/positions');
     renderInfinitePositions(positions);
@@ -2467,7 +2469,7 @@ async function loadInfinitePositions() {
 function renderInfinitePositions(positions) {
   const el = document.getElementById('live-positions');
   if (!positions.length) {
-    el.innerHTML = `<div class="empty-state"><i class="ti ti-infinity" aria-hidden="true"></i><p>진행 중인 무한매수법 포지션이 없습니다</p><small>위에서 티커와 시드를 입력해 시작하세요</small></div>`;
+    el.innerHTML = `<div class="empty-state"><i class="ti ti-infinity" aria-hidden="true"></i><p>No active Infinite Buying positions</p><small>Enter a ticker and capital above to start</small></div>`;
     return;
   }
 
@@ -2481,51 +2483,51 @@ function renderInfinitePositions(positions) {
         <div>
           <span class="ticker-badge">${escapeHtml(p.ticker)}</span>
           <span class="cycle-pill">${p.version.toUpperCase()}</span>
-          <span class="cycle-pill">사이클 ${p.cycle}</span>
-          ${p.lossCutMode ? `<span class="cycle-pill" style="background:var(--red-bg);color:var(--red);">분할소진</span>` : ''}
+          <span class="cycle-pill">Cycle ${p.cycle}</span>
+          ${p.lossCutMode ? `<span class="cycle-pill" style="background:var(--red-bg);color:var(--red);">Splits Exhausted</span>` : ''}
         </div>
-        <button class="btn-icon" onclick="deleteInfinitePosition(${p.id})" aria-label="포지션 삭제"><i class="ti ti-trash" aria-hidden="true"></i></button>
+        <button class="btn-icon" onclick="deleteInfinitePosition(${p.id})" aria-label="Delete position"><i class="ti ti-trash" aria-hidden="true"></i></button>
       </div>
-      <div class="live-section-label">기본 정보</div>
+      <div class="live-section-label">Basic Info</div>
       <div class="bt-summary-grid live-info-grid">
-        <div class="meta-item"><div class="meta-label">시드</div><div class="meta-value">$${p.seed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
-        <div class="meta-item"><div class="meta-label">사용한 시드</div><div class="meta-value">$${p.usedSeed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
-        <div class="meta-item"><div class="meta-label">1회 투자금</div><div class="meta-value">$${p.splitAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">Capital</div><div class="meta-value">$${p.seed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">Capital Used</div><div class="meta-value">$${p.usedSeed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">Split Amount</div><div class="meta-value">$${p.splitAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
       </div>
 
-      <div class="live-section-label">매입 정보</div>
+      <div class="live-section-label">Position Info</div>
       <div class="bt-summary-grid live-info-grid">
-        <div class="meta-item"><div class="meta-label">평단가</div><div class="meta-value">${p.avgPrice ? '$' + p.avgPrice.toFixed(2) : '-'}</div></div>
-        <div class="meta-item"><div class="meta-label">보유 수량</div><div class="meta-value">${p.holdingQty}</div></div>
-        <div class="meta-item"><div class="meta-label">매입 금액</div><div class="meta-value">$${p.buyAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">Avg Price</div><div class="meta-value">${p.avgPrice ? '$' + p.avgPrice.toFixed(2) : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">Holding Qty</div><div class="meta-value">${p.holdingQty}</div></div>
+        <div class="meta-item"><div class="meta-label">Buy Amount</div><div class="meta-value">$${p.buyAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
       </div>
 
-      <div class="live-section-label">무한매수 공식</div>
+      <div class="live-section-label">Infinite Buying Formula</div>
       <div class="bt-summary-grid live-info-grid">
         <div class="meta-item"><div class="meta-label">T</div><div class="meta-value">${p.tValue}</div></div>
-        <div class="meta-item"><div class="meta-label">목표 수익률</div><div class="meta-value">${p.targetReturnPct}%</div></div>
-        <div class="meta-item"><div class="meta-label">Star 값</div><div class="meta-value">${p.starPct !== null ? p.starPct.toFixed(2) + '%' : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">Target Return</div><div class="meta-value">${p.targetReturnPct}%</div></div>
+        <div class="meta-item"><div class="meta-label">Star %</div><div class="meta-value">${p.starPct !== null ? p.starPct.toFixed(2) + '%' : '-'}</div></div>
       </div>
 
-      <div class="live-section-label">평가</div>
+      <div class="live-section-label">Valuation</div>
       <div class="bt-summary-grid live-info-grid">
-        <div class="meta-item"><div class="meta-label">현재가</div><div class="meta-value">${p.currentPrice ? '$' + p.currentPrice.toFixed(2) : '-'}</div></div>
-        <div class="meta-item"><div class="meta-label">평가손익</div><div class="meta-value ${pnlCls}">${p.evalPnl>=0?'+':''}$${Math.abs(p.evalPnl).toLocaleString('en-US',{maximumFractionDigits:2})}</div></div>
-        <div class="meta-item"><div class="meta-label">수익률</div><div class="meta-value ${pnlCls}">${p.returnPct>=0?'+':''}${p.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">Price</div><div class="meta-value">${p.currentPrice ? '$' + p.currentPrice.toFixed(2) : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">Unrealized P/L</div><div class="meta-value ${pnlCls}">${p.evalPnl>=0?'+':''}$${Math.abs(p.evalPnl).toLocaleString('en-US',{maximumFractionDigits:2})}</div></div>
+        <div class="meta-item"><div class="meta-label">Return</div><div class="meta-value ${pnlCls}">${p.returnPct>=0?'+':''}${p.returnPct.toFixed(1)}%</div></div>
       </div>
 
       <div class="${recBoxCls}">
-        <div class="live-rec-title"><i class="ti ti-bulb" aria-hidden="true"></i> 무한매수법 가이드 <span class="cycle-pill">${p.version.toUpperCase()}</span></div>
+        <div class="live-rec-title"><i class="ti ti-bulb" aria-hidden="true"></i> Infinite Buying Guide <span class="cycle-pill">${p.version.toUpperCase()}</span></div>
         <div class="live-rec-orders">
           ${rec.orders.map(o => `
             <div class="live-rec-order-row">
               <div class="live-rec-pills">
-                <span class="pill ${o.action === 'sell' ? 'pill-sell' : 'pill-buy'}">${o.action === 'sell' ? '매도' : '매수'}</span>
+                <span class="pill ${o.action === 'sell' ? 'pill-sell' : 'pill-buy'}">${o.action === 'sell' ? 'Sell' : 'Buy'}</span>
                 <span class="pill pill-rec">${o.orderType}</span>
                 ${o.pct !== undefined ? `<span style="font-size:12px;color:var(--text-secondary);">${o.pct>=0?'+':''}${o.pct}%</span>` : ''}
               </div>
               <div class="live-rec-order-value">
-                ${o.price !== null ? '$' + o.price.toFixed(2) : ''}${o.price !== null && o.qty !== null ? ' × ' : ''}${o.qty !== null ? o.qty + '주' : ''}
+                ${o.price !== null ? '$' + o.price.toFixed(2) : ''}${o.price !== null && o.qty !== null ? ' × ' : ''}${o.qty !== null ? o.qty + ' sh' : ''}
               </div>
             </div>`).join('')}
         </div>
@@ -2535,13 +2537,13 @@ function renderInfinitePositions(positions) {
       <div class="add-form">
         <input type="date" id="live-trade-date-${p.id}" style="width:150px;" />
         <select id="live-trade-action-${p.id}" style="width:90px;">
-          <option value="buy">매수</option>
-          <option value="sell">매도</option>
+          <option value="buy">Buy</option>
+          <option value="sell">Sell</option>
         </select>
-        <input type="number" id="live-trade-price-${p.id}" placeholder="가격 ($)" style="width:110px;" step="0.01" />
-        <input type="number" id="live-trade-qty-${p.id}" placeholder="수량" style="width:90px;" step="1" min="1" />
-        <button class="btn-primary" onclick="addInfiniteTrade(${p.id})"><i class="ti ti-plus" aria-hidden="true"></i> 매매 추가</button>
-        <button class="btn-secondary" onclick="toggleLiveTrades(${p.id})"><i class="ti ti-list" aria-hidden="true"></i> 매매기록 (${p.tradeCount})</button>
+        <input type="number" id="live-trade-price-${p.id}" placeholder="Price ($)" style="width:110px;" step="0.01" />
+        <input type="number" id="live-trade-qty-${p.id}" placeholder="Qty" style="width:90px;" step="1" min="1" />
+        <button class="btn-primary" onclick="addInfiniteTrade(${p.id})"><i class="ti ti-plus" aria-hidden="true"></i> Add Trade</button>
+        <button class="btn-secondary" onclick="toggleLiveTrades(${p.id})"><i class="ti ti-list" aria-hidden="true"></i> Trade History (${p.tradeCount})</button>
       </div>
       <div id="live-trades-${p.id}" style="display:none;"></div>
     </div>`;
@@ -2579,25 +2581,25 @@ async function toggleLiveTrades(positionId) {
 async function showLiveTrades(positionId) {
   const tradesEl = document.getElementById(`live-trades-${positionId}`);
   tradesEl.style.display = 'block';
-  tradesEl.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>불러오는 중...</div>`;
+  tradesEl.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div>`;
   try {
     const trades = await api('GET', `/api/infinite/positions/${positionId}/trades`);
     if (!trades.length) {
-      tradesEl.innerHTML = `<div class="empty-state"><p>매매 기록이 없습니다</p></div>`;
+      tradesEl.innerHTML = `<div class="empty-state"><p>No trade history</p></div>`;
       return;
     }
     tradesEl.innerHTML = `
       <div class="pf-table-wrap">
         <table class="pf-table">
-          <thead><tr><th>날짜</th><th>구분</th><th>가격</th><th>수량</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Type</th><th>Price</th><th>Qty</th><th></th></tr></thead>
           <tbody>
             ${trades.slice().reverse().map(t => `
               <tr>
                 <td>${t.date}</td>
-                <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? '매수' : '매도'}</span></td>
+                <td><span class="${t.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${t.action === 'buy' ? 'Buy' : 'Sell'}</span></td>
                 <td>$${t.price.toFixed(2)}</td>
                 <td>${t.qty}</td>
-                <td><button class="btn-icon" onclick="deleteInfiniteTrade(${positionId}, ${t.id})" aria-label="거래 삭제"><i class="ti ti-trash" aria-hidden="true"></i></button></td>
+                <td><button class="btn-icon" onclick="deleteInfiniteTrade(${positionId}, ${t.id})" aria-label="Delete trade"><i class="ti ti-trash" aria-hidden="true"></i></button></td>
               </tr>`).join('')}
           </tbody>
         </table>
@@ -2630,7 +2632,7 @@ let labCombinator = 'AND';
 // ^ 접두사는 지수(포인트)로 취급한다.
 const LAB_RATE_TICKERS = new Set(['^TNX', '^IRX', '^FVX', '^TYX']);
 const LAB_UNIT_ORDER = ['pt', 'pct', 'usd'];
-const LAB_UNIT_LABEL = { pt: '포인트', usd: '달러($)', pct: '금리(%)' };
+const LAB_UNIT_LABEL = { pt: 'Points', usd: 'Dollars ($)', pct: 'Rate (%)' };
 
 function getLabUnit(ticker) {
   if (LAB_RATE_TICKERS.has(ticker)) return 'pct';
@@ -2687,8 +2689,8 @@ function addLabTicker() {
   const input = document.getElementById('lab-ticker-input');
   const ticker = input.value.trim().toUpperCase();
   if (!ticker) return;
-  if (labTickers.includes(ticker)) { showToast(`${ticker}은(는) 이미 추가되어 있습니다`); return; }
-  if (labTickers.length >= 8) { showToast('최대 8개까지 비교할 수 있습니다'); return; }
+  if (labTickers.includes(ticker)) { showToast(`${ticker} is already added`); return; }
+  if (labTickers.length >= 8) { showToast('You can compare up to 8 at a time'); return; }
   labTickers.push(ticker);
   input.value = '';
   renderLabChips();
@@ -2705,8 +2707,8 @@ function renderLabChips() {
     <span class="lab-chip">
       <span class="lab-chip-swatch" style="background:${LAB_COLORS[i % LAB_COLORS.length]};"></span>
       ${escapeHtml(t)}
-      <button type="button" onclick="removeLabTicker('${t}')" aria-label="${t} 제거"><i class="ti ti-x" aria-hidden="true"></i></button>
-    </span>`).join('') || `<span style="font-size:12px;color:var(--text-muted);">비교할 티커/지수를 추가하세요</span>`;
+      <button type="button" onclick="removeLabTicker('${t}')" aria-label="Remove ${t}"><i class="ti ti-x" aria-hidden="true"></i></button>
+    </span>`).join('') || `<span style="font-size:12px;color:var(--text-muted);">Add a ticker/index to compare</span>`;
 }
 
 let labInterval = 'daily';
@@ -2720,7 +2722,7 @@ async function runLabCompare() {
   if (!labTickers.length) { alert('티커/지수를 1개 이상 추가하세요'); return; }
   if (!start || !end) { alert('시작일과 종료일을 입력하세요'); return; }
 
-  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>시세 불러오는 중...</div>`;
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading prices...</div>`;
   try {
     const data = await api('POST', '/api/lab/series', { tickers: labTickers, start, end });
     labSeriesData = data;
@@ -2731,10 +2733,10 @@ async function runLabCompare() {
 }
 
 const LAB_INTERVALS = [
-  { key: 'daily', label: '일봉' },
-  { key: 'weekly', label: '주봉' },
-  { key: 'monthly', label: '월봉' },
-  { key: 'yearly', label: '년봉' },
+  { key: 'daily', label: 'Daily' },
+  { key: 'weekly', label: 'Weekly' },
+  { key: 'monthly', label: 'Monthly' },
+  { key: 'yearly', label: 'Yearly' },
 ];
 
 function renderLabResult(data) {
@@ -2751,39 +2753,39 @@ function renderLabResult(data) {
 
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-        <div style="font-size:13px;font-weight:600;">종목/지수 비교 (단위별 축 분리)</div>
+        <div style="font-size:13px;font-weight:600;">Compare (separate axis per unit)</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <div class="lab-interval-group">
             ${LAB_INTERVALS.map(iv => `<button type="button" class="lab-interval-btn ${iv.key === labInterval ? 'active' : ''}" data-interval="${iv.key}" onclick="setLabInterval('${iv.key}')">${iv.label}</button>`).join('')}
           </div>
           <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);cursor:pointer;">
-            <input type="checkbox" id="lab-log-scale" ${labLogScale ? 'checked' : ''} onchange="toggleLabLogScale()" /> 로그 스케일
+            <input type="checkbox" id="lab-log-scale" ${labLogScale ? 'checked' : ''} onchange="toggleLabLogScale()" /> Log scale
           </label>
-          <button class="btn-secondary" onclick="resetLabZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> 줌 초기화</button>
+          <button class="btn-secondary" onclick="resetLabZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> Reset Zoom</button>
         </div>
       </div>
       <div class="chart-wrap">
-        <canvas id="lab-chart" role="img" aria-label="종목/지수 비교 차트"></canvas>
+        <canvas id="lab-chart" role="img" aria-label="Comparison chart"></canvas>
       </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">마우스 휠로 확대/축소, 드래그로 이동할 수 있습니다</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">Scroll to zoom, drag to pan</div>
     </div>
 
     <div class="card">
-      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">조건 구간 찾기</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Find Condition Ranges</div>
       <div id="lab-cond-rows" style="display:flex;flex-direction:column;gap:8px;"></div>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px;">
-        <button class="btn-secondary" onclick="addLabConditionRow()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-plus" aria-hidden="true"></i> 조건 추가</button>
+        <button class="btn-secondary" onclick="addLabConditionRow()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-plus" aria-hidden="true"></i> Add Condition</button>
         <div id="lab-cond-combinator-wrap" style="display:none;align-items:center;gap:10px;font-size:12px;color:var(--text-secondary);">
-          조건 결합:
+          Combine:
           <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
-            <input type="radio" name="lab-cond-combinator" value="AND" onchange="setLabCombinator('AND')" /> AND(모두 만족)
+            <input type="radio" name="lab-cond-combinator" value="AND" onchange="setLabCombinator('AND')" /> AND (all match)
           </label>
           <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
-            <input type="radio" name="lab-cond-combinator" value="OR" onchange="setLabCombinator('OR')" /> OR(하나라도 만족)
+            <input type="radio" name="lab-cond-combinator" value="OR" onchange="setLabCombinator('OR')" /> OR (any match)
           </label>
         </div>
-        <button class="btn-primary" onclick="applyLabCondition()"><i class="ti ti-highlight" aria-hidden="true"></i> 구간 표시</button>
-        <button class="btn-secondary" onclick="clearLabCondition()"><i class="ti ti-x" aria-hidden="true"></i> 초기화</button>
+        <button class="btn-primary" onclick="applyLabCondition()"><i class="ti ti-highlight" aria-hidden="true"></i> Highlight Ranges</button>
+        <button class="btn-secondary" onclick="clearLabCondition()"><i class="ti ti-x" aria-hidden="true"></i> Reset</button>
       </div>
       <div id="lab-regions"></div>
     </div>
@@ -2806,17 +2808,17 @@ function renderLabConditionRowsUi() {
         ${data.series.map(s => `<option value="${escapeHtml(s.ticker)}" ${s.ticker === row.ticker ? 'selected' : ''}>${escapeHtml(s.ticker)}</option>`).join('')}
       </select>
       <select id="lab-cond-metric-${row.id}">
-        <option value="change" ${row.metric === 'change' ? 'selected' : ''}>전(주/월/년)기 대비 변동률(%)</option>
-        <option value="close" ${row.metric === 'close' ? 'selected' : ''}>값(종가)</option>
+        <option value="change" ${row.metric === 'change' ? 'selected' : ''}>Change vs. prior period (%)</option>
+        <option value="close" ${row.metric === 'close' ? 'selected' : ''}>Value (Close)</option>
       </select>
       <select id="lab-cond-op-${row.id}">
-        <option value="lte" ${row.op === 'lte' ? 'selected' : ''}>이하</option>
-        <option value="lt" ${row.op === 'lt' ? 'selected' : ''}>미만</option>
-        <option value="gte" ${row.op === 'gte' ? 'selected' : ''}>이상</option>
-        <option value="gt" ${row.op === 'gt' ? 'selected' : ''}>초과</option>
+        <option value="lte" ${row.op === 'lte' ? 'selected' : ''}>≤</option>
+        <option value="lt" ${row.op === 'lt' ? 'selected' : ''}>&lt;</option>
+        <option value="gte" ${row.op === 'gte' ? 'selected' : ''}>≥</option>
+        <option value="gt" ${row.op === 'gt' ? 'selected' : ''}>&gt;</option>
       </select>
-      <input type="number" id="lab-cond-threshold-${row.id}" placeholder="예: -3 또는 4.5" step="0.01" value="${row.threshold}" />
-      <button class="btn-secondary" onclick="removeLabConditionRow(${row.id})" ${labConditionRows.length <= 1 ? 'disabled' : ''} style="flex:0 0 auto;padding:4px 8px;" title="조건 삭제"><i class="ti ti-trash" aria-hidden="true"></i></button>
+      <input type="number" id="lab-cond-threshold-${row.id}" placeholder="e.g. -3 or 4.5" step="0.01" value="${row.threshold}" />
+      <button class="btn-secondary" onclick="removeLabConditionRow(${row.id})" ${labConditionRows.length <= 1 ? 'disabled' : ''} style="flex:0 0 auto;padding:4px 8px;" title="Remove condition"><i class="ti ti-trash" aria-hidden="true"></i></button>
     </div>
   `).join('');
 
@@ -3066,9 +3068,9 @@ function applyLabCondition() {
     if (!series) continue;
 
     perConditionFlags.push(computeLabFlags(series.closes, row.metric, row.op, threshold));
-    const metricLabel = row.metric === 'change' ? '전기 대비 변동률(%)' : '값';
-    const opLabel = { gte: '이상', gt: '초과', lte: '이하', lt: '미만' }[row.op];
-    summaries.push(`${row.ticker} ${metricLabel} ${threshold}${opLabel}`);
+    const metricLabel = row.metric === 'change' ? 'Change (%)' : 'Value';
+    const opLabel = { gte: 'or more', gt: 'more than', lte: 'or less', lt: 'less than' }[row.op];
+    summaries.push(`${row.ticker} ${metricLabel} ${threshold} ${opLabel}`);
   }
   if (!perConditionFlags.length) return;
 
@@ -3091,11 +3093,11 @@ function clearLabCondition() {
 
 function renderLabRegions(regions, summaries, combinator) {
   const el = document.getElementById('lab-regions');
-  const joiner = combinator === 'OR' ? ' 또는 ' : ' 그리고 ';
-  const summary = `${summaries.map(escapeHtml).join(joiner)} 인 구간: ${regions.length}개`;
+  const joiner = combinator === 'OR' ? ' or ' : ' and ';
+  const summary = `Ranges matching ${summaries.map(escapeHtml).join(joiner)}: ${regions.length}`;
 
   if (!regions.length) {
-    el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>${summary}</p><small>조건을 만족하는 구간이 없습니다</small></div>`;
+    el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>${summary}</p><small>No ranges match this condition</small></div>`;
     return;
   }
 
@@ -3105,7 +3107,7 @@ function renderLabRegions(regions, summaries, combinator) {
       ${regions.map(r => `
         <div class="lab-region-item">
           <span>${r.startDate}${r.startDate !== r.endDate ? ' ~ ' + r.endDate : ''}</span>
-          <span style="color:var(--text-secondary);">${r.days}일</span>
+          <span style="color:var(--text-secondary);">${r.days}d</span>
         </div>`).join('')}
     </div>`;
 }

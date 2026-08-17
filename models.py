@@ -242,7 +242,7 @@ class TrendScreenCache(db.Model):
     pe_ratio = db.Column(db.Float)
     eps_growth = db.Column(db.Float)  # YoY %. 국내는 순이익 증가율로 근사
     dividend_yield = db.Column(db.Float)  # %. 미국만 제공(국내는 소스 없음)
-    analyst_rating = db.Column(db.String(16))  # "매수"|"중립"|"매도". 미국만 제공
+    analyst_rating = db.Column(db.String(16))  # "Buy"|"Hold"|"Sell". 미국만 제공
     # 종목 상세 모달의 수익성/성장성/안정성/가치지표 아코디언용 확장 재무 지표.
     # 항목이 계속 늘어날 걸 감안해 컬럼을 늘리는 대신 JSON 하나로 묶어둔다.
     # 키: grossMargin/operatingMargin/netMargin/roe/roa/revenueGrowth/

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>회원가입 · JH-Trader</title>
+  <title>Sign up · JH-Trader</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
   <link rel="stylesheet" href="/static/style.css?v={{ asset_version('style.css') }}" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css" />
@@ -24,25 +24,25 @@
         {{ brand_mark(20) }}
         <span>JH-Trader</span>
       </div>
-      <h1 class="auth-modal-title">회원가입</h1>
-      <p class="auth-modal-sub">새 계정 만들기</p>
+      <h1 class="auth-modal-title">Sign up</h1>
+      <p class="auth-modal-sub">Create a new account</p>
 
       {% if error %}
       <div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>{{ error }}</div>
       {% endif %}
       <form method="post" class="auth-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-        <input type="text" name="username" placeholder="아이디 (3자 이상)" required autofocus />
-        <input type="password" name="password" placeholder="비밀번호 (6자 이상)" required />
+        <input type="text" name="username" placeholder="Username (min. 3 characters)" required autofocus />
+        <input type="password" name="password" placeholder="Password (min. 6 characters)" required />
         <button type="submit" class="btn-primary auth-submit">
-          <i class="ti ti-user-plus" aria-hidden="true"></i> 가입하기
+          <i class="ti ti-user-plus" aria-hidden="true"></i> Create account
         </button>
       </form>
       <div class="info-box" style="margin-top:14px;">
         <i class="ti ti-info-circle" aria-hidden="true"></i>
         가장 먼저 가입하는 계정은 자동으로 관리자 권한을 갖습니다.
       </div>
-      <p class="auth-modal-switch">이미 계정이 있으신가요? <a href="/login">로그인</a></p>
+      <p class="auth-modal-switch">Already have an account? <a href="/login">Log in</a></p>
     </div>
   </div>
 </body>

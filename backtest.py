@@ -84,7 +84,7 @@ def run_infinite_buying(ticker, start, end, seed, splits, target_return_pct, ver
                 state.apply_buy(c, qty)
                 trades.append({
                     "cycle": state.cycle_no, "date": display_date, "action": "buy",
-                    "price": round(c, 4), "qty": qty, "note": "1일차 종가 매수",
+                    "price": round(c, 4), "qty": qty, "note": "Day 1 close buy",
                 })
             equity_curve.append({"date": display_date, "value": round(state.cash + state.holding_qty * c, 2)})
             continue
@@ -115,7 +115,7 @@ def run_infinite_buying(ticker, start, end, seed, splits, target_return_pct, ver
                 trades.append({
                     "cycle": cycle_before, "date": display_date, "action": "sell",
                     "price": round(total_proceeds / qty_before, 4), "qty": qty_before,
-                    "note": f"전량매도(쿼터 {qty_c}주 + 목표가 {qty_d}주) 후 재시작",
+                    "note": f"Full sell (quarter {qty_c} sh + target {qty_d} sh), restart",
                 })
             elif c_fill:
                 qty_c = math.floor(qty_before * 0.25)
@@ -124,7 +124,7 @@ def run_infinite_buying(ticker, start, end, seed, splits, target_return_pct, ver
                     state.apply_sell(c, qty_c)
                     trades.append({
                         "cycle": cycle_before, "date": display_date, "action": "sell",
-                        "price": round(c, 4), "qty": qty_c, "note": "쿼터(1/4) LOC 매도",
+                        "price": round(c, 4), "qty": qty_c, "note": "Quarter (1/4) LOC sell",
                     })
                 else:
                     sold_today = False
@@ -135,7 +135,7 @@ def run_infinite_buying(ticker, start, end, seed, splits, target_return_pct, ver
                     state.apply_sell(target_limit, qty_d)
                     trades.append({
                         "cycle": cycle_before, "date": display_date, "action": "sell",
-                        "price": round(target_limit, 4), "qty": qty_d, "note": "목표수익률 지정가 매도(3/4)",
+                        "price": round(target_limit, 4), "qty": qty_d, "note": "Target return limit sell (3/4)",
                     })
                 else:
                     sold_today = False
@@ -150,7 +150,7 @@ def run_infinite_buying(ticker, start, end, seed, splits, target_return_pct, ver
                     state.apply_sell(c, qty_moc)
                     trades.append({
                         "cycle": cycle_before, "date": display_date, "action": "sell",
-                        "price": round(c, 4), "qty": qty_moc, "note": "손절모드(분할소진) MOC 매도(1/4)",
+                        "price": round(c, 4), "qty": qty_moc, "note": "Stop-loss (splits exhausted) MOC sell (1/4)",
                     })
             else:
                 half_point = splits / 2
@@ -173,11 +173,11 @@ def run_infinite_buying(ticker, start, end, seed, splits, target_return_pct, ver
                     total_qty = qty_a + qty_b
                     if total_qty > 0:
                         if qty_a > 0 and qty_b > 0:
-                            note = f"전반전 매수 (평단가 {qty_a}주 + 임계값 {qty_b}주)"
+                            note = f"First-half buy (avg price {qty_a} sh + threshold {qty_b} sh)"
                         elif qty_a > 0:
-                            note = f"전반전 매수 (평단가 {qty_a}주)"
+                            note = f"First-half buy (avg price {qty_a} sh)"
                         else:
-                            note = f"전반전 매수 (임계값 {qty_b}주)"
+                            note = f"First-half buy (threshold {qty_b} sh)"
                         trades.append({
                             "cycle": state.cycle_no, "date": display_date, "action": "buy",
                             "price": round(c, 4), "qty": total_qty, "note": note,
@@ -191,7 +191,7 @@ def run_infinite_buying(ticker, start, end, seed, splits, target_return_pct, ver
                             state.apply_buy(c, qty)
                             trades.append({
                                 "cycle": state.cycle_no, "date": display_date, "action": "buy",
-                                "price": round(c, 4), "qty": qty, "note": "후반전 매수(임계값 LOC)",
+                                "price": round(c, 4), "qty": qty, "note": "Second-half buy (threshold LOC)",
                             })
 
         equity_curve.append({"date": display_date, "value": round(state.cash + state.holding_qty * c, 2)})
@@ -289,7 +289,7 @@ def run_infinite_buying(ticker, start, end, seed, splits, target_return_pct, ver
         "mddPct": strategy_mdd,
         "alphaPct": alpha_pct,
         "benchmark": {
-            "label": f"{ticker} 매수후보유",
+            "label": f"{ticker} Buy & Hold",
             "returnPct": bh_return_pct,
             "mddPct": bh_mdd,
             "equityCurve": bh_curve,
