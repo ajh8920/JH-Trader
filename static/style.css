@@ -424,6 +424,8 @@ input::placeholder { color: var(--text-muted); }
 .empty-state small { font-size: 13px; opacity: 0.7; }
 .error-msg { background: var(--red-bg); color: var(--red); border-radius: var(--radius-md); padding: 12px 16px; font-size: 13px; margin-bottom: 1rem; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(162,45,45,0.2); }
 .info-box { background: var(--blue-bg); color: var(--blue); border-radius: var(--radius-md); padding: 10px 14px; font-size: 12px; display: flex; align-items: flex-start; gap: 8px; margin-top: 1rem; }
+.info-box > i { flex: 0 0 auto; }
+.info-box > span { flex: 1 1 auto; min-width: 0; }
 
 /* Backtest */
 .bt-form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; min-width: 0; }
