@@ -64,13 +64,26 @@ def fetch_corp_code_map(force=False):
     return mapping
 
 
+def _with_legacy_ifrs_prefix(mapping):
+    # DART는 bsns_year 2019(2020년 접수분)부터 계정 ID를 "ifrs-full_" 접두사로 태깅한다.
+    # 그 이전(2015~2018, fnlttSinglAcntAll이 실제로 데이터를 주는 가장 이른 시점이 2015다 -
+    # 그 이전은 API가 아예 "조회된 데이타가 없습니다"를 반환한다) 연도는 구버전 K-IFRS
+    # 분류체계라 접두사가 "ifrs_"뿐이고 나머지 계정명(suffix)은 동일하다. 이 매핑을 빼먹으면
+    # 2015~2018년 재무데이터가 있는데도 전부 "데이터없음"으로 잘못 처리된다.
+    extra = {
+        "ifrs_" + k[len("ifrs-full_"):]: v
+        for k, v in mapping.items() if k.startswith("ifrs-full_")
+    }
+    return {**mapping, **extra}
+
+
 def _extract_fields(items):
     # 계정명(account_nm)은 "당기순이익" vs "당기순이익(손실)"처럼 같은 회사도 연도마다
     # 표기가 달라질 수 있어 매칭 기준으로 쓰기엔 불안정하다. 대신 DART가 부여하는
     # IFRS 표준 계정 ID(account_id)로 매칭한다 - 이건 표기와 무관하게 항상 고정이다.
     # 재무상태표 항목: sj_nm이 "재무상태표"인 것만 취급한다(같은 account_id가 다른
     # 표(자본변동표 등)에도 나올 수 있어 값이 뒤섞이는 걸 막기 위함).
-    BS_ACCOUNT_ID_MAP = {
+    BS_ACCOUNT_ID_MAP = _with_legacy_ifrs_prefix({
         "ifrs-full_Equity": "total_equity",
         "ifrs-full_Assets": "total_assets",
         "ifrs-full_CurrentAssets": "current_assets",
@@ -80,18 +93,18 @@ def _extract_fields(items):
         "ifrs-full_IssuedCapital": "issued_capital",
         "ifrs-full_Inventories": "inventories",
         "ifrs-full_CashAndCashEquivalents": "cash_and_equivalents",
-    }
+    })
     # 손익계산서 항목: "당기순이익" 등은 현금흐름표·자본변동표에도 같은 account_id로
     # 나오는데 그쪽 금액은 지배/비지배 배분이 다르게 섞여 있어 반드시 손익계산서·
     # 포괄손익계산서 표에서만 취급한다(기존에도 이 이유로 이렇게 되어 있었음).
-    IC_ACCOUNT_ID_MAP = {
+    IC_ACCOUNT_ID_MAP = _with_legacy_ifrs_prefix({
         "ifrs-full_ProfitLoss": "net_income",
         "ifrs-full_Revenue": "revenue",
         "dart_OperatingIncomeLoss": "operating_income",
         "ifrs-full_ProfitLossAttributableToOwnersOfParent": "net_income_attributable",
         "ifrs-full_ProfitLossBeforeTax": "profit_before_tax",
         "ifrs-full_GrossProfit": "gross_profit",
-    }
+    })
     result = {}
     for it in items:
         sj_nm = it.get("sj_nm")

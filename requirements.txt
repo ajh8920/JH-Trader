@@ -7,5 +7,7 @@ flask-limiter
 pyjwt
 python-dotenv
 yfinance
+pandas
+pyarrow
 gunicorn
 psycopg2-binary
