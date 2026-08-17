@@ -264,6 +264,9 @@ const I18N = {
   winRate: { en: 'Win Rate', ko: '승률' },
   avgHoldDays: { en: 'Avg Hold Days', ko: '평균 보유일' },
   plPercent: { en: 'P/L %', ko: '손익률' },
+  cagr: { en: 'CAGR', ko: 'CAGR(연복리수익률)' },
+  calmarRatio: { en: 'CALMAR', ko: 'CALMAR' },
+  profitLossRatio: { en: 'Profit/Loss Ratio', ko: '손익비' },
   scrollToZoom: { en: 'Scroll to zoom, drag to pan', ko: '스크롤로 확대/축소, 드래그로 이동' },
   resetZoom: { en: 'Reset Zoom', ko: '확대/축소 초기화' },
   stratVolBreakout: { en: 'Volatility Breakout', ko: '변동성 돌파' },
@@ -576,7 +579,7 @@ async function loadMacro() {
     } catch (e) {
       if (attempt === maxAttempts) {
         el.innerHTML = `
-          <div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>
+          <div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>
           <button class="btn-secondary" onclick="refreshMacro()"><i class="ti ti-refresh" aria-hidden="true"></i> ${t('retry')}</button>`;
         return;
       }
@@ -623,7 +626,7 @@ function renderMacro(data) {
                 <div class="macro-price">${priceText}</div>
                 <div class="macro-change ${isPos ? 'positive' : 'negative'}">
                   <i class="ti ti-trending-${isPos ? 'up' : 'down'}" aria-hidden="true"></i>
-                  ${changeText}
+                  <span>${changeText}</span>
                 </div>
                 ${hasSeries ? buildMacroSparklineSvg(m.series, isPos) : ''}
               ` : `<div class="macro-price" style="color:var(--text-muted);font-size:13px;">${t('noData')}</div>`}
@@ -839,7 +842,7 @@ async function searchStock() {
     const data = await api('GET', `/api/stock/${ticker}`);
     renderStockCard(data, el);
   } catch (e) {
-    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${e.message}</span></div>`;
   }
 }
 
@@ -1010,7 +1013,7 @@ async function loadPortfolio() {
     const data = await api('GET', '/api/portfolio');
     renderPortfolio(data);
   } catch (e) {
-    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${e.message}</span></div>`;
   }
 }
 
@@ -1021,7 +1024,7 @@ async function refreshPortfolio() {
     const data = await api('POST', '/api/portfolio/refresh');
     renderPortfolio(data);
   } catch (e) {
-    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${e.message}</span></div>`;
   }
 }
 
@@ -1108,7 +1111,7 @@ async function loadAlerts() {
     const alerts = await api('GET', '/api/alerts');
     renderAlerts(alerts);
   } catch (e) {
-    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${e.message}</span></div>`;
   }
 }
 
@@ -1198,7 +1201,7 @@ async function runBacktest() {
     const data = await api('POST', '/api/backtest/infinite-buying', { ticker, start, end, seed, splits, targetReturn, version });
     renderBacktestResult(data);
   } catch (e) {
-    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${e.message}</span></div>`;
   }
 }
 
@@ -1537,7 +1540,7 @@ async function runKrSwingBacktest() {
     const data = await api('POST', '/api/kr-swing/backtest', { strategy, code, start, end, seed, params });
     renderKrSwingResult(data);
   } catch (e) {
-    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>`;
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
   }
 }
 
@@ -1561,6 +1564,9 @@ function renderKrSwingResult(d) {
         <div class="meta-item"><div class="meta-label">${t('strategyMDD')}</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
         <div class="meta-item"><div class="meta-label">${escapeHtml(tv(d.benchmark.label))} ${t('return')}</div><div class="meta-value ${d.benchmark.returnPct>=0?'positive':'negative'}">${d.benchmark.returnPct>=0?'+':''}${d.benchmark.returnPct.toFixed(1)}%</div></div>
         <div class="meta-item"><div class="meta-label">${t('alphaExcessReturn')}</div><div class="meta-value ${d.alphaPct>=0?'positive':'negative'}">${d.alphaPct>=0?'+':''}${d.alphaPct.toFixed(1)}%p</div></div>
+        <div class="meta-item"><div class="meta-label">${t('cagr')}</div><div class="meta-value ${d.cagrPct>=0?'positive':'negative'}">${d.cagrPct>=0?'+':''}${d.cagrPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('calmarRatio')}</div><div class="meta-value">${d.calmarRatio !== null && d.calmarRatio !== undefined ? d.calmarRatio.toFixed(2) : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('profitLossRatio')}</div><div class="meta-value">${d.profitLossRatio !== null && d.profitLossRatio !== undefined ? d.profitLossRatio.toFixed(2) : (d.winCount > 0 ? '∞' : '-')}</div></div>
       </div>
 
       <div class="bt-holding-box">
@@ -1758,9 +1764,9 @@ async function loadKrQuantStatus() {
     const priceInfo = data.priceCacheReady
       ? `${t('priceCacheReady')} ${data.priceCacheCount.toLocaleString('en-US')} ${t('stocksUnit')} (${t('updated')} ${Math.round(data.priceCacheAgeSeconds / 60)}${t('minutesAgo')})`
       : t('priceCacheWarming');
-    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> ${t('fundamentalsLoaded')} ${data.stockCount.toLocaleString('en-US')} ${t('stocksUnit')} (${data.fundamentalRows.toLocaleString('en-US')} ${t('recordsUnit')}). ${priceInfo}.`;
+    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> <span>${t('fundamentalsLoaded')} ${data.stockCount.toLocaleString('en-US')} ${t('stocksUnit')} (${data.fundamentalRows.toLocaleString('en-US')} ${t('recordsUnit')}). ${priceInfo}.</span>`;
   } catch (e) {
-    el.innerHTML = `<i class="ti ti-alert-circle" aria-hidden="true"></i> ${escapeHtml(e.message)}`;
+    el.innerHTML = `<i class="ti ti-alert-circle" aria-hidden="true"></i> <span>${escapeHtml(e.message)}</span>`;
   }
 }
 
@@ -1775,7 +1781,7 @@ async function runKrQuantScreen() {
     const data = await api('GET', `/api/kr-quant/screen?topN=${topN}&minMarketCap=${minMarketCap}`);
     renderKrQuantScreenResult(data);
   } catch (e) {
-    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>`;
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
   }
 }
 
@@ -1827,7 +1833,7 @@ async function runKrQuantBacktest() {
     const { jobId } = await api('POST', '/api/kr-quant/backtest', { startYear, endYear, seed, topN, minMarketCap });
     await pollKrQuantBacktestJob(jobId, el);
   } catch (e) {
-    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>`;
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
   }
 }
 
@@ -1839,7 +1845,7 @@ async function pollKrQuantBacktestJob(jobId, el) {
     try {
       data = await api('GET', `/api/kr-quant/backtest/${jobId}`);
     } catch (e) {
-      el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>`;
+      el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
       return;
     }
     if (data.status === 'done') {
@@ -1847,11 +1853,11 @@ async function pollKrQuantBacktestJob(jobId, el) {
       return;
     }
     if (data.status === 'error') {
-      el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(data.error || '백테스트 중 오류가 발생했습니다')}</div>`;
+      el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(data.error || '백테스트 중 오류가 발생했습니다')}</span></div>`;
       return;
     }
   }
-  el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>백테스트가 예상보다 오래 걸리고 있습니다. 잠시 후 다시 시도해주세요.</div>`;
+  el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>백테스트가 예상보다 오래 걸리고 있습니다. 잠시 후 다시 시도해주세요.</span></div>`;
 }
 
 function renderKrQuantBacktestResult(d) {
@@ -2052,13 +2058,13 @@ async function loadScreenerStatus() {
     const data = await api('GET', '/api/screener/status');
     const s = data[market];
     if (!s.ready) {
-      el.innerHTML = `<i class="ti ti-loader-2" aria-hidden="true"></i> ${t('preparingData')}`;
+      el.innerHTML = `<i class="ti ti-loader-2" aria-hidden="true"></i> <span>${t('preparingData')}</span>`;
       return;
     }
     const asOfText = s.asOf ? formatAsOf(s.asOf) : null;
-    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> ${s.count.toLocaleString('en-US')} ${t('stocksUnit')}${asOfText ? ' · ' + t('asOf') + ' ' + asOfText : ''}`;
+    el.innerHTML = `<i class="ti ti-database" aria-hidden="true"></i> <span>${s.count.toLocaleString('en-US')} ${t('stocksUnit')}${asOfText ? ' · ' + t('asOf') + ' ' + asOfText : ''}</span>`;
   } catch (e) {
-    el.innerHTML = `<i class="ti ti-alert-circle" aria-hidden="true"></i> ${escapeHtml(e.message)}`;
+    el.innerHTML = `<i class="ti ti-alert-circle" aria-hidden="true"></i> <span>${escapeHtml(e.message)}</span>`;
   }
 }
 
@@ -2074,7 +2080,7 @@ async function loadScreenerResults() {
     const data = await api('GET', `/api/screener/results?market=${market}&onlyPass=${onlyPass}`);
     renderScreenerResults(data);
   } catch (e) {
-    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>`;
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
   }
 }
 
@@ -2519,7 +2525,7 @@ async function openScreenerDetail(code) {
     const data = await api('GET', `/api/screener/detail?market=${market}&code=${encodeURIComponent(code)}`);
     renderScreenerDetail(data);
   } catch (e) {
-    body.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${escapeHtml(e.message)}</div>`;
+    body.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
   }
 }
 
@@ -2927,7 +2933,7 @@ async function loadInfinitePositions() {
     const positions = await api('GET', '/api/infinite/positions');
     renderInfinitePositions(positions);
   } catch (e) {
-    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${e.message}</span></div>`;
   }
 }
 
@@ -2982,7 +2988,7 @@ function renderInfinitePositions(positions) {
       </div>
 
       <div class="${recBoxCls}">
-        <div class="live-rec-title"><i class="ti ti-bulb" aria-hidden="true"></i> ${t('infiniteBuyingGuide')} <span class="cycle-pill">${p.version.toUpperCase()}</span></div>
+        <div class="live-rec-title"><i class="ti ti-bulb" aria-hidden="true"></i> <span>${t('infiniteBuyingGuide')}</span> <span class="cycle-pill">${p.version.toUpperCase()}</span></div>
         <div class="live-rec-orders">
           ${rec.orders.map(o => `
             <div class="live-rec-order-row">
@@ -3070,7 +3076,7 @@ async function showLiveTrades(positionId) {
         </table>
       </div>`;
   } catch (e) {
-    tradesEl.innerHTML = `<div class="error-msg">${e.message}</div>`;
+    tradesEl.innerHTML = `<div class="error-msg"><span>${e.message}</span></div>`;
   }
 }
 
@@ -3193,7 +3199,7 @@ async function runLabCompare() {
     labSeriesData = data;
     renderLabResult(data);
   } catch (e) {
-    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${e.message}</span></div>`;
   }
 }
 
@@ -3212,8 +3218,10 @@ function renderLabResult(data) {
     ${invalid.length ? `
       <div class="error-msg">
         <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <span>
         다음 티커는 데이터를 찾을 수 없습니다: ${invalid.map(escapeHtml).join(', ')} —
         실제 존재하는 심볼인지 확인하세요 (지수는 ^ 접두사가 필요합니다. 예: 나스닥종합 ^IXIC, S&amp;P500 ^GSPC, 10년물 국채금리 ^TNX)
+        </span>
       </div>` : ''}
 
     <div class="card">

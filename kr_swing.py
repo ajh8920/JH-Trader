@@ -19,6 +19,7 @@
 """
 
 import math
+from datetime import date
 
 from backtest import fetch_daily_prices
 
@@ -67,6 +68,39 @@ def _max_drawdown_pct(values):
             if dd > mdd:
                 mdd = dd
     return round(mdd, 2)
+
+
+def _cagr_pct(seed, final_value, start_date_str, end_date_str):
+    if seed <= 0:
+        return 0.0
+    start_d = date.fromisoformat(start_date_str)
+    end_d = date.fromisoformat(end_date_str)
+    years = (end_d - start_d).days / 365.25
+    if years <= 0:
+        return 0.0
+    if final_value <= 0:
+        return -100.0
+    return round(((final_value / seed) ** (1 / years) - 1) * 100, 2)
+
+
+def _calmar_ratio(cagr_pct, mdd_pct):
+    if not mdd_pct:
+        return None
+    return round(cagr_pct / mdd_pct, 2)
+
+
+def _profit_loss_ratio(sell_trades):
+    # 손익비 = 이긴 거래의 평균 수익률 ÷ 진 거래의 평균 손실률(절대값). 승률과 함께
+    # 봐야 전략의 기대값을 판단할 수 있는 짝꿍 지표라 승률 옆에 같이 보여준다.
+    wins = [t["pnlPct"] for t in sell_trades if t.get("pnlPct", 0) > 0]
+    losses = [t["pnlPct"] for t in sell_trades if t.get("pnlPct", 0) < 0]
+    if not losses:
+        return None
+    avg_win = sum(wins) / len(wins) if wins else 0.0
+    avg_loss = abs(sum(losses) / len(losses))
+    if avg_loss == 0:
+        return None
+    return round(avg_win / avg_loss, 2)
 
 
 def _sma(closes, period, i):
@@ -431,6 +465,11 @@ def run_kr_swing_backtest(strategy, code, start, end, seed, params):
     bh_mdd = _max_drawdown_pct([e["value"] for e in bh_curve])
     alpha_pct = round(seed_return_pct - bh_return_pct, 2)
 
+    final_value = seed + eval_pnl
+    cagr_pct = _cagr_pct(seed, final_value, bars[0]["date"], bars[-1]["date"])
+    calmar_ratio = _calmar_ratio(cagr_pct, strategy_mdd)
+    profit_loss_ratio = _profit_loss_ratio(sell_trades)
+
     # 단일 포지션 전략이라 매수 직후엔 그 수량이, 매도 직후엔 0이 스냅샷이 된다.
     running_qty = 0
     running_avg = 0.0
@@ -473,6 +512,9 @@ def run_kr_swing_backtest(strategy, code, start, end, seed, params):
         },
         "mddPct": strategy_mdd,
         "alphaPct": alpha_pct,
+        "cagrPct": cagr_pct,
+        "calmarRatio": calmar_ratio,
+        "profitLossRatio": profit_loss_ratio,
         "benchmark": {
             "label": f"{resolved_ticker} Buy & Hold",
             "returnPct": bh_return_pct,
