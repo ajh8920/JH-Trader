@@ -154,6 +154,16 @@ body {
    자체가 바뀌어(1240px ↔ 1760px) 화면이 흔들리는 것처럼 보이는 문제가
    있었다. 모든 탭이 같은 폭을 쓰도록 여기서 한 번에 넓혀 통일한다. */
 .app { max-width: 1760px; margin: 0 auto; padding: 2rem 1.5rem; }
+/* 사용자 화면 녹화로 확인한 좌우 흔들림: 브라우저 창 자체·주소창은 픽셀 단위로
+   전혀 안 움직이는데 페이지 콘텐츠만(로고처럼 정적인 요소까지 포함해서) 주기적으로
+   ~7-9px씩 흔들렸다. 개발자도구 성능 트레이스로 원인을 추적한 결과, 우리 코드에는
+   없는 "placeholder"라는 요소가 반복적으로 추가/제거되며 "Scrollbar changed"
+   사유로 레이아웃이 다시 계산되고 있었다 - 브라우저 자체 기능(자동완성 등)으로
+   추정되며 우리 코드로 직접 원인을 제거할 수는 없다. 대신 .app을 독립된 레이어로
+   격리해서, 바깥(스크롤바 등)에서 무엇이 재계산되든 그 영향이 콘텐츠 위치에
+   전달되지 않도록 방어한다. */
+.app { contain: layout style; }
+.header, .ticker-tape, .tabs { transform: translateZ(0); }
 
 /* Header */
 .header { display: flex; align-items: center; gap: 14px; margin-bottom: 2rem; }
