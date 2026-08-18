@@ -235,6 +235,7 @@ class TrendScreenCache(db.Model):
     rs_rating = db.Column(db.Integer)
     pass_count = db.Column(db.Integer)
     all_pass = db.Column(db.Boolean, default=False)
+    stage = db.Column(db.Integer)  # 1~4, 와인스타인/미너비니류 사이클 근사 분류(trend_screener._classify_stage)
     conditions_json = db.Column(db.Text)
     volume = db.Column(db.Float)  # 최근 거래일 거래량
     rel_volume = db.Column(db.Float)  # 최근 거래량 / 직전 20거래일 평균거래량

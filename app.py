@@ -1036,7 +1036,7 @@ def screener_results():
         "ma50": r.ma50, "ma150": r.ma150, "ma200": r.ma200,
         "week52High": r.week52_high, "week52Low": r.week52_low,
         "pctAbove52wLow": r.pct_above_52w_low, "pctBelow52wHigh": r.pct_below_52w_high,
-        "rsRating": r.rs_rating, "passCount": r.pass_count, "allPass": r.all_pass,
+        "rsRating": r.rs_rating, "passCount": r.pass_count, "allPass": r.all_pass, "stage": r.stage,
         "conditions": json.loads(r.conditions_json) if r.conditions_json else {},
         "volume": r.volume, "relVolume": r.rel_volume,
         "marketCap": r.market_cap, "peRatio": r.pe_ratio, "epsGrowth": r.eps_growth,
@@ -1085,7 +1085,7 @@ def screener_detail():
         "price": row.price, "ma50": row.ma50, "ma150": row.ma150, "ma200": row.ma200,
         "week52High": row.week52_high, "week52Low": row.week52_low,
         "pctAbove52wLow": row.pct_above_52w_low, "pctBelow52wHigh": row.pct_below_52w_high,
-        "rsRating": row.rs_rating, "passCount": row.pass_count, "allPass": row.all_pass,
+        "rsRating": row.rs_rating, "passCount": row.pass_count, "allPass": row.all_pass, "stage": row.stage,
         "conditions": json.loads(row.conditions_json) if row.conditions_json else {},
         "priceCurve": [{"date": b["date"], "close": b["close"]} for b in bars],
         "volume": row.volume, "relVolume": row.rel_volume,
@@ -1593,6 +1593,7 @@ def trend_screen_refresher():
                         row.rs_rating = r.get("rsRating")
                         row.pass_count = r["passCount"]
                         row.all_pass = r["allPass"]
+                        row.stage = r.get("stage")
                         row.conditions_json = json.dumps(r["conditions"])
                         row.volume = r.get("volume")
                         row.rel_volume = r.get("relVolume")
@@ -1816,8 +1817,48 @@ def us_fundamentals_refresher():
 # gunicorn 등 WSGI 서버로 구동해도(=__name__ != "__main__") DB 테이블 생성과 알림
 # 체크 스레드가 항상 시작되도록 모듈 임포트 시점에 실행한다.
 
+def _ensure_column(table_name, column_name, ddl_type):
+    """마이그레이션 도구가 없어(RULES.md R18) db.create_all()이 이미 존재하는
+    프로덕션 테이블에는 새 컬럼을 추가해주지 못하는 문제를 보완한다. gunicorn
+    워커 2개가 기동 시점에 동시에 시도할 수 있어, 다른 워커가 먼저 추가해서
+    나는 "컬럼 중복" 에러는 무시한다."""
+    inspector = db.inspect(db.engine)
+    if table_name not in inspector.get_table_names():
+        return
+    existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+    if column_name in existing_cols:
+        return
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(db.text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl_type}"))
+    except Exception:
+        pass
+
+
+def _backfill_stage_column():
+    """stage 컬럼을 새로 추가하면서 기존 캐시 행은 전부 NULL이 된다. 배경 리프레셔는
+    12시간 주기(TREND_SCREEN_MIN_INTERVAL_SECONDS)라 그때까지 기다리면 배포 직후
+    단계 배지가 한동안 전부 비어 보인다 - 이미 저장된 이평선/52주 데이터만으로
+    순수 계산이라 외부 API 호출 없이 즉시 채울 수 있어 시작 시 한 번 수행한다."""
+    from models import TrendScreenCache
+    import trend_screener as ts
+
+    rows = TrendScreenCache.query.filter(TrendScreenCache.stage.is_(None)).all()
+    if not rows:
+        return
+    for row in rows:
+        if None in (row.price, row.ma50, row.ma150, row.ma200, row.week52_high, row.week52_low):
+            continue
+        conditions = json.loads(row.conditions_json) if row.conditions_json else {}
+        ma200_rising = conditions.get("ma200Rising", True)
+        row.stage = ts.classify_stage(row.price, row.ma50, row.ma150, row.ma200, ma200_rising, row.week52_high, row.week52_low)
+    db.session.commit()
+
+
 with app.app_context():
     db.create_all()
+    _ensure_column("trend_screen_cache", "stage", "INTEGER")
+    _backfill_stage_column()
 
 threading.Thread(target=alert_checker, daemon=True).start()
 threading.Thread(target=kr_quant_price_cache_refresher, daemon=True).start()

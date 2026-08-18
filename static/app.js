@@ -133,6 +133,10 @@ const BACKEND_TEXT_KO = {
   'Analyst Rating': '애널리스트 의견', 'Financial Filters': '재무 필터', 'Reset': '초기화', 'Rating': '등급',
   "Some metrics (stability, consensus, EV/EBITDA, etc.) aren't available for KR stocks.":
     '일부 지표(안정성, 컨센서스, EV/EBITDA 등)는 국내 종목에서 제공되지 않습니다.',
+  // 스크리너 재무 필터 - 미너비니 스테이지
+  'Stage (Minervini)': '단계(미너비니)', 'Trend Stage': '추세 단계',
+  "Stage is an approximate classification based on moving-average alignment and position within the 52-week range (it doesn't factor in breakout volume or trend duration).":
+    '단계는 이동평균 정배열/역배열과 52주 레인지 내 위치를 이용한 근사 분류입니다(돌파 거래량이나 추세 지속 기간은 반영하지 않습니다).',
   // 스크리닝 - 미국 종목 업종(industry, GICS 세부업종). us_stocks.json에 이미
   // 한국어로 들어있는 값도 있고 영어로 남아있는 값도 섞여 있어, 값 그대로
   // tv()에 통과시켜 여기 등록된 영어 값만 골라 번역한다.
@@ -417,6 +421,15 @@ const I18N = {
   vs52wHigh: { en: 'vs 52w High', ko: '52주 고가 대비' },
   min: { en: 'Min', ko: '최소' },
   max: { en: 'Max', ko: '최대' },
+  stage: { en: 'Stage', ko: '단계' },
+  stage1Short: { en: 'Stage 1', ko: '1단계' },
+  stage2Short: { en: 'Stage 2', ko: '2단계' },
+  stage3Short: { en: 'Stage 3', ko: '3단계' },
+  stage4Short: { en: 'Stage 4', ko: '4단계' },
+  stage1: { en: 'Stage 1 (Basing)', ko: '1단계(바닥 다지기)' },
+  stage2: { en: 'Stage 2 (Advancing)', ko: '2단계(상승 추세)' },
+  stage3: { en: 'Stage 3 (Topping)', ko: '3단계(천장)' },
+  stage4: { en: 'Stage 4 (Declining)', ko: '4단계(하락 추세)' },
   failedToLoadData: { en: 'Failed to load data', ko: '데이터를 불러오지 못했습니다' },
   notAvailableForKrStocks: { en: 'Not available for KR stocks (no data source)', ko: '국내 종목은 제공되지 않습니다(데이터 소스 없음)' },
   financialMetrics: { en: 'Financial Metrics', ko: '재무 지표' },
@@ -2285,6 +2298,9 @@ function renderScreenerResults(data) {
 // (부채비율처럼 낮을수록 좋은 지표는 라벨만 반대로 붙는다), 성장률처럼 실제로
 // 음수가 나올 수 있는 지표는 그대로 음수 구간을 첫 번째 단계로 둔다.
 const FIN_FILTER_CATEGORIES = [
+  // 'stage' 카테고리는 숫자 범위(items)가 아니라 1~4단계 다중선택 칩이라 items를
+  // 비워두고 buildFinFilterPanel에서 'consensus'처럼 별도 분기로 렌더링한다.
+  { key: 'stage', icon: '🔄', title: 'Stage (Minervini)', items: [] },
   { key: 'bs', icon: '🧾', title: 'Balance Sheet', items: [
     { key: 'totalAssets', label: 'Total Assets', abs: true, get: r => r.metrics?.totalAssets },
     { key: 'totalLiabilities', label: 'Total Liabilities', abs: true, get: r => r.metrics?.totalLiabilities },
@@ -2347,6 +2363,7 @@ const FIN_FILTER_CATEGORIES = [
 
 let scrActiveFilters = {}; // { [itemKey]: {min, max} }
 let scrActiveRatings = new Set(); // 컨센서스(투자의견) 다중 선택
+let scrActiveStages = new Set(); // 미너비니 단계(1~4) 다중 선택
 let scrFilterActiveCat = FIN_FILTER_CATEGORIES[0].key; // 지금 하단에 펼쳐진 카테고리
 
 function absScale() { return scrIsUS ? 1e6 : 1e8; }
@@ -2378,6 +2395,7 @@ function tierRangeLabel(tier) {
 
 function countActiveInCat(cat) {
   if (cat.key === 'consensus') return scrActiveRatings.size;
+  if (cat.key === 'stage') return scrActiveStages.size;
   return cat.items.filter(it => scrActiveFilters[it.key]).length;
 }
 
@@ -2404,7 +2422,16 @@ function buildFinFilterPanel() {
           <span class="ffchip ${scrActiveRatings.has(label) ? 'selected' : ''}" onclick="toggleFinFilterRating('${label}')">${tv(label)}</span>
         `).join('')}
       </span>
-    </div>` : activeCat.items.map(item => {
+    </div>` : activeCat.key === 'stage' ? `
+    <div class="ffrow-detail">
+      <div class="ffrow-head"><span class="fflabel">${tv('Trend Stage')}</span></div>
+      <span class="ffchips">
+        ${[1, 2, 3, 4].map(n => `
+          <span class="ffchip ${scrActiveStages.has(n) ? 'selected' : ''}" onclick="toggleFinFilterStage(${n})">${t('stage' + n)}</span>
+        `).join('')}
+      </span>
+    </div>
+    <div class="ffnote">${tv("Stage is an approximate classification based on moving-average alignment and position within the 52-week range (it doesn't factor in breakout volume or trend duration).")}</div>` : activeCat.items.map(item => {
     const unitLabel = item.abs ? `(${absUnitLabel()})` : item.unit ? `(${item.unit})` : '';
     const cur = scrActiveFilters[item.key] || {};
     const tiersHtml = item.tiers ? `
@@ -2490,16 +2517,25 @@ function toggleFinFilterRating(label) {
   renderFilteredScreenerRows();
 }
 
+function toggleFinFilterStage(n) {
+  if (scrActiveStages.has(n)) scrActiveStages.delete(n);
+  else scrActiveStages.add(n);
+  buildFinFilterPanel();
+  updateFinFilterCount();
+  renderFilteredScreenerRows();
+}
+
 function resetFinFilters() {
   scrActiveFilters = {};
   scrActiveRatings = new Set();
+  scrActiveStages = new Set();
   buildFinFilterPanel();
   updateFinFilterCount();
   renderFilteredScreenerRows();
 }
 
 function updateFinFilterCount() {
-  const n = Object.keys(scrActiveFilters).length + (scrActiveRatings.size ? 1 : 0);
+  const n = Object.keys(scrActiveFilters).length + (scrActiveRatings.size ? 1 : 0) + (scrActiveStages.size ? 1 : 0);
   const badge = document.getElementById('scr-filter-count');
   if (!badge) return;
   badge.textContent = n;
@@ -2518,6 +2554,7 @@ function passesFinFilters(r) {
     if (range.max != null && v > range.max) return false;
   }
   if (scrActiveRatings.size && !scrActiveRatings.has(r.analystRating)) return false;
+  if (scrActiveStages.size && !scrActiveStages.has(r.stage)) return false;
   return true;
 }
 
@@ -2582,7 +2619,7 @@ function renderFilteredScreenerRows() {
         <thead>
           <tr>
             <th style="width:32px;"></th>
-            <th>${t('name')}</th><th>${t('code')}</th><th>${t('sector')}</th><th style="text-align:right;">${t('price')}</th><th>RS</th><th>${t('conditions')}</th>
+            <th>${t('name')}</th><th>${t('code')}</th><th>${t('sector')}</th><th style="text-align:right;">${t('price')}</th><th>RS</th><th>${t('stage')}</th><th>${t('conditions')}</th>
             <th style="text-align:right;">${t('volRel')}</th>
             <th style="text-align:right;">${t('marketCap')}</th>
             <th style="text-align:right;">P/E</th>
@@ -2605,6 +2642,7 @@ function renderFilteredScreenerRows() {
               <td title="${escapeHtml(tv(r.industry || ''))}">${r.sector ? `<span class="scr-sector-tag">${escapeHtml(tv(r.sector))}</span>` : '-'}</td>
               <td class="scr-num-cell">${fmtPrice(r.price)}</td>
               <td><span class="scr-rs-badge ${rsBadgeClass(r.rsRating)}">${r.rsRating ?? '-'}</span></td>
+              <td>${r.stage ? `<span class="scr-stage-badge stage-${r.stage}" title="${escapeHtml(t('stage' + r.stage))}">${t('stage' + r.stage + 'Short')}</span>` : '-'}</td>
               <td>
                 <span class="scr-pass-badge ${r.passCount < 8 ? 'partial' : ''}">${r.passCount}/8</span>
                 <span class="scr-dots" onmouseenter="showScrPopover(this, '${escapeHtml(r.code)}')" onmouseleave="hideScrPopover()">
@@ -2963,6 +3001,7 @@ function renderScreenerDetail(d) {
       <span class="scr-detail-name">${escapeHtml(d.name)}</span>
       <span class="scr-detail-code">${escapeHtml(d.code)} · ${d.market === 'KR' ? 'KR' : 'US'}</span>
       <span class="scr-rs-badge ${rsBadgeClass(d.rsRating)}">RS ${d.rsRating ?? '-'}</span>
+      ${d.stage ? `<span class="scr-stage-badge stage-${d.stage}">${t('stage' + d.stage)}</span>` : ''}
       ${d.industry ? `<span class="scr-industry-tag" style="display:inline-block;">${escapeHtml(tv(d.industry))}</span>` : ''}
     </div>
     <div class="scr-detail-price-row">

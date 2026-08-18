@@ -20,6 +20,10 @@ S&P500+나스닥 상위) 안에서의 상대 순위라는 한계가 있다.
 
 VCP(변동성 축소) 패턴이나 손절 규칙 등은 시각적/재량적 판단이 필요한 영역이라
 정량 스크리닝 대상에서 제외했다 - 8개 조건은 "추세 템플릿" 통과 여부만 판정한다.
+
+stage(1~4): 스탠 와인스타인/미너비니류 4단계 사이클 근사 분류(classify_stage 참고).
+이평선 정배열·역배열 여부와 52주 레인지 내 위치만으로 판정하는 스냅샷 근사치라,
+실제 판단에 중요한 돌파 거래량이나 추세 지속 기간은 반영하지 않는다.
 """
 
 import json
@@ -164,6 +168,26 @@ def _volume_stats(bars):
     return volume, rel_volume
 
 
+def classify_stage(price, ma50, ma150, ma200, ma200_rising, week52_high, week52_low):
+    """와인스타인/미너비니류 4단계 사이클 근사 분류.
+
+    정확한 판정에는 몇 주에 걸친 추세 지속성과 돌파 시점의 거래량까지 봐야 하지만,
+    이 함수는 배치 스크리닝 시점의 스냅샷(이평선 배열 + 52주 레인지 내 위치)만으로
+    근사한다:
+    - 2단계(상승): 정배열(가격>50일선>150일선>200일선)이고 200일선도 상승 중.
+    - 4단계(하락): 역배열(가격<50일선<150일선<200일선)이고 200일선도 하락/횡보.
+    - 그 외(이평선이 뒤섞여 방향이 뚜렷하지 않음)는 52주 레인지 내 가격 위치로
+      1단계(저점권 횡보 = 바닥 다지기)/3단계(고점권 횡보 = 천장)를 구분한다.
+      직전 단계 이력이 있으면 더 정확히 구분할 수 있지만 배치 스냅샷에는 없다.
+    """
+    if price > ma50 > ma150 > ma200 and ma200_rising:
+        return 2
+    if price < ma50 < ma150 < ma200 and not ma200_rising:
+        return 4
+    range_pos = (price - week52_low) / (week52_high - week52_low) if week52_high > week52_low else 0.5
+    return 1 if range_pos < 0.5 else 3
+
+
 def evaluate_trend_template(code, name, bars, industry=None, sector=None):
     """bars: 날짜 오름차순 OHLC 리스트. 조건1~7과 RS 계산용 가중수익률을 반환한다
     (RS 백분위 자체는 유니버스 전체를 모아야 계산 가능해 compute_universe_screen에서 처리)."""
@@ -209,6 +233,8 @@ def evaluate_trend_template(code, name, bars, industry=None, sector=None):
         "priceWithin25pctOf52wHigh": week52_high > 0 and price >= week52_high * 0.75,
     }
 
+    stage = classify_stage(price, ma50, ma150, ma200, conditions["ma200Rising"], week52_high, week52_low)
+
     return {
         "code": code, "name": name, "industry": industry, "sector": sector, "price": round(price, 2),
         "ma50": round(ma50, 2), "ma150": round(ma150, 2), "ma200": round(ma200, 2),
@@ -216,6 +242,7 @@ def evaluate_trend_template(code, name, bars, industry=None, sector=None):
         "pctAbove52wLow": round((price / week52_low - 1) * 100, 1) if week52_low > 0 else None,
         "pctBelow52wHigh": round((1 - price / week52_high) * 100, 1) if week52_high > 0 else None,
         "conditions": conditions,
+        "stage": stage,
         "weightedReturn": weighted_return,
         "volume": volume,
         "relVolume": rel_volume,

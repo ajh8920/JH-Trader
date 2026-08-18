@@ -579,6 +579,13 @@ input::placeholder { color: var(--text-muted); }
 .scr-rating-badge.buy { background: var(--green-bg); color: var(--green); }
 .scr-rating-badge.sell { background: var(--red-bg); color: var(--red); }
 .scr-rating-badge.hold { background: var(--blue-bg); color: var(--blue); }
+/* 미너비니 단계 배지: 2단계(상승)=초록, 4단계(하락)=빨강, 1단계(바닥 다지기)=파랑,
+   3단계(천장)=주황 - 기존 상승/하락 색상 관례를 그대로 따른다 */
+.scr-stage-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--bg-tertiary); color: var(--text-secondary); }
+.scr-stage-badge.stage-1 { background: var(--blue-bg); color: var(--blue); }
+.scr-stage-badge.stage-2 { background: var(--green-bg); color: var(--green); }
+.scr-stage-badge.stage-3 { background: var(--amber-bg); color: var(--amber); }
+.scr-stage-badge.stage-4 { background: var(--red-bg); color: var(--red); }
 .scr-detail-star-btn {
   display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px;
   border: 1px solid var(--border-strong); background: var(--bg); color: var(--text-secondary);
