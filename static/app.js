@@ -1251,6 +1251,8 @@ async function removeAlert(id) {
 
 let equityChart = null;
 let priceChartBt = null;
+const equityChartPanState = { cleanup: null };
+const priceChartBtPanState = { cleanup: null };
 
 const BACKTEST_VERSION_DEFAULTS = {
   v2: { splits: 40 },
@@ -1346,17 +1348,25 @@ function renderBacktestResult(d) {
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${t('period')}: ${d.start} – ${d.end}</div>
       </div>
 
-      <div style="font-size:13px;font-weight:600;margin:14px 0 8px;">${t('returnComparison')} (${t('strategy')} vs. ${escapeHtml(tv(d.benchmark.label))})</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 8px;">
+        <div style="font-size:13px;font-weight:600;">${t('returnComparison')} (${t('strategy')} vs. ${escapeHtml(tv(d.benchmark.label))})</div>
+        <button class="btn-secondary" onclick="resetReturnChartZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> ${t('resetZoom')}</button>
+      </div>
       <div class="chart-wrap">
         <canvas id="return-chart" role="img" aria-label="${t('returnComparisonChart')}"></canvas>
       </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">${t('scrollToZoom')}</div>
     </div>
 
     <div class="card">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${escapeHtml(d.ticker)} ${t('priceChartBuySell')}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+        <div style="font-size:13px;font-weight:600;">${escapeHtml(d.ticker)} ${t('priceChartBuySell')}</div>
+        <button class="btn-secondary" onclick="resetPriceChartZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> ${t('resetZoom')}</button>
+      </div>
       <div class="chart-wrap">
         <canvas id="price-chart" role="img" aria-label="${escapeHtml(d.ticker)} ${t('priceChart')}"></canvas>
       </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">${t('scrollToZoom')}</div>
     </div>
 
     <div class="pf-table-wrap">
@@ -1393,36 +1403,56 @@ function drawReturnChart(curve, benchmark, seed) {
   const canvas = document.getElementById('return-chart');
   if (!canvas) return;
   if (equityChart) equityChart.destroy();
+  const dates = curve.map(p => p.date);
   const toPct = v => (v - seed) / seed * 100;
   const datasets = [{
     label: t('infiniteBuying'),
-    data: curve.map(p => toPct(p.value)),
+    data: curve.map((p, i) => ({ x: i, y: toPct(p.value) })),
     borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
     fill: true, pointRadius: 0, borderWidth: 2, tension: 0.15,
   }];
   if (benchmark?.equityCurve?.length) {
     datasets.push({
       label: tv(benchmark.label),
-      data: benchmark.equityCurve.map(p => toPct(p.value)),
+      data: benchmark.equityCurve.map((p, i) => ({ x: i, y: toPct(p.value) })),
       borderColor: '#97C459', backgroundColor: 'transparent',
       fill: false, pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: 0.15,
     });
   }
   equityChart = new Chart(canvas, {
     type: 'line',
-    data: { labels: curve.map(p => p.date), datasets },
+    data: { datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y>=0?'+':''}` + ctx.parsed.y.toFixed(1) + '%' } },
+        tooltip: {
+          callbacks: {
+            title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y>=0?'+':''}` + ctx.parsed.y.toFixed(1) + '%',
+          },
+        },
+        zoom: {
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+          pan: { enabled: false },
+          limits: { x: { min: 0, max: Math.max(dates.length - 1, 0), minRange: 5 } },
+        },
       },
       scales: {
         y: { ticks: { callback: v => (v>=0?'+':'') + v.toFixed(0) + '%' }, grid: { color: 'rgba(128,128,128,0.1)' } },
-        x: { ticks: { maxTicksLimit: 8 }, grid: { display: false } },
+        x: {
+          type: 'linear', min: 0, max: Math.max(dates.length - 1, 0),
+          ticks: { maxTicksLimit: 8, callback: v => dates[Math.round(v)] ?? '' },
+          grid: { display: false },
+        },
       },
     },
   });
+  attachChartPan(equityChart, canvas, equityChartPanState);
+}
+
+function resetReturnChartZoom() {
+  if (equityChart) equityChart.resetZoom();
 }
 
 function drawPriceChart(priceCurve, trades, ticker) {
@@ -1430,20 +1460,21 @@ function drawPriceChart(priceCurve, trades, ticker) {
   if (!canvas) return;
   if (priceChartBt) priceChartBt.destroy();
 
-  const validDates = new Set(priceCurve.map(p => p.date));
+  const dates = priceCurve.map(p => p.date);
+  const dateIndex = new Map(dates.map((d, i) => [d, i]));
   const buyPoints = [], sellPoints = [];
-  trades.forEach(t => {
-    if (!validDates.has(t.date)) return;
-    (t.action === 'buy' ? buyPoints : sellPoints).push({ x: t.date, y: t.price });
+  trades.forEach(t4 => {
+    const idx = dateIndex.get(t4.date);
+    if (idx === undefined) return;
+    (t4.action === 'buy' ? buyPoints : sellPoints).push({ x: idx, y: t4.price });
   });
 
   priceChartBt = new Chart(canvas, {
     type: 'line',
     data: {
-      labels: priceCurve.map(p => p.date),
       datasets: [
         {
-          label: `${ticker} ${t('close')}`, data: priceCurve.map(p => p.close),
+          label: `${ticker} ${t('close')}`, data: priceCurve.map((p, i) => ({ x: i, y: p.close })),
           borderColor: '#888780', backgroundColor: 'transparent',
           fill: false, pointRadius: 0, borderWidth: 1.5, tension: 0.1, order: 3,
         },
@@ -1463,14 +1494,33 @@ function drawPriceChart(priceCurve, trades, ticker) {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: $` + ctx.parsed.y.toFixed(2) } },
+        tooltip: {
+          callbacks: {
+            title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
+            label: ctx => ` ${ctx.dataset.label}: $` + ctx.parsed.y.toFixed(2),
+          },
+        },
+        zoom: {
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+          pan: { enabled: false },
+          limits: { x: { min: 0, max: Math.max(dates.length - 1, 0), minRange: 5 } },
+        },
       },
       scales: {
         y: { ticks: { callback: v => '$' + v.toFixed(0) }, grid: { color: 'rgba(128,128,128,0.1)' } },
-        x: { ticks: { maxTicksLimit: 8 }, grid: { display: false } },
+        x: {
+          type: 'linear', min: 0, max: Math.max(dates.length - 1, 0),
+          ticks: { maxTicksLimit: 8, callback: v => dates[Math.round(v)] ?? '' },
+          grid: { display: false },
+        },
       },
     },
   });
+  attachChartPan(priceChartBt, canvas, priceChartBtPanState);
+}
+
+function resetPriceChartZoom() {
+  if (priceChartBt) priceChartBt.resetZoom();
 }
 
 // ─── 국내(KRX) 단기/스윙 백테스트 ─────────────────────────────────────────────
