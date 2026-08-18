@@ -126,16 +126,20 @@ def _extract_fields(items):
     return result
 
 
-def fetch_company_year(corp_code, bsns_year):
+def fetch_company_year(corp_code, bsns_year, api_key=None):
     """회사 하나·연도 하나의 당기 자본총계/당기순이익/매출액을 조회한다.
 
     연결재무제표(CFS)를 먼저 시도하고, 응답이 없으면 별도재무제표(OFS)로 재시도한다.
+    api_key를 넘기지 않으면 DART_API_KEY 환경변수를 쓴다 - 여러 DART 계정 키를 나눠
+    써서 일일 요청 한도를 여러 배로 늘려 병렬 수집할 때(data_pipeline/fetch_fundamentals_dart.py
+    의 --api-key-env 참고) 호출자가 명시적으로 넘긴다.
     반환: {"total_equity", "net_income", "revenue"(optional), "rcept_no", "fs_div"} 또는
     데이터가 전혀 없으면 None.
     """
+    key = api_key or _api_key()
     for fs_div in ("CFS", "OFS"):
         params = {
-            "crtfc_key": _api_key(),
+            "crtfc_key": key,
             "corp_code": corp_code,
             "bsns_year": str(bsns_year),
             "reprt_code": ANNUAL_REPRT_CODE,

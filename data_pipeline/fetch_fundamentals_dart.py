@@ -26,6 +26,7 @@ DART는 계정(API 키)당 일일 요청 한도(기본 20,000회)가 있고 종�
 
 import argparse
 import json
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -70,15 +71,22 @@ def save_year_df(year, df):
     df.to_parquet(path, engine="pyarrow", compression="zstd", index=False)
 
 
-def run(start_year, end_year, max_requests, limit, flush_every=300):
+def run(start_year, end_year, max_requests, limit, api_key=None, year_shard=0, shard_count=1, flush_every=300):
     ensure_dirs()
     years = list(range(end_year, start_year - 1, -1))  # 최신순
+    if shard_count > 1:
+        # DART 계정(API 키)을 여러 개 나눠 쓸 때, 같은 연도 parquet 파일을 두 프로세스가
+        # 동시에 읽고 써서 서로 덮어쓰는 경쟁 상태를 피하려고 "종목"이 아니라 "연도"
+        # 단위로 나눈다 - 각 프로세스는 자기 몫의 연도 파일만 건드리므로 완전히 독립적이다.
+        # [start::shard_count]로 슬라이스하면 최신순 정렬이 유지된 채 골고루 섞여
+        # 어느 샤드든 최근 연도와 오래된 연도를 비슷한 비율로 담당하게 된다.
+        years = years[year_shard::shard_count]
     stocks = load_kr_stocks()
     if limit:
         stocks = stocks[:limit]
 
     print(f"[fetch_fundamentals_dart] 연도 {years}, 종목 {len(stocks)}개, "
-          f"요청 한도 {max_requests}건")
+          f"요청 한도 {max_requests}건" + (f", 샤드 {year_shard}/{shard_count}" if shard_count > 1 else ""))
 
     corp_map = fetch_corp_code_map()
     checkpoint = load_checkpoint()
@@ -127,7 +135,7 @@ def run(start_year, end_year, max_requests, limit, flush_every=300):
                 stop = True
                 break
 
-            result = fetch_company_year(info["corp_code"], year)
+            result = fetch_company_year(info["corp_code"], year, api_key=api_key)
             requests_used += 1 if result and result.get("fs_div") == "CFS" else 2
 
             if result:
@@ -179,6 +187,19 @@ if __name__ == "__main__":
     parser.add_argument("--end-year", type=int, default=datetime.today().year - 1)
     parser.add_argument("--max-requests", type=int, default=19000, help="이번 실행 최대 요청 수(일일 한도 20,000 이하로)")
     parser.add_argument("--limit", type=int, default=0, help="테스트용: 앞에서 N종목만 처리(0=전체)")
+    parser.add_argument("--api-key-env", default="DART_API_KEY",
+                         help="어떤 .env 변수에서 DART API 키를 읽을지 (여러 DART 계정을 "
+                              "동시에 돌릴 때 DART_API_KEY_2 등으로 지정)")
+    parser.add_argument("--year-shard", type=int, default=0,
+                         help="이 프로세스가 담당할 연도 샤드 번호(0부터 시작) - "
+                              "--shard-count와 함께 써서 여러 API 키로 연도를 나눠 병렬 수집한다")
+    parser.add_argument("--shard-count", type=int, default=1,
+                         help="전체 샤드(=동시에 돌릴 프로세스/API 키) 개수")
     args = parser.parse_args()
 
-    run(args.start_year, args.end_year, args.max_requests, args.limit or None)
+    api_key = os.environ.get(args.api_key_env, "")
+    if not api_key:
+        raise RuntimeError(f"{args.api_key_env} 환경변수가 설정되지 않았습니다")
+
+    run(args.start_year, args.end_year, args.max_requests, args.limit or None,
+        api_key=api_key, year_shard=args.year_shard, shard_count=args.shard_count)
