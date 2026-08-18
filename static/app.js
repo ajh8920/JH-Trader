@@ -133,7 +133,105 @@ const BACKEND_TEXT_KO = {
   'Analyst Rating': '애널리스트 의견', 'Financial Filters': '재무 필터', 'Reset': '초기화', 'Rating': '등급',
   "Some metrics (stability, consensus, EV/EBITDA, etc.) aren't available for KR stocks.":
     '일부 지표(안정성, 컨센서스, EV/EBITDA 등)는 국내 종목에서 제공되지 않습니다.',
+  // 스크리닝 - 미국 종목 업종(industry, GICS 세부업종). us_stocks.json에 이미
+  // 한국어로 들어있는 값도 있고 영어로 남아있는 값도 섞여 있어, 값 그대로
+  // tv()에 통과시켜 여기 등록된 영어 값만 골라 번역한다.
+  'Advertising': '광고', 'Aerospace & Defense': '항공우주 및 국방',
+  'Agricultural & Farm Machinery': '농업 및 농기계', 'Agricultural Products & Services': '농산물 및 농업 서비스',
+  'Air Freight & Logistics': '항공화물 및 물류', 'Apparel Retail': '의류 소매',
+  'Apparel, Accessories & Luxury Goods': '의류·액세서리 및 명품', 'Application Software': '응용 소프트웨어',
+  'Asset Management & Custody Banks': '자산운용 및 수탁은행', 'Automobile Manufacturers': '자동차 제조',
+  'Automotive Parts & Equipment': '자동차 부품 및 장비', 'Automotive Retail': '자동차 소매',
+  'Biotechnology': '생명공학', 'Brewers': '맥주 양조', 'Broadcasting': '방송', 'Broadline Retail': '종합 소매',
+  'Building Products': '건축자재', 'Cable & Satellite': '케이블 및 위성방송',
+  'Cargo Ground Transportation': '화물 육상운송', 'Casinos & Gaming': '카지노 및 게이밍',
+  'Commodity Chemicals': '범용화학', 'Communications Equipment': '통신장비',
+  'Computer & Electronics Retail': '컴퓨터·전자제품 소매', 'Construction & Engineering': '건설 및 엔지니어링',
+  'Construction Machinery & Heavy Transportation Equipment': '건설기계 및 중장비',
+  'Construction Materials': '건설자재', 'Consumer Electronics': '가전제품', 'Consumer Finance': '소비자금융',
+  'Consumer Staples Merchandise Retail': '생활필수품 소매', 'Copper': '구리', 'Data Center REITs': '데이터센터 리츠',
+  'Data Processing & Outsourced Services': '데이터 처리 및 아웃소싱 서비스',
+  'Distillers & Vintners': '증류주 및 와인', 'Distributors': '유통업체', 'Diversified Banks': '종합은행',
+  'Diversified Support Services': '종합 지원서비스', 'Electric Utilities': '전력 유틸리티',
+  'Electrical Components & Equipment': '전기 부품 및 장비', 'Electronic Components': '전자부품',
+  'Electronic Equipment & Instruments': '전자장비 및 계측기',
+  'Electronic Manufacturing Services': '전자제품 위탁생산(EMS)',
+  'Environmental & Facilities Services': '환경 및 시설 서비스',
+  'Fertilizers & Agricultural Chemicals': '비료 및 농업화학', 'Financial Exchanges & Data': '금융거래소 및 데이터',
+  'Food Distributors': '식품 유통', 'Food Retail': '식품 소매', 'Footwear': '신발',
+  'Gas Utilities': '가스 유틸리티', 'Gold': '금(金)', 'Health Care Distributors': '헬스케어 유통',
+  'Health Care Equipment': '헬스케어 장비', 'Health Care Facilities': '헬스케어 시설',
+  'Health Care REITs': '헬스케어 리츠', 'Health Care Services': '헬스케어 서비스',
+  'Health Care Supplies': '헬스케어 소모품', 'Health Care Technology': '헬스케어 기술',
+  'Heavy Electrical Equipment': '중전기기', 'Home Improvement Retail': '홈 인테리어 소매',
+  'Homebuilding': '주택건설', 'Homefurnishing Retail': '가구·인테리어 소매',
+  'Hotel & Resort REITs': '호텔·리조트 리츠', 'Hotels, Resorts & Cruise Lines': '호텔·리조트·크루즈',
+  'Household Products': '생활용품', 'Human Resource & Employment Services': '인적자원 및 고용 서비스',
+  'IT Consulting & Other Services': 'IT 컨설팅 및 기타 서비스',
+  'Independent Power Producers & Energy Traders': '독립발전 및 에너지 트레이딩',
+  'Industrial Conglomerates': '산업 복합기업', 'Industrial Gases': '산업용 가스',
+  'Industrial Machinery & Supplies & Components': '산업용 기계·자재·부품', 'Industrial REITs': '산업용 리츠',
+  'Insurance Brokers': '보험중개', 'Integrated Oil & Gas': '종합 석유·가스',
+  'Integrated Telecommunication Services': '종합 통신서비스',
+  'Interactive Home Entertainment': '인터랙티브 홈 엔터테인먼트(게임)',
+  'Interactive Media & Services': '인터랙티브 미디어 및 서비스',
+  'Internet Services & Infrastructure': '인터넷 서비스 및 인프라',
+  'Investment Banking & Brokerage': '투자은행 및 증권중개', 'Leisure Products': '레저용품',
+  'Life & Health Insurance': '생명·건강보험', 'Life Sciences Tools & Services': '생명과학 도구 및 서비스',
+  'Managed Health Care': '건강관리기구(HMO)', 'Metal, Glass & Plastic Containers': '금속·유리·플라스틱 용기',
+  'Movies & Entertainment': '영화 및 엔터테인먼트', 'Multi-Family Residential REITs': '다세대주택 리츠',
+  'Multi-Sector Holdings': '복합업종 지주회사', 'Multi-Utilities': '복합 유틸리티',
+  'Multi-line Insurance': '종합보험', 'Office REITs': '오피스 리츠',
+  'Oil & Gas Equipment & Services': '석유·가스 장비 및 서비스',
+  'Oil & Gas Exploration & Production': '석유·가스 탐사 및 생산',
+  'Oil & Gas Refining & Marketing': '석유·가스 정제 및 판매',
+  'Oil & Gas Storage & Transportation': '석유·가스 저장 및 운송', 'Other Specialized REITs': '기타 특수 리츠',
+  'Other Specialty Retail': '기타 전문소매', 'Packaged Foods & Meats': '가공식품 및 육류',
+  'Paper & Plastic Packaging Products & Materials': '종이·플라스틱 포장재', 'Passenger Airlines': '여객 항공',
+  'Passenger Ground Transportation': '여객 육상운송', 'Personal Care Products': '퍼스널케어 제품',
+  'Pharmaceuticals': '제약', 'Property & Casualty Insurance': '손해보험', 'Publishing': '출판',
+  'Rail Transportation': '철도운송', 'Real Estate Services': '부동산 서비스', 'Regional Banks': '지역은행',
+  'Reinsurance': '재보험', 'Research & Consulting Services': '리서치 및 컨설팅 서비스',
+  'Restaurants': '외식업', 'Retail REITs': '상업용 리츠', 'Self-Storage REITs': '셀프스토리지 리츠',
+  'Semiconductor Materials & Equipment': '반도체 소재 및 장비', 'Semiconductors': '반도체',
+  'Single-Family Residential REITs': '단독주택 리츠',
+  'Soft Drinks & Non-alcoholic Beverages': '청량음료 및 무알콜음료',
+  'Specialized Consumer Services': '특수 소비자서비스', 'Specialty Chemicals': '특수화학', 'Steel': '철강',
+  'Systems Software': '시스템 소프트웨어', 'Technology Distributors': '기술제품 유통',
+  'Technology Hardware, Storage & Peripherals': '기술 하드웨어·저장장치·주변기기',
+  'Telecom Tower REITs': '통신타워 리츠', 'Timber REITs': '임업 리츠', 'Tobacco': '담배',
+  'Trading Companies & Distributors': '상사 및 유통',
+  'Transaction & Payment Processing Services': '결제 처리 서비스', 'Water Utilities': '상수도 유틸리티',
+  'Wireless Telecommunication Services': '무선통신 서비스',
+  // 백테스트 거래내역 비고(note) - 고정 문구(동적으로 숫자가 끼는 것들은
+  // BACKEND_TEXT_PATTERNS_KO에서 정규식으로 처리한다)
+  'Day 1 close buy': '1일차 종가 매수',
+  'Quarter (1/4) LOC sell': '쿼터(1/4) LOC 매도',
+  'Target return limit sell (3/4)': '목표수익률 지정가 매도(3/4)',
+  'Stop-loss (splits exhausted) MOC sell (1/4)': '손절(분할 소진) MOC 매도(1/4)',
+  'Second-half buy (threshold LOC)': '후반전 매수(임계값 LOC)',
 };
+
+// 거래내역 비고(note)는 종목당 파라미터(수량·이평선 기간·K값 등)가 그대로 문자열에
+// 끼어 있어 BACKEND_TEXT_KO처럼 정확히 일치하는 키로 등록할 수 없다 - 정규식으로
+// 숫자만 뽑아내 한국어 문장에 다시 끼워 넣는다(국내 스윙 kr_swing.py, 무한매수법
+// backtest.py의 note 문구와 1:1로 맞춰뒀다).
+const BACKEND_TEXT_PATTERNS_KO = [
+  [/^Full sell \(quarter (\d+) sh \+ target (\d+) sh\), restart$/, m => `전량 매도(쿼터 ${m[1]}주 + 목표 ${m[2]}주), 재시작`],
+  [/^First-half buy \(avg price (\d+) sh \+ threshold (\d+) sh\)$/, m => `전반전 매수(평단가 ${m[1]}주 + 임계값 ${m[2]}주)`],
+  [/^First-half buy \(avg price (\d+) sh\)$/, m => `전반전 매수(평단가 ${m[1]}주)`],
+  [/^First-half buy \(threshold (\d+) sh\)$/, m => `전반전 매수(임계값 ${m[1]}주)`],
+  [/^Volatility breakout \(K=([\d.]+)\) buy$/, m => `변동성 돌파(K=${m[1]}) 매수`],
+  [/^Stop-loss sell \(([-\d.]+)%\)$/, m => `손절 매도(${m[1]}%)`],
+  [/^Holding period \((\d+)d\) reached, open sell$/, m => `보유기간(${m[1]}일) 도달, 시가 매도`],
+  [/^(\d+)-day high breakout buy$/, m => `${m[1]}일 신고가 돌파 매수`],
+  [/^(\d+)-day low breakdown \(trend end\) sell$/, m => `${m[1]}일 신저가 이탈(추세 종료) 매도`],
+  [/^(\d+)-day low breakdown sell$/, m => `${m[1]}일 신저가 이탈 매도`],
+  [/^MA(\d+) uptrend pullback to MA(\d+), rebound buy$/, m => `MA${m[1]} 상승추세 눌림목(MA${m[2]}), 반등 매수`],
+  [/^Target return \(([-\d.]+)%\) reached, sell$/, m => `목표수익률(${m[1]}%) 도달, 매도`],
+  [/^MA(\d+) breakdown sell$/, m => `MA${m[1]} 이탈 매도`],
+  [/^Trend\(MA(\d+)\)\+pullback\(MA(\d+)\)\+momentum\(K=([\d.]+)\) confirmed buy$/, m => `추세(MA${m[1]})+눌림목(MA${m[2]})+모멘텀(K=${m[3]}) 확인 매수`],
+];
 
 // "{티커} Buy & Hold" 처럼 값 일부에 티커가 끼어 있는 백엔드 문자열은 정확히
 // 일치하는 키를 미리 등록해둘 수 없어 접미사 치환으로 처리한다.
@@ -141,6 +239,10 @@ function tv(value) {
   if (currentLang !== 'ko' || value == null) return value;
   if (BACKEND_TEXT_KO[value] !== undefined) return BACKEND_TEXT_KO[value];
   if (value.endsWith(' Buy & Hold')) return value.slice(0, -' Buy & Hold'.length) + ' 매수후보유';
+  for (const [re, fn] of BACKEND_TEXT_PATTERNS_KO) {
+    const m = value.match(re);
+    if (m) return fn(m);
+  }
   return value;
 }
 
@@ -861,7 +963,7 @@ function renderStockCard(d, el) {
         <div>
           <span class="ticker-badge">${escapeHtml(d.ticker)}</span>
           <div class="stock-name">${escapeHtml(d.name)}</div>
-          ${d.industry ? `<div class="stock-industry">${escapeHtml(d.industry)}</div>` : ''}
+          ${d.industry ? `<div class="stock-industry">${escapeHtml(tv(d.industry))}</div>` : ''}
         </div>
         <div>
           <div class="price-big">$${d.price.toFixed(2)}</div>
@@ -1271,7 +1373,7 @@ function renderBacktestResult(d) {
               <td>${t2.qtyAfter}</td>
               <td>${t2.avgPriceAfter !== null ? '$' + t2.avgPriceAfter.toFixed(2) : '-'}</td>
               <td class="${t2.returnPctAfter >= 0 ? 'positive' : 'negative'}">${t2.returnPctAfter>=0?'+':''}${t2.returnPctAfter.toFixed(1)}%</td>
-              <td style="font-size:12px;color:var(--text-secondary);">${escapeHtml(t2.note)}</td>
+              <td style="font-size:12px;color:var(--text-secondary);">${escapeHtml(tv(t2.note))}</td>
             </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">${t('noTradesInPeriod')}</td></tr>`}
         </tbody>
       </table>
@@ -1615,7 +1717,7 @@ function renderKrSwingResult(d) {
               <td>${formatKrw(t3.price)}</td>
               <td>${t3.qty.toLocaleString('en-US')}</td>
               <td>${t3.pnlPct !== undefined ? `<span class="${t3.pnlPct >= 0 ? 'positive' : 'negative'}">${t3.pnlPct>=0?'+':''}${t3.pnlPct.toFixed(1)}%</span>` : '-'}</td>
-              <td style="font-size:12px;color:var(--text-secondary);">${escapeHtml(t3.note)}</td>
+              <td style="font-size:12px;color:var(--text-secondary);">${escapeHtml(tv(t3.note))}</td>
             </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">${t('noTradesInPeriod')}</td></tr>`}
         </tbody>
       </table>
@@ -2439,7 +2541,7 @@ function renderFilteredScreenerRows() {
                 <span class="scr-name-text">${escapeHtml(r.name)}</span>
               </td>
               <td class="scr-code-cell">${escapeHtml(r.code)}</td>
-              <td title="${escapeHtml(r.industry || '')}">${r.sector ? `<span class="scr-sector-tag">${escapeHtml(r.sector)}</span>` : '-'}</td>
+              <td title="${escapeHtml(tv(r.industry || ''))}">${r.sector ? `<span class="scr-sector-tag">${escapeHtml(tv(r.sector))}</span>` : '-'}</td>
               <td class="scr-num-cell">${fmtPrice(r.price)}</td>
               <td><span class="scr-rs-badge ${rsBadgeClass(r.rsRating)}">${r.rsRating ?? '-'}</span></td>
               <td>
@@ -2800,7 +2902,7 @@ function renderScreenerDetail(d) {
       <span class="scr-detail-name">${escapeHtml(d.name)}</span>
       <span class="scr-detail-code">${escapeHtml(d.code)} · ${d.market === 'KR' ? 'KR' : 'US'}</span>
       <span class="scr-rs-badge ${rsBadgeClass(d.rsRating)}">RS ${d.rsRating ?? '-'}</span>
-      ${d.industry ? `<span class="scr-industry-tag" style="display:inline-block;">${escapeHtml(d.industry)}</span>` : ''}
+      ${d.industry ? `<span class="scr-industry-tag" style="display:inline-block;">${escapeHtml(tv(d.industry))}</span>` : ''}
     </div>
     <div class="scr-detail-price-row">
       <span class="scr-detail-price">${fmt(d.price)}</span>
