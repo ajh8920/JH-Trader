@@ -139,7 +139,11 @@ body {
   min-height: 100vh;
 }
 
-.app { max-width: 1240px; margin: 0 auto; padding: 2rem 1.5rem; }
+/* 예전엔 1240px였는데, 스크리닝 탭만 컬럼이 많아 별도로 더 넓게(94vw, 최대
+   1760px) 뚫어놨었다. 그 결과 탭을 왔다갔다 할 때마다 콘텐츠 좌우 경계 폭
+   자체가 바뀌어(1240px ↔ 1760px) 화면이 흔들리는 것처럼 보이는 문제가
+   있었다. 모든 탭이 같은 폭을 쓰도록 여기서 한 번에 넓혀 통일한다. */
+.app { max-width: 1760px; margin: 0 auto; padding: 2rem 1.5rem; }
 
 /* Header */
 .header { display: flex; align-items: center; gap: 14px; margin-bottom: 2rem; }
@@ -480,13 +484,9 @@ input::placeholder { color: var(--text-muted); }
 @keyframes fadeup { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
 
 /* 스크리닝 탭 */
-/* 컬럼이 많아(섹터/거래량/시가총액/PE 등) .app의 1240px 폭 안에 있으면 항상 가로
-   스크롤이 생긴다 - 이 섹션만 .app 폭 제약을 벗어나 뷰포트 기준으로 더 넓게
-   중앙 정렬한다(부모(.app)가 이미 뷰포트 중앙에 있으므로 margin-left:50% +
-   translateX(-50%)로 자신도 뷰포트 중앙에 맞춘다 - 부모의 max-width와 무관하게 동작). */
-@media (min-width: 900px) {
-  #sec-screener { width: 94vw; max-width: 1760px; margin-left: 50%; transform: translateX(-50%); }
-}
+/* 컬럼이 많아(섹터/거래량/시가총액/PE 등) 예전엔 이 섹션만 .app 폭 제약을 벗어나
+   더 넓게 썼는데, 이제 .app 자체가 넓어져서(1760px) 더 이상 이 섹션만 따로
+   빼낼 필요가 없다 - 탭마다 폭이 달라 화면이 흔들리는 문제도 함께 없어진다. */
 .scr-toolbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
 .scr-market-select { position: relative; flex: 0 0 auto; }
 .scr-market-select select {
