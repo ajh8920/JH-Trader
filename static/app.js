@@ -2365,6 +2365,17 @@ function isTierActive(key, tier) {
   return (cur.min ?? null) === (tier.min ?? null) && (cur.max ?? null) === (tier.max ?? null);
 }
 
+// tier 버튼에 '약함'/'보통' 같은 등급 이름 대신 실제 구간 숫자를 보여준다 -
+// 등급 이름만으로는 기준이 얼마인지 알 수 없다는 피드백에 따른 변경. 언어별로
+// "미만"/"이상"의 어순이 달라 단어 대신 기호(</+/~)로 통일해 언어 무관하게 쓴다.
+function tierRangeLabel(tier) {
+  const min = tier.min ?? null, max = tier.max ?? null;
+  if (min == null && max != null) return `<${max}`;
+  if (min != null && max == null) return `${min}+`;
+  if (min != null && max != null) return `${min}~${max}`;
+  return '';
+}
+
 function countActiveInCat(cat) {
   if (cat.key === 'consensus') return scrActiveRatings.size;
   return cat.items.filter(it => scrActiveFilters[it.key]).length;
@@ -2399,7 +2410,7 @@ function buildFinFilterPanel() {
     const tiersHtml = item.tiers ? `
       <div class="fftiers">
         ${item.tiers.map(tr => `
-          <button type="button" class="fftier ${isTierActive(item.key, tr) ? 'selected' : ''}" onclick="applyFinTier('${item.key}', ${tr.min ?? 'null'}, ${tr.max ?? 'null'})">${tv(tr.label)}</button>
+          <button type="button" class="fftier ${isTierActive(item.key, tr) ? 'selected' : ''}" title="${escapeHtml(tv(tr.label))}" onclick="applyFinTier('${item.key}', ${tr.min ?? 'null'}, ${tr.max ?? 'null'})">${tierRangeLabel(tr)}</button>
         `).join('')}
       </div>` : '';
     return `
