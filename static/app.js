@@ -952,7 +952,10 @@ function renderStockCard(d, el) {
     ` : ''}
   `;
 
-  if (d.targetMean) setTimeout(() => drawChart(d.price, d.targetLow, d.targetMean, d.targetHigh), 80);
+  // 고정 지연(setTimeout) 대신 두 번의 requestAnimationFrame으로 레이아웃/페인트가
+  // 끝난 뒤 그려서, Chart.js의 ResizeObserver가 레이아웃 안정 전에 반복 리사이즈되며
+  // 화면이 흔들리는 문제를 피한다(스크리닝 상세 모달에서 처음 발견된 것과 같은 문제).
+  if (d.targetMean) requestAnimationFrame(() => requestAnimationFrame(() => drawChart(d.price, d.targetLow, d.targetMean, d.targetHigh)));
 }
 
 function getRecLabel(buy, hold, sell, total) {
@@ -1275,10 +1278,13 @@ function renderBacktestResult(d) {
     </div>
   `;
 
-  setTimeout(() => {
+  // 두 번의 requestAnimationFrame으로 레이아웃/페인트가 끝난 뒤 그린다(이유는
+  // 스크리닝 상세 모달의 같은 패턴 주석 참고 - ResizeObserver 반복 리사이즈로
+  // 인한 화면 흔들림 방지).
+  requestAnimationFrame(() => requestAnimationFrame(() => {
     drawReturnChart(d.equityCurve, d.benchmark, d.seed);
     drawPriceChart(d.priceCurve, d.trades, d.ticker);
-  }, 80);
+  }));
 }
 
 function drawReturnChart(curve, benchmark, seed) {
@@ -1616,10 +1622,13 @@ function renderKrSwingResult(d) {
     </div>
   `;
 
-  setTimeout(() => {
+  // 두 번의 requestAnimationFrame으로 레이아웃/페인트가 끝난 뒤 그린다(이유는
+  // 스크리닝 상세 모달의 같은 패턴 주석 참고 - ResizeObserver 반복 리사이즈로
+  // 인한 화면 흔들림 방지).
+  requestAnimationFrame(() => requestAnimationFrame(() => {
     drawKrSwingReturnChart(d.equityCurve, d.benchmark, d.seed);
     drawKrSwingPriceChart(d.priceCurve, d.trades, d.ticker);
-  }, 80);
+  }));
 }
 
 function drawKrSwingReturnChart(curve, benchmark, seed) {
@@ -1920,7 +1929,10 @@ function renderKrQuantBacktestResult(d) {
     </div>
   `;
 
-  setTimeout(() => drawKrQuantChart(d.equityCurve, d.benchmark, d.seed), 80);
+  // 두 번의 requestAnimationFrame으로 레이아웃/페인트가 끝난 뒤 그린다(이유는
+  // 스크리닝 상세 모달의 같은 패턴 주석 참고 - ResizeObserver 반복 리사이즈로
+  // 인한 화면 흔들림 방지).
+  requestAnimationFrame(() => requestAnimationFrame(() => drawKrQuantChart(d.equityCurve, d.benchmark, d.seed)));
 }
 
 function drawKrQuantChart(curve, benchmark, seed) {
@@ -3266,7 +3278,10 @@ function renderLabResult(data) {
   labConditionRows = [{ id: labConditionRowSeq++, ticker: data.series[0] ? data.series[0].ticker : '', metric: 'change', op: 'lte', threshold: -3 }];
   labCombinator = 'AND';
   renderLabConditionRowsUi();
-  setTimeout(() => drawLabChart(getLabDisplayData(), []), 80);
+  // 두 번의 requestAnimationFrame으로 레이아웃/페인트가 끝난 뒤 그린다(이유는
+  // 스크리닝 상세 모달의 같은 패턴 주석 참고 - ResizeObserver 반복 리사이즈로
+  // 인한 화면 흔들림 방지).
+  requestAnimationFrame(() => requestAnimationFrame(() => drawLabChart(getLabDisplayData(), [])));
 }
 
 function renderLabConditionRowsUi() {
