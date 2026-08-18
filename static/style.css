@@ -100,10 +100,17 @@ html, body { overflow-x: hidden; }
    겹쳐 보이는 문제가 있어 이 방식 하나만 사용한다.) */
 html { overflow-y: scroll; }
 
-/* 알약형 + 오버레이 스크롤바: 평소엔 막대를 투명하게 숨겨두고(오버레이 느낌),
-   막대 자체가 차지하는 폭(트랙)은 항상 고정해둬서 계산 중 나타남/사라짐으로
-   폭이 흔들리던 문제(html { overflow-y: scroll } 도입 이유)가 재발하지 않게 한다.
-   border+background-clip으로 막대 주위에 여백을 줘 알약처럼 떠 보이게 만든다. */
+/* 알약형 + 오버레이 스크롤바: 막대 자체가 차지하는 폭(트랙)은 항상 고정해둬서
+   계산 중 나타남/사라짐으로 폭이 흔들리던 문제(html { overflow-y: scroll } 도입
+   이유)가 재발하지 않게 한다. border+background-clip으로 막대 주위에 여백을 줘
+   알약처럼 떠 보이게 만든다.
+   주의: html 전체에 :hover 트리거를 걸면(예전 방식) 페이지 위에서 마우스를 아주
+   조금만 움직여도 매번 style 재계산이 발생한다 - 배율(줌)이 딱 100%가 아닌
+   환경에서는 이 재계산이 반복될 때마다 뷰포트 폭의 서브픽셀 반올림이 흔들려
+   화면 전체가 좌우로 미세하게 떨리는 원인이 됐다(실제로 사용자 화면 녹화로
+   확인함). 그래서 html 스크롤바는 hover로 나타나게 하지 않고 처음부터 옅게
+   항상 보이게 하고, hover로 진하게 반응하는 건 스크롤 영역이 작아 그런 재계산
+   빈도가 문제되지 않는 .pf-table-wrap/.ks-autocomplete-list에만 남긴다. */
 html, .pf-table-wrap, .ks-autocomplete-list {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
@@ -121,7 +128,10 @@ html::-webkit-scrollbar-thumb, .pf-table-wrap::-webkit-scrollbar-thumb,
   background-color: transparent; border-radius: 999px; border: 4px solid transparent;
   background-clip: padding-box; transition: background-color .15s ease;
 }
-html:hover::-webkit-scrollbar-thumb, .pf-table-wrap:hover::-webkit-scrollbar-thumb,
+html::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+}
+.pf-table-wrap:hover::-webkit-scrollbar-thumb,
 .ks-autocomplete-list:hover::-webkit-scrollbar-thumb {
   background-color: var(--border-strong);
 }
