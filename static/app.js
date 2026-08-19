@@ -2687,6 +2687,33 @@ function setupScrFloatingScrollbar() {
   }
   wrap.addEventListener('scroll', update);
   update();
+
+  // 썸을 드래그해서 직접 스크롤을 움직일 수 있게 한다 - 예전엔 pointer-events:none이라
+  // 시각적으로만 표시되고 클릭/드래그가 안 됐다. mousemove/mouseup을 document에 걸되
+  // 드래그가 끝나면 바로 제거한다 - 테이블은 필터가 바뀔 때마다 통째로 다시 그려져
+  // 이 함수가 매번 재호출되므로, 계속 걸어두면 재호출마다 리스너가 쌓인다.
+  thumb.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startScrollTop = wrap.scrollTop;
+    const trackH = wrap.clientHeight - HEAD_H;
+    const maxTop = trackH - thumb.offsetHeight;
+    if (maxTop <= 0) return;
+    thumb.classList.add('dragging');
+
+    function onMove(ev) {
+      const scrollableH = wrap.scrollHeight - wrap.clientHeight;
+      const scrollDelta = (ev.clientY - startY) / maxTop * scrollableH;
+      wrap.scrollTop = Math.max(0, Math.min(scrollableH, startScrollTop + scrollDelta));
+    }
+    function onUp() {
+      thumb.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
 }
 
 let scrPopoverEl = null;

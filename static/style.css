@@ -536,9 +536,12 @@ input::placeholder { color: var(--text-muted); }
 .scr-table-wrap::-webkit-scrollbar { width: 0; height: 0; }
 .scr-scrollbar-thumb {
   position: absolute; top: 38px; right: 3px; width: 6px; border-radius: 999px;
-  background: var(--border-strong); opacity: 0; transition: opacity .15s ease; pointer-events: none;
+  background: var(--border-strong); opacity: 0; transition: opacity .15s ease, background-color .15s ease;
+  cursor: grab;
 }
 .scr-table-outer:hover .scr-scrollbar-thumb { opacity: 1; }
+.scr-scrollbar-thumb:hover { background: var(--text-muted); }
+.scr-scrollbar-thumb.dragging { background: var(--text-muted); cursor: grabbing; opacity: 1; }
 .scr-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 .scr-table thead th {
   position: sticky; top: 0; z-index: 2; font-weight: 600; font-size: 11px; color: var(--text-secondary);
