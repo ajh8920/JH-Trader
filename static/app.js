@@ -430,6 +430,12 @@ const I18N = {
   stage2: { en: 'Stage 2 (Advancing)', ko: '2단계(상승 추세)' },
   stage3: { en: 'Stage 3 (Topping)', ko: '3단계(천장)' },
   stage4: { en: 'Stage 4 (Declining)', ko: '4단계(하락 추세)' },
+  // 단계 필터 버튼 라벨 - "이상(threshold)" 방식이라 종목 자체의 단계 라벨(stage1~4)과는
+  // 별개 문구를 쓴다. 4단계는 최상단이라 "이상"을 붙이지 않는다.
+  stageFilter1: { en: 'Stage 1+', ko: '1단계 이상' },
+  stageFilter2: { en: 'Stage 2+', ko: '2단계 이상' },
+  stageFilter3: { en: 'Stage 3+', ko: '3단계 이상' },
+  stageFilter4: { en: 'Stage 4', ko: '4단계' },
   failedToLoadData: { en: 'Failed to load data', ko: '데이터를 불러오지 못했습니다' },
   notAvailableForKrStocks: { en: 'Not available for KR stocks (no data source)', ko: '국내 종목은 제공되지 않습니다(데이터 소스 없음)' },
   financialMetrics: { en: 'Financial Metrics', ko: '재무 지표' },
@@ -2427,7 +2433,7 @@ function buildFinFilterPanel() {
       <div class="ffrow-head"><span class="fflabel">${tv('Trend Stage')}</span></div>
       <span class="ffchips">
         ${[1, 2, 3, 4].map(n => `
-          <span class="ffchip ${scrActiveStage === n ? 'selected' : ''}" onclick="toggleFinFilterStage(${n})">${t('stage' + n)}</span>
+          <span class="ffchip ${scrActiveStage === n ? 'selected' : ''}" onclick="toggleFinFilterStage(${n})"><i class="ti ti-arrow-up" aria-hidden="true"></i>${t('stageFilter' + n)}</span>
         `).join('')}
       </span>
     </div>
@@ -2553,7 +2559,7 @@ function passesFinFilters(r) {
     if (range.max != null && v > range.max) return false;
   }
   if (scrActiveRatings.size && !scrActiveRatings.has(r.analystRating)) return false;
-  if (scrActiveStage != null && r.stage !== scrActiveStage) return false;
+  if (scrActiveStage != null && (r.stage == null || r.stage < scrActiveStage)) return false;
   return true;
 }
 
