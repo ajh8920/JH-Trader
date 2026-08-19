@@ -2756,6 +2756,8 @@ function hideScrPopover() {
 // ─── 스크리닝 종목 상세 모달 ────────────────────────────────────────────────────
 
 let scrDetailChart = null;
+let scrDetailVolumeChart = null;
+let scrDetailRsiChart = null;
 const scrDetailPanState = { cleanup: null };
 
 async function openScreenerDetail(code) {
@@ -2782,6 +2784,8 @@ function closeScreenerDetail() {
   document.getElementById('scr-detail-overlay').style.display = 'none';
   document.removeEventListener('keydown', scrDetailEscHandler);
   if (scrDetailChart) { scrDetailChart.destroy(); scrDetailChart = null; }
+  if (scrDetailVolumeChart) { scrDetailVolumeChart.destroy(); scrDetailVolumeChart = null; }
+  if (scrDetailRsiChart) { scrDetailRsiChart.destroy(); scrDetailRsiChart = null; }
   if (scrDetailPanState.cleanup) { scrDetailPanState.cleanup(); scrDetailPanState.cleanup = null; }
 }
 
@@ -2792,6 +2796,28 @@ function smaSeries(values, period) {
     sum += values[i];
     if (i >= period) sum -= values[i - period];
     if (i >= period - 1) out[i] = sum / period;
+  }
+  return out;
+}
+
+// 표준 RSI(Wilder's smoothing, 기본 14일). 최초 period일은 단순평균으로 시작하고
+// 그 이후는 지수 가중(1/period)으로 갱신하는 와일더 공식을 그대로 따른다.
+function rsiSeries(closes, period = 14) {
+  const out = new Array(closes.length).fill(null);
+  if (closes.length <= period) return out;
+  let gainSum = 0, lossSum = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gainSum += diff; else lossSum -= diff;
+  }
+  let avgGain = gainSum / period, avgLoss = lossSum / period;
+  out[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    const gain = diff > 0 ? diff : 0, loss = diff < 0 ? -diff : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
   }
   return out;
 }
@@ -3061,6 +3087,13 @@ function renderScreenerDetail(d) {
     </div>
     <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">${t('scrollZoomDragPan')}</div>
 
+    <div class="chart-wrap" style="height:90px;margin-top:10px;">
+      <canvas id="scr-detail-volume-chart" role="img" aria-label="${escapeHtml(d.name)} volume chart"></canvas>
+    </div>
+    <div class="chart-wrap" style="height:110px;margin-top:10px;">
+      <canvas id="scr-detail-rsi-chart" role="img" aria-label="${escapeHtml(d.name)} RSI chart"></canvas>
+    </div>
+
     <div class="scr-detail-section">
       <div class="scr-detail-section-title">${t('trendTemplate8Conditions')}</div>
       <div class="scr-detail-cond-list">${condRows}</div>
@@ -3074,7 +3107,11 @@ function renderScreenerDetail(d) {
   // 캔버스 크기를 감지하는 ResizeObserver가 레이아웃이 안정되는 동안 계속 리사이즈를
   // 반복해 화면이 깜박이는 문제가 있었다. 고정 지연(setTimeout) 대신 두 번의
   // requestAnimationFrame으로 레이아웃/페인트가 실제로 끝난 뒤에 그리도록 한다.
-  requestAnimationFrame(() => requestAnimationFrame(() => drawScreenerDetailChart(d)));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    drawScreenerDetailChart(d);
+    drawScreenerDetailVolumeChart(d);
+    drawScreenerDetailRsiChart(d);
+  }));
 }
 
 function drawScreenerDetailChart(d) {
@@ -3138,6 +3175,101 @@ function drawScreenerDetailChart(d) {
     },
   });
   attachChartPan(scrDetailChart, canvas, scrDetailPanState);
+}
+
+function drawScreenerDetailVolumeChart(d) {
+  const canvas = document.getElementById('scr-detail-volume-chart');
+  if (!canvas || !d.priceCurve?.length) return;
+  if (scrDetailVolumeChart) scrDetailVolumeChart.destroy();
+
+  const dates = d.priceCurve.map(p => p.date);
+  const closes = d.priceCurve.map(p => p.close);
+  const volumes = d.priceCurve.map(p => p.volume);
+  const fmtVol = v => {
+    if (v == null) return '-';
+    if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
+    if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+    if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+    return `${Math.round(v).toLocaleString('en-US')}`;
+  };
+  // 전일 대비 상승/하락으로 막대 색을 나눈다(첫 캔들은 비교 대상이 없어 중립색).
+  const colors = closes.map((c, i) => i === 0 || closes[i - 1] == null || c == null ? 'rgba(136,135,128,0.6)'
+    : c >= closes[i - 1] ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.6)');
+
+  scrDetailVolumeChart = new Chart(canvas, {
+    type: 'bar',
+    data: { datasets: [{ label: t('volume'), data: volumes.map((v, i) => ({ x: i, y: v })), backgroundColor: colors, barPercentage: 1, categoryPercentage: 1 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
+            label: ctx => ctx.parsed.y == null ? undefined : ` ${t('volume')}: ${fmtVol(ctx.parsed.y)}`,
+          },
+        },
+      },
+      scales: {
+        y: { ticks: { maxTicksLimit: 3, callback: v => fmtVol(Number(v)) }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        x: {
+          type: 'linear', min: 0, max: Math.max(dates.length - 1, 0),
+          ticks: { display: false }, grid: { display: false },
+        },
+      },
+    },
+  });
+}
+
+function drawScreenerDetailRsiChart(d) {
+  const canvas = document.getElementById('scr-detail-rsi-chart');
+  if (!canvas || !d.priceCurve?.length) return;
+  if (scrDetailRsiChart) scrDetailRsiChart.destroy();
+
+  const dates = d.priceCurve.map(p => p.date);
+  const closes = d.priceCurve.map(p => p.close);
+  const rsi = rsiSeries(closes, 14);
+  const n = dates.length;
+  // 30/70 기준선은 별도 플러그인 없이 처음/끝 두 점만 있는 평평한 선 데이터셋으로 그린다.
+  const flatLine = (y, color) => ({
+    data: [{ x: 0, y }, { x: n - 1, y }], borderColor: color, borderWidth: 1, borderDash: [4, 4],
+    pointRadius: 0, fill: false, label: `RSI ${y}`,
+  });
+
+  scrDetailRsiChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      datasets: [
+        { label: 'RSI(14)', data: rsi.map((v, i) => ({ x: i, y: v })), borderColor: '#a855f7', backgroundColor: 'transparent',
+          fill: false, pointRadius: 0, borderWidth: 1.3, tension: 0.1, spanGaps: false },
+        flatLine(70, 'rgba(239,68,68,0.45)'),
+        flatLine(30, 'rgba(34,197,94,0.45)'),
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          filter: ctx => ctx.dataset.label === 'RSI(14)',
+          callbacks: {
+            title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
+            label: ctx => ctx.parsed.y == null ? undefined : ` RSI(14): ${Number(ctx.parsed.y).toFixed(1)}`,
+          },
+        },
+      },
+      scales: {
+        y: { min: 0, max: 100, ticks: { stepSize: 50, callback: v => v }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        x: {
+          type: 'linear', min: 0, max: Math.max(n - 1, 0),
+          ticks: { maxTicksLimit: 8, callback: v => dates[Math.round(v)] ?? '' },
+          grid: { display: false },
+        },
+      },
+    },
+  });
 }
 
 // ─── 무한매수법 실전 현황 ────────────────────────────────────────────────────

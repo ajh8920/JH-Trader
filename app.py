@@ -1092,7 +1092,7 @@ def screener_detail():
         "pctAbove52wLow": row.pct_above_52w_low, "pctBelow52wHigh": row.pct_below_52w_high,
         "rsRating": row.rs_rating, "passCount": row.pass_count, "allPass": row.all_pass, "stage": row.stage,
         "conditions": json.loads(row.conditions_json) if row.conditions_json else {},
-        "priceCurve": [{"date": b["date"], "close": b["close"]} for b in bars],
+        "priceCurve": [{"date": b["date"], "close": b["close"], "volume": b.get("volume")} for b in bars],
         "volume": row.volume, "relVolume": row.rel_volume,
         "marketCap": row.market_cap, "peRatio": row.pe_ratio, "epsGrowth": row.eps_growth,
         "dividendYield": row.dividend_yield, "analystRating": row.analyst_rating,

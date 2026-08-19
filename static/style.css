@@ -601,11 +601,17 @@ input::placeholder { color: var(--text-muted); }
 .scr-modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1000;
   display: flex; align-items: flex-start; justify-content: center; padding: 5vh 20px;
+  /* .app에 적용한 것과 같은 격리(화면 흔들림 방어) - 이 모달은 .app 바깥
+     document.body 바로 아래에 있어(index.html) .app의 contain이 적용되지
+     않았다. 데이터 로딩 중 마우스를 움직이면 모달도 좌우로 흔들린다는
+     보고에 따라 동일하게 격리한다. */
+  contain: layout style;
 }
 .scr-modal {
   background: var(--bg); border-radius: var(--radius-lg); border: 1px solid var(--border-strong);
   box-shadow: 0 20px 50px rgba(0,0,0,0.4); width: 100%; max-width: 840px; max-height: 88vh;
   overflow-y: auto; position: relative; padding: 26px;
+  transform: translateZ(0);
 }
 .scr-modal-close {
   position: absolute; top: 14px; right: 14px; background: var(--bg-tertiary); border: none;
