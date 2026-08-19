@@ -1024,7 +1024,12 @@ def screener_results():
     q = TrendScreenCache.query.filter_by(market=market)
     if only_pass:
         q = q.filter_by(all_pass=True)
-    rows = q.order_by(TrendScreenCache.pass_count.desc(), TrendScreenCache.rs_rating.desc()).limit(300).all()
+    # 예전에는 300개 제한이 있었다 - "8개 조건 모두 충족" 종목만 보여주던 시절엔
+    # 국내 기준 보통 100개 미만이라 실제로 걸릴 일이 없었지만, 기본값이 전체 조회로
+    # 바뀌면서 조건을 적게 만족하는 종목(특히 4단계·하락 추세)이 정렬 순서상 밀려
+    # 300개 안에 아예 들어오지 못하는 문제가 생겨 제거했다. 유니버스 전체(국내
+    # 최대 2,536 / 미국 최대 592)를 그대로 반환한다.
+    rows = q.order_by(TrendScreenCache.pass_count.desc(), TrendScreenCache.rs_rating.desc()).all()
 
     if not rows and TrendScreenCache.query.filter_by(market=market).count() == 0:
         return jsonify({
