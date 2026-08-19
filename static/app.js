@@ -2363,7 +2363,7 @@ const FIN_FILTER_CATEGORIES = [
 
 let scrActiveFilters = {}; // { [itemKey]: {min, max} }
 let scrActiveRatings = new Set(); // 컨센서스(투자의견) 다중 선택
-let scrActiveStages = new Set(); // 미너비니 단계(1~4) 다중 선택
+let scrActiveStage = null; // 미너비니 단계(1~4) 단일 선택 - 종목당 단계가 하나뿐이라 다중선택은 의미가 없어 단일 선택으로 둔다
 let scrFilterActiveCat = FIN_FILTER_CATEGORIES[0].key; // 지금 하단에 펼쳐진 카테고리
 
 function absScale() { return scrIsUS ? 1e6 : 1e8; }
@@ -2395,7 +2395,7 @@ function tierRangeLabel(tier) {
 
 function countActiveInCat(cat) {
   if (cat.key === 'consensus') return scrActiveRatings.size;
-  if (cat.key === 'stage') return scrActiveStages.size;
+  if (cat.key === 'stage') return scrActiveStage != null ? 1 : 0;
   return cat.items.filter(it => scrActiveFilters[it.key]).length;
 }
 
@@ -2427,7 +2427,7 @@ function buildFinFilterPanel() {
       <div class="ffrow-head"><span class="fflabel">${tv('Trend Stage')}</span></div>
       <span class="ffchips">
         ${[1, 2, 3, 4].map(n => `
-          <span class="ffchip ${scrActiveStages.has(n) ? 'selected' : ''}" onclick="toggleFinFilterStage(${n})">${t('stage' + n)}</span>
+          <span class="ffchip ${scrActiveStage === n ? 'selected' : ''}" onclick="toggleFinFilterStage(${n})">${t('stage' + n)}</span>
         `).join('')}
       </span>
     </div>
@@ -2518,8 +2518,7 @@ function toggleFinFilterRating(label) {
 }
 
 function toggleFinFilterStage(n) {
-  if (scrActiveStages.has(n)) scrActiveStages.delete(n);
-  else scrActiveStages.add(n);
+  scrActiveStage = scrActiveStage === n ? null : n;
   buildFinFilterPanel();
   updateFinFilterCount();
   renderFilteredScreenerRows();
@@ -2528,14 +2527,14 @@ function toggleFinFilterStage(n) {
 function resetFinFilters() {
   scrActiveFilters = {};
   scrActiveRatings = new Set();
-  scrActiveStages = new Set();
+  scrActiveStage = null;
   buildFinFilterPanel();
   updateFinFilterCount();
   renderFilteredScreenerRows();
 }
 
 function updateFinFilterCount() {
-  const n = Object.keys(scrActiveFilters).length + (scrActiveRatings.size ? 1 : 0) + (scrActiveStages.size ? 1 : 0);
+  const n = Object.keys(scrActiveFilters).length + (scrActiveRatings.size ? 1 : 0) + (scrActiveStage != null ? 1 : 0);
   const badge = document.getElementById('scr-filter-count');
   if (!badge) return;
   badge.textContent = n;
@@ -2554,7 +2553,7 @@ function passesFinFilters(r) {
     if (range.max != null && v > range.max) return false;
   }
   if (scrActiveRatings.size && !scrActiveRatings.has(r.analystRating)) return false;
-  if (scrActiveStages.size && !scrActiveStages.has(r.stage)) return false;
+  if (scrActiveStage != null && r.stage !== scrActiveStage) return false;
   return true;
 }
 
