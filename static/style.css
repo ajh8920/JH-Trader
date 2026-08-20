@@ -457,6 +457,10 @@ input[type="date"]:hover { border-color: var(--border-strong); }
 .add-form { display: flex; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
 .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 1rem; }
 .pf-table-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow-x: auto; box-shadow: var(--shadow); margin-bottom: 1rem; }
+/* 매매 내역처럼 행이 수백~수천 개까지 늘어날 수 있는 표는 페이지 전체가
+   한없이 길어지는 대신, 이 안에서만 세로 스크롤되게 높이를 제한한다. */
+.pf-table-wrap-scroll { max-height: 520px; overflow-y: auto; }
+.pf-table-wrap-scroll thead th { position: sticky; top: 0; z-index: 1; }
 .pf-table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 13px; }
 .pf-table th { font-weight: 600; font-size: 11px; color: var(--text-secondary); text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--bg-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
 .pf-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }

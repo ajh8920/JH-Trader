@@ -3518,7 +3518,7 @@ async function loadMinerviniV2ReferenceTrades() {
     }[r] || r);
     const fmtPrice = v => `₩${Math.round(v).toLocaleString('en-US')}`;
     body.innerHTML = `
-      <div class="pf-table-wrap">
+      <div class="pf-table-wrap pf-table-wrap-scroll">
         <table class="pf-table">
           <thead><tr>
             <th>${t('name')}</th><th>${t('code')}</th>
@@ -3631,7 +3631,7 @@ function renderScreeningBacktestResult(d) {
     <div class="card">
       <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('tradeLog')} (${d.tradeCount})</div>
       ${d.trades.length ? `
-      <div class="pf-table-wrap">
+      <div class="pf-table-wrap pf-table-wrap-scroll">
         <table class="pf-table">
           <thead><tr>
             <th>${t('name')}</th><th>${t('code')}</th>
@@ -3821,7 +3821,7 @@ function renderPaperTradingDashboard(el, d) {
     <div class="card">
       <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('tradeLog')} (${d.trades.length})</div>
       ${d.trades.length ? `
-      <div class="pf-table-wrap">
+      <div class="pf-table-wrap pf-table-wrap-scroll">
         <table class="pf-table">
           <thead><tr>
             <th>${t('name')}</th><th>${t('code')}</th>
