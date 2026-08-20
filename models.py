@@ -190,6 +190,24 @@ class QuantBacktestJob(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class ScreeningBacktestJob(db.Model):
+    """스크리닝(트렌드 템플릿/미너비니 단계) 전략의 과거 구간 워크포워드 백테스트.
+    QuantBacktestJob과 같은 이유(전체 유니버스를 여러 시점에 재평가하느라 몇 분~
+    몇십 분 걸릴 수 있어 Render 요청 타임아웃 안에 못 끝난다)로 백그라운드
+    스레드 + 폴링 패턴을 그대로 따른다.
+    """
+
+    __tablename__ = "screening_backtest_jobs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    status = db.Column(db.String(10), nullable=False, default="pending")  # pending|running|done|error
+    result_json = db.Column(db.Text)
+    error = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class KrPriceCache(db.Model):
     """국내 퀀트 스크리닝용 현재가 캐시. 프로세스 메모리가 아니라 DB에 두는 이유:
     gunicorn 워커가 여러 개면 각자 별도 프로세스라 메모리 캐시가 서로 안 보여서,

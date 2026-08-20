@@ -406,6 +406,33 @@ const I18N = {
   noTradeHistory: { en: 'No trade history', ko: '거래 내역이 없습니다' },
   quantStrategy: { en: 'Quant Strategy', ko: '퀀트 전략' },
 
+  // 스크리닝 백테스트
+  tabScreenBacktest: { en: 'Screen Backtest', ko: '스크리닝 백테스트' },
+  market: { en: 'Market', ko: '시장' },
+  startDate: { en: 'Start Date', ko: '시작일' },
+  endDate: { en: 'End Date', ko: '종료일' },
+  stopLossPct: { en: 'Stop-Loss %', ko: '손절률(%)' },
+  maxPositions: { en: 'Max Positions', ko: '최대 보유 종목 수' },
+  runBacktest: { en: 'Run Backtest', ko: '백테스트 실행' },
+  runningScreeningBacktest: {
+    en: 'Running screening backtest... (re-evaluating the universe weekly, may take several to tens of minutes)',
+    ko: '스크리닝 백테스트 실행 중... (주 단위로 전체 유니버스를 재평가하며 수 분~수십 분 소요될 수 있습니다)',
+  },
+  stopLoss: { en: 'Stop-Loss', ko: '손절' },
+  conditionExit: { en: 'Condition Exit', ko: '조건 이탈' },
+  periodEnd: { en: 'Period End', ko: '기간 종료' },
+  tradeLog: { en: 'Trade Log', ko: '매매 내역' },
+  buyDate: { en: 'Buy Date', ko: '매수일' },
+  buyPrice: { en: 'Buy Price', ko: '매수가' },
+  sellDate: { en: 'Sell Date', ko: '매도일' },
+  sellPrice: { en: 'Sell Price', ko: '매도가' },
+  returnPct: { en: 'Return', ko: '수익률' },
+  exitReason: { en: 'Exit Reason', ko: '매도 사유' },
+  checkDateRange: { en: 'Please check the date range', ko: '기간을 확인하세요' },
+  checkCapital: { en: 'Please check the capital', ko: '시드를 확인하세요' },
+  errorDuringBacktest: { en: 'An error occurred during the backtest', ko: '백테스트 중 오류가 발생했습니다' },
+  backtestTakingLong: { en: 'The backtest is taking longer than expected. Please try again shortly.', ko: '백테스트가 예상보다 오래 걸리고 있습니다. 잠시 후 다시 시도해주세요.' },
+
   // 스크리닝
   addedToWatchlist: { en: 'Added to Watchlist', ko: '관심종목에 추가됨' },
   addToWatchlist: { en: 'Add to Watchlist', ko: '관심종목에 추가' },
@@ -695,6 +722,7 @@ function switchTab(name) {
   if (name === 'krswing') initKrSwingDates();
   if (name === 'krquant') initKrQuantTab();
   if (name === 'screener') initScreenerTab();
+  if (name === 'screenbt') initScreeningBacktestTab();
 }
 
 document.addEventListener('DOMContentLoaded', () => loadMacro());
@@ -3333,6 +3361,178 @@ function drawScreenerDetailChart(d) {
     plugins: [scrDetailMultiPanelPlugin],
   });
   attachChartPan(scrDetailChart, canvas, scrDetailPanState);
+}
+
+// ─── 스크리닝 백테스트 ────────────────────────────────────────────────────────
+
+function initScreeningBacktestTab() {
+  const startEl = document.getElementById('sbt-start');
+  const endEl = document.getElementById('sbt-end');
+  if (!endEl.value) endEl.value = new Date().toISOString().slice(0, 10);
+  if (!startEl.value) {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 1);
+    startEl.value = d.toISOString().slice(0, 10);
+  }
+}
+
+async function runScreeningBacktest() {
+  const market = document.getElementById('sbt-market').value;
+  const strategy = document.getElementById('sbt-strategy').value;
+  const start = document.getElementById('sbt-start').value;
+  const end = document.getElementById('sbt-end').value;
+  const stopLossPct = parseFloat(document.getElementById('sbt-stoploss').value);
+  const maxPositions = parseInt(document.getElementById('sbt-maxpos').value, 10);
+  const seed = parseFloat(document.getElementById('sbt-seed').value);
+  const el = document.getElementById('screenbt-result');
+
+  if (!start || !end || start >= end) { alert(t('checkDateRange') || '기간을 확인하세요'); return; }
+  if (!seed || seed <= 0) { alert(t('checkCapital') || '시드를 확인하세요'); return; }
+
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('runningScreeningBacktest')}</div>`;
+  try {
+    const { jobId } = await api('POST', '/api/screening-backtest', {
+      market, strategy, start, end, stopLossPct, maxPositions, seed,
+    });
+    await pollScreeningBacktestJob(jobId, el);
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
+  }
+}
+
+async function pollScreeningBacktestJob(jobId, el) {
+  // 국내 전체 유니버스 기준 가격 히스토리를 한 번 받는 데만 로컬 실측 약 9분,
+  // 여기에 재평가 시점 수(주 단위)만큼의 계산이 더 붙는다 - 국내 퀀트 백테스트보다
+  // 오래 걸릴 수 있어 폴링 한도를 넉넉히 40분으로 둔다.
+  const maxAttempts = 480;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    await new Promise(r => setTimeout(r, 5000));
+    let data;
+    try {
+      data = await api('GET', `/api/screening-backtest/${jobId}`);
+    } catch (e) {
+      el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
+      return;
+    }
+    if (data.status === 'done') {
+      renderScreeningBacktestResult(data.result);
+      return;
+    }
+    if (data.status === 'error') {
+      el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(data.error || t('errorDuringBacktest') || '백테스트 중 오류가 발생했습니다')}</span></div>`;
+      return;
+    }
+  }
+  el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${t('backtestTakingLong') || '백테스트가 예상보다 오래 걸리고 있습니다. 잠시 후 다시 시도해주세요.'}</span></div>`;
+}
+
+function renderScreeningBacktestResult(d) {
+  const el = document.getElementById('screenbt-result');
+  const pnlCls = d.returnPct >= 0 ? 'positive' : 'negative';
+  const isUS = d.market === 'US';
+  const fmtCap = v => isUS ? `$${Number(v).toLocaleString('en-US')}` : formatKrw(v);
+  const fmtPrice = v => isUS ? `$${Number(v).toFixed(2)}` : `₩${Math.round(v).toLocaleString('en-US')}`;
+  const exitReasonLabel = r => ({ stopLoss: t('stopLoss'), conditionExit: t('conditionExit'), periodEnd: t('periodEnd') }[r] || r);
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="bt-summary-grid">
+        <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">${fmtCap(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('finalValue')}</div><div class="meta-value">${fmtCap(d.finalValue)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('totalReturn')}</div><div class="meta-value ${pnlCls}">${d.returnPct>=0?'+':''}${d.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('winRate')}</div><div class="meta-value">${d.winRatePct != null ? d.winRatePct.toFixed(1) + '%' : '-'} (${d.winCount}/${d.tradeCount})</div></div>
+        <div class="meta-item"><div class="meta-label">${t('avgHoldDays')}</div><div class="meta-value">${d.avgHoldDays ?? '-'}</div></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 8px;">
+        <div style="font-size:13px;font-weight:600;">${t('equityCurve')} (${escapeHtml(d.strategyLabel)})</div>
+        <button class="btn-secondary" onclick="resetScreeningBacktestZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> ${t('resetZoom')}</button>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="screenbt-chart" role="img" aria-label="Screening backtest equity curve"></canvas>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">${t('scrollZoomDragPan')}</div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('tradeLog')} (${d.tradeCount})</div>
+      ${d.trades.length ? `
+      <div class="pf-table-wrap">
+        <table class="pf-table">
+          <thead><tr>
+            <th>${t('name')}</th><th>${t('code')}</th>
+            <th style="text-align:right;">${t('buyDate')}</th><th style="text-align:right;">${t('buyPrice')}</th>
+            <th style="text-align:right;">${t('sellDate')}</th><th style="text-align:right;">${t('sellPrice')}</th>
+            <th style="text-align:right;">${t('returnPct')}</th><th>${t('exitReason')}</th>
+          </tr></thead>
+          <tbody>
+            ${d.trades.map(tr => `
+              <tr>
+                <td>${escapeHtml(tr.name)}</td><td>${escapeHtml(tr.code)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.entryDate)}</td><td style="text-align:right;">${fmtPrice(tr.entryPrice)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.exitDate)}</td><td style="text-align:right;">${fmtPrice(tr.exitPrice)}</td>
+                <td style="text-align:right;" class="${tr.pnlPct >= 0 ? 'positive' : 'negative'}">${tr.pnlPct>=0?'+':''}${tr.pnlPct.toFixed(1)}%</td>
+                <td>${exitReasonLabel(tr.exitReason)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : `<div class="empty-state" style="padding:1.5rem;"><p>${t('noStocksSelected')}</p></div>`}
+    </div>`;
+
+  requestAnimationFrame(() => requestAnimationFrame(() => drawScreeningBacktestChart(d.equityCurve, d.seed)));
+}
+
+let screenbtChart = null;
+const screenbtPanState = { cleanup: null };
+
+function drawScreeningBacktestChart(curve, seed) {
+  const canvas = document.getElementById('screenbt-chart');
+  if (!canvas || !curve?.length) return;
+  if (screenbtChart) screenbtChart.destroy();
+  const dates = curve.map(p => p.date);
+  const toPct = v => (v - seed) / seed * 100;
+
+  screenbtChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: t('strategy'),
+        data: curve.map((p, i) => ({ x: i, y: toPct(p.value) })),
+        borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
+        fill: true, pointRadius: 0, borderWidth: 2, tension: 0.1,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
+            label: ctx => ` ${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(1)}%`,
+          },
+        },
+        zoom: {
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+          pan: { enabled: false },
+          limits: { x: { min: 0, max: Math.max(dates.length - 1, 0), minRange: 1 } },
+        },
+      },
+      scales: {
+        y: { ticks: { callback: v => (v >= 0 ? '+' : '') + v.toFixed(0) + '%' }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        x: {
+          type: 'linear', min: 0, max: Math.max(dates.length - 1, 0),
+          ticks: { maxTicksLimit: 8, callback: v => dates[Math.round(v)] ?? '' },
+          grid: { display: false },
+        },
+      },
+    },
+  });
+  attachChartPan(screenbtChart, canvas, screenbtPanState);
+}
+
+function resetScreeningBacktestZoom() {
+  if (screenbtChart) screenbtChart.resetZoom();
 }
 
 // ─── 무한매수법 실전 현황 ────────────────────────────────────────────────────

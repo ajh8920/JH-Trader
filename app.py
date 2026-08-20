@@ -1231,6 +1231,109 @@ def remove_screener_watchlist():
     return jsonify({"ok": True})
 
 
+# 스크리닝 백테스트는 여러 재평가 시점마다 전체 유니버스를 다시 계산해야 해서
+# (국내 기준 편도 몇 분) 국내 퀀트 백테스트와 똑같은 이유로 Render 요청
+# 타임아웃(30초) 안에 못 끝난다 - job을 만들고 즉시 id를 반환한 뒤 백그라운드
+# 스레드에서 계산하고, 프런트는 GET으로 폴링한다.
+
+def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, stop_loss_pct, max_positions, seed):
+    import screening_backtest as sb
+    from models import ScreeningBacktestJob
+
+    with app.app_context():
+        job = db.session.get(ScreeningBacktestJob, job_id)
+        if not job:
+            return
+        job.status = "running"
+        db.session.commit()
+        try:
+            result = sb.run_screening_backtest(
+                market, strategy, start_date, end_date,
+                stop_loss_pct=stop_loss_pct, max_positions=max_positions, seed=seed,
+            )
+        except Exception as e:
+            app.logger.exception("스크리닝 백테스트 작업 실패: job=%s", job_id)
+            job = db.session.get(ScreeningBacktestJob, job_id)
+            job.status = "error"
+            job.error = str(e)
+            db.session.commit()
+            return
+
+        job = db.session.get(ScreeningBacktestJob, job_id)
+        if "error" in result:
+            job.status = "error"
+            job.error = result["error"]
+        else:
+            job.status = "done"
+            job.result_json = json.dumps(sanitize_json(result))
+        db.session.commit()
+
+
+@app.route("/api/screening-backtest", methods=["POST"])
+@login_required
+@limiter.limit("5 per minute")
+def create_screening_backtest():
+    from models import ScreeningBacktestJob
+
+    body = request.json or {}
+    market = str(body.get("market", "KR")).upper()
+    strategy = str(body.get("strategy", "trendTemplate"))
+    start_date = str(body.get("start", ""))
+    end_date = str(body.get("end", ""))
+    try:
+        stop_loss_pct = float(body.get("stopLossPct", -8))
+        max_positions = int(body.get("maxPositions", 10))
+        seed = float(body.get("seed", 10_000_000))
+    except (TypeError, ValueError):
+        return jsonify({"error": "입력값이 올바르지 않습니다"}), 400
+
+    if market not in ("KR", "US"):
+        return jsonify({"error": "market은 KR 또는 US여야 합니다"}), 400
+    try:
+        start_d = datetime.fromisoformat(start_date)
+        end_d = datetime.fromisoformat(end_date)
+    except ValueError:
+        return jsonify({"error": "기간이 올바르지 않습니다"}), 400
+    if start_d >= end_d:
+        return jsonify({"error": "시작일이 종료일보다 앞서야 합니다"}), 400
+    if (end_d - start_d).days > 365 * 5:
+        return jsonify({"error": "기간은 최대 5년까지 가능합니다"}), 400
+    if seed <= 0:
+        return jsonify({"error": "시드는 0보다 커야 합니다"}), 400
+    if not (1 <= max_positions <= 30):
+        return jsonify({"error": "최대 보유 종목 수는 1~30 사이여야 합니다"}), 400
+    if not (-50 <= stop_loss_pct < 0):
+        return jsonify({"error": "손절률은 -50~0 사이의 음수여야 합니다"}), 400
+
+    job = ScreeningBacktestJob(user_id=current_user.id, status="pending")
+    db.session.add(job)
+    db.session.commit()
+
+    threading.Thread(
+        target=_run_screening_backtest_job,
+        args=(job.id, market, strategy, start_date, end_date, stop_loss_pct, max_positions, seed),
+        daemon=True,
+    ).start()
+
+    return jsonify({"jobId": job.id})
+
+
+@app.route("/api/screening-backtest/<int:job_id>")
+@login_required
+def screening_backtest_status(job_id):
+    from models import ScreeningBacktestJob
+
+    job = ScreeningBacktestJob.query.filter_by(id=job_id, user_id=current_user.id).first()
+    if not job:
+        return jsonify({"error": "작업을 찾을 수 없습니다"}), 404
+
+    if job.status == "done":
+        return jsonify({"status": "done", "result": json.loads(job.result_json)})
+    if job.status == "error":
+        return jsonify({"status": "error", "error": job.error})
+    return jsonify({"status": job.status})
+
+
 # ─── 무한매수법 실전 현황 API ─────────────────────────────────────────────────
 
 @app.route("/api/infinite/positions", methods=["GET"])

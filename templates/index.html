@@ -83,6 +83,7 @@
       <button class="tab" data-tab="krquant" onclick="switchTab('krquant')" role="tab"><i class="ti ti-filter" aria-hidden="true"></i> <span data-i18n="tabKrQuant">KR Quant</span></button>
       {% endif %}
       <button class="tab" data-tab="screener" onclick="switchTab('screener')" role="tab"><i class="ti ti-trending-up" aria-hidden="true"></i> <span data-i18n="tabScreener">Screener</span></button>
+      <button class="tab" data-tab="screenbt" onclick="switchTab('screenbt')" role="tab"><i class="ti ti-replace" aria-hidden="true"></i> <span data-i18n="tabScreenBacktest">Screen Backtest</span></button>
     </nav>
 
     <main>
@@ -502,6 +503,63 @@
             </span>
           </div>
         </div>
+      </section>
+
+      <!-- 스크리닝 백테스트: 트렌드 템플릿/단계 조건으로 과거 구간을 워크포워드 시뮬레이션 -->
+      <section id="sec-screenbt" class="section">
+        <div class="card">
+          <div class="bt-form-grid">
+            <div class="bt-field">
+              <label for="sbt-market" data-i18n="market">Market</label>
+              <select id="sbt-market">
+                <option value="KR">🇰🇷 Korea · KOSPI/KOSDAQ</option>
+                <option value="US">🇺🇸 US · S&amp;P 500 + Nasdaq</option>
+              </select>
+            </div>
+            <div class="bt-field">
+              <label for="sbt-strategy" data-i18n="strategy">Strategy</label>
+              <select id="sbt-strategy">
+                <option value="trendTemplate" data-i18n="trendTemplate8Conditions">Trend Template 8/8</option>
+                <option value="stage1" data-i18n="stageFilter1">Stage 1+</option>
+                <option value="stage2" data-i18n="stageFilter2">Stage 2+</option>
+                <option value="stage3" data-i18n="stageFilter3">Stage 3+</option>
+                <option value="stage4" data-i18n="stageFilter4">Stage 4</option>
+              </select>
+            </div>
+            <div class="bt-field">
+              <label for="sbt-start" data-i18n="startDate">Start Date</label>
+              <input type="date" id="sbt-start" />
+            </div>
+            <div class="bt-field">
+              <label for="sbt-end" data-i18n="endDate">End Date</label>
+              <input type="date" id="sbt-end" />
+            </div>
+            <div class="bt-field">
+              <label for="sbt-stoploss" data-i18n="stopLossPct">Stop-Loss %</label>
+              <input type="number" id="sbt-stoploss" value="-8" step="0.5" max="-1" />
+            </div>
+            <div class="bt-field">
+              <label for="sbt-maxpos" data-i18n="maxPositions">Max Positions</label>
+              <input type="number" id="sbt-maxpos" value="10" min="1" max="30" step="1" />
+            </div>
+            <div class="bt-field">
+              <label for="sbt-seed" data-i18n="capital">Capital</label>
+              <input type="number" id="sbt-seed" value="10000000" step="1000000" min="1" />
+            </div>
+          </div>
+          <button class="btn-primary" onclick="runScreeningBacktest()" style="margin-top:10px;">
+            <i class="ti ti-player-play" aria-hidden="true"></i> <span data-i18n="runBacktest">Run Backtest</span>
+          </button>
+          <div class="info-box" style="margin-top:12px;">
+            <i class="ti ti-info-circle" aria-hidden="true"></i>
+            <span>
+            선택한 전략(트렌드 템플릿 또는 단계 조건)을 주 단위로 재평가해, 그 시점까지의 가격만으로 조건을 만족하는 종목을 매수하고
+            손절(위 %) 또는 조건 이탈 시 매도하는 방식으로 시뮬레이션합니다. 고정 익절 상한은 두지 않습니다(조건을 계속 만족하면 계속 보유).
+            국내 전체 유니버스 기준 계산에 수 분~수십 분 걸릴 수 있습니다.
+            </span>
+          </div>
+        </div>
+        <div id="screenbt-result"></div>
       </section>
     </main>
   </div>
