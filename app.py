@@ -1011,6 +1011,18 @@ def screener_status():
     return jsonify(out)
 
 
+_screener_results_cache = {}  # {(market, onlyPass): {"state": (latest_updated_at, count), "payload": {...}}}
+
+
+def _screener_cache_state(market):
+    """캐시 무효화 판단용 - 이 market 전체 행을 다시 읽지 않고 가벼운 집계
+    쿼리(MAX/COUNT) 하나로 "마지막 갱신 이후 데이터가 바뀌었는지"만 확인한다."""
+    from models import TrendScreenCache
+    latest = db.session.query(db.func.max(TrendScreenCache.updated_at)).filter_by(market=market).scalar()
+    count = db.session.query(db.func.count(TrendScreenCache.id)).filter_by(market=market).scalar()
+    return (latest, count)
+
+
 @app.route("/api/screener/results")
 @login_required
 def screener_results():
@@ -1021,14 +1033,26 @@ def screener_results():
         return jsonify({"error": "market은 KR 또는 US여야 합니다"}), 400
     only_pass = request.args.get("onlyPass", "true").lower() != "false"
 
+    # 300개 제한을 없애면서(조건을 적게 만족하는 종목이 정렬 순서상 밀려 응답에서
+    # 아예 빠지는 문제 때문) 기본값이 전체 조회가 됐는데, 국내 기준 매 요청마다
+    # 2,500여 행 전체를 DB에서 읽고 JSON을 파싱·직렬화하다 보니 요청 하나에 수 초가
+    # 걸렸다 - gunicorn 워커가 2개뿐이라(RULES.md 컨텍스트) 이런 무거운 요청이
+    # 동시에 여러 개 겹치면 워커가 그 동안 꽉 차 로그인 등 무관한 요청까지
+    # 지연되는 문제로 실제 이어졌다. 백그라운드 리프레셔가 12시간 주기로만 데이터를
+    # 갱신하므로(trend_screen_refresher) 그 사이에는 같은 응답을 반복 계산할
+    # 이유가 없다 - 워커별 메모리에 결과를 캐싱해두고, 가벼운 집계 쿼리로 데이터가
+    # 실제로 바뀌었을 때만 다시 계산한다(RULES.md R5는 "워커 간 공유 상태"를
+    # 금지하는 것이지, 이렇게 각 워커가 같은 DB를 보고 독립적으로 캐싱하는 건
+    # 정합성 문제가 없다 - 최악의 경우도 워커별로 한 번씩 더 계산하는 정도다).
+    cache_key = (market, only_pass)
+    state = _screener_cache_state(market)
+    cached = _screener_results_cache.get(cache_key)
+    if cached and cached["state"] == state:
+        return jsonify(cached["payload"])
+
     q = TrendScreenCache.query.filter_by(market=market)
     if only_pass:
         q = q.filter_by(all_pass=True)
-    # 예전에는 300개 제한이 있었다 - "8개 조건 모두 충족" 종목만 보여주던 시절엔
-    # 국내 기준 보통 100개 미만이라 실제로 걸릴 일이 없었지만, 기본값이 전체 조회로
-    # 바뀌면서 조건을 적게 만족하는 종목(특히 4단계·하락 추세)이 정렬 순서상 밀려
-    # 300개 안에 아예 들어오지 못하는 문제가 생겨 제거했다. 유니버스 전체(국내
-    # 최대 2,536 / 미국 최대 592)를 그대로 반환한다.
     rows = q.order_by(TrendScreenCache.pass_count.desc(), TrendScreenCache.rs_rating.desc()).all()
 
     if not rows and TrendScreenCache.query.filter_by(market=market).count() == 0:
@@ -1048,7 +1072,9 @@ def screener_results():
         "dividendYield": r.dividend_yield, "analystRating": r.analyst_rating,
         "metrics": json.loads(r.metrics_json) if r.metrics_json else {},
     } for r in rows]
-    return jsonify(sanitize_json({"market": market, "results": results}))
+    payload = sanitize_json({"market": market, "results": results})
+    _screener_results_cache[cache_key] = {"state": state, "payload": payload}
+    return jsonify(payload)
 
 
 @app.route("/api/screener/detail")
