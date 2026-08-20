@@ -140,6 +140,42 @@ def _strategy_label(strategy):
     return "Trend Template 8/8"
 
 
+def _kr_quant_latest_fundamentals_as_of(rebalance_date_str, fundamentals_rows):
+    """kr_quant.latest_fundamentals_as_of를 그대로 재사용(rcept_date 기준 룩어헤드
+    편향 방지 로직 중복 구현 방지). 모듈 최상단에서 import하면 kr_quant.py가
+    끌고 오는 models.py(Flask-SQLAlchemy) 의존을 이 순수 계산 모듈에 항상
+    강제하게 되므로, 가치/퀄리티 팩터를 실제로 쓸 때만 지연 import한다."""
+    from kr_quant import latest_fundamentals_as_of
+    return latest_fundamentals_as_of(rebalance_date_str, fundamentals_rows)
+
+
+def _realized_vol(closes, i, window=60):
+    """i번 인덱스까지 최근 window거래일 일간수익률의 연환산 변동성(%) - 저변동성
+    팩터용. 데이터가 부족하면 None(호출부에서 이 팩터 필터를 통과 못 시킴)."""
+    if i < window:
+        return None
+    rets = []
+    for k in range(i - window + 1, i + 1):
+        if closes[k - 1] and closes[k - 1] > 0 and closes[k] is not None:
+            rets.append(closes[k] / closes[k - 1] - 1)
+    if len(rets) < window // 2:
+        return None
+    mean = sum(rets) / len(rets)
+    var = sum((x - mean) ** 2 for x in rets) / len(rets)
+    return (var ** 0.5) * (252 ** 0.5) * 100
+
+
+def _avg_trade_value(closes, volumes, i, window=20):
+    """i번 인덱스까지 최근 window거래일 평균 거래대금(원) - 유동성 필터용."""
+    if i < window - 1:
+        return None
+    vals = [closes[k] * volumes[k] for k in range(i - window + 1, i + 1)
+            if volumes[k] is not None and closes[k] is not None]
+    if not vals:
+        return None
+    return sum(vals) / len(vals)
+
+
 def _atr(highs, lows, closes, i, period=14):
     """i번 인덱스(포함)까지의 ATR(period) - 트루레인지의 단순평균. 데이터가
     부족하면 None(호출부에서 해당 종목은 이번 재평가에 진입 후보에서 제외)."""
@@ -171,7 +207,11 @@ def run_risk_managed_backtest(market, strategy, start_date, end_date,
                                breakeven_r=DEFAULT_BREAKEVEN_R, trail_start_r=DEFAULT_TRAIL_START_R,
                                time_stop_days=DEFAULT_TIME_STOP_DAYS, dd_halt_pct=DEFAULT_DD_HALT_PCT,
                                max_positions=DEFAULT_MAX_POSITIONS, seed=10_000_000, fetch_fn=None,
-                               min_rs=None, min_rel_volume=None, market_regime_filter=False):
+                               min_rs=None, min_rel_volume=None, market_regime_filter=False,
+                               min_avg_trade_value=None,
+                               use_value=False, use_quality=False, use_low_vol=False,
+                               value_percentile=50, quality_percentile=50, low_vol_percentile=50,
+                               fundamentals_rows=None, shares_map=None):
     """run_screening_backtest과 진입 신호(트렌드 템플릿/단계)는 동일하지만,
     청산 로직을 고정 % 손절 대신 다음 리스크 관리 규칙으로 완전히 대체한 버전:
 
@@ -208,6 +248,25 @@ def run_risk_managed_backtest(market, strategy, start_date, end_date,
       더 태우지 않는다"는 취지로 재해석한 것이다.
     - 물타기 없음: 이미 보유 중인 종목은 재평가 시점에 후보로 다시 고려하지
       않는다(진입은 종목당 한 번뿐, 추가매수 로직 자체가 없다).
+    - 팩터 결합 필터(전부 선택적, AND로 결합 - 트렌드템플릿/RS/거래량/레짐 필터를
+      전부 통과한 후보군에 추가로 덧붙는 필터라 서로 배타적이지 않다):
+      - min_avg_trade_value: 최근 20일 평균 거래대금(원)이 이 값 미만인 종목 제외
+        (유동성 확보 - 값이 작아도 실제로 사고팔기 어려운 종목을 걸러낸다).
+      - use_value: PER(시가총액÷당기순이익, 흑자기업만)이 그 시점 후보군 내
+        낮은 쪽 value_percentile% 안에 드는 종목만 남긴다(저평가).
+      - use_quality: ROE(당기순이익÷자본총계, 100% 초과는 자본잠식 회복형 왜곡으로
+        제외)가 그 시점 후보군 내 높은 쪽 quality_percentile% 안에 드는 종목만
+        남긴다(우량기업).
+      - use_low_vol: 최근 60거래일 일간수익률 변동성(연환산)이 그 시점 후보군 내
+        낮은 쪽 low_vol_percentile% 안에 드는 종목만 남긴다(저변동성).
+      가치/퀄리티는 kr_quant.py와 같은 방식(rcept_date 기준 그 시점까지 실제
+      공시된 가장 최근 연도 재무데이터만 사용 - 룩어헤드 편향 방지)이며, 호출부가
+      fundamentals_rows(KrFundamental.query 결과 리스트)와 shares_map(종목코드→
+      상장주식수)을 미리 로드해 넘겨야 한다(이 함수 자체는 DB에 접근하지 않는다 -
+      fetch_fn 주입과 같은 이유로 순수 계산 함수로 유지). 각 팩터의 percentile은
+      독립적으로 같은 기준 후보군(유동성 필터까지 통과한 후보군) 대비 계산한 뒤
+      교집합을 취한다(필터를 순서대로 적용해 점점 줄여나가면 앞선 필터의 통과율에
+      따라 뒤 필터의 컷오프가 왜곡되는 문제가 있다).
     - 최소 손익비 1:2는 별도 필터가 아니라 위 청산 구조(본전 이동 +1R, 트레일링
       +2R) 자체로 구현한다 - 스크리너 기반 전략은 진입 시점에 확정적인 목표가를
       알 수 없어(개별 종목 저항선 등을 미리 계산하지 않음), "최소 1R은 손실
@@ -360,6 +419,59 @@ def run_risk_managed_backtest(market, strategy, start_date, end_date,
                 and (min_rs is None or (e.get("rsRating") or 0) >= min_rs)
                 and (min_rel_volume is None or (e.get("relVolume") or 0) >= min_rel_volume)
             ]
+            if min_avg_trade_value:
+                kept = []
+                for t, e in candidates:
+                    dates, closes, highs, lows, volumes = series[t]
+                    avg_val = _avg_trade_value(closes, volumes, idx_at_rd[t])
+                    if avg_val is not None and avg_val >= min_avg_trade_value:
+                        kept.append((t, e))
+                candidates = kept
+
+            if use_value or use_quality or use_low_vol:
+                fundamentals_now = (
+                    _kr_quant_latest_fundamentals_as_of(rd, fundamentals_rows)
+                    if (use_value or use_quality) else {}
+                )
+                enriched = []
+                for t, e in candidates:
+                    i = idx_at_rd[t]
+                    dates, closes, highs, lows, volumes = series[t]
+                    row = {"ticker": t}
+                    if use_value or use_quality:
+                        f = fundamentals_now.get(e["code"])
+                        shares = shares_map.get(e["code"]) if shares_map else None
+                        price = closes[i]
+                        if f and shares and f.net_income and f.net_income > 0 \
+                                and f.total_equity and f.total_equity > 0 and price:
+                            row["per"] = price * shares / f.net_income
+                            roe = f.net_income / f.total_equity * 100
+                            row["roe"] = roe if roe <= 100 else None
+                        else:
+                            row["per"] = None
+                            row["roe"] = None
+                    if use_low_vol:
+                        row["vol"] = _realized_vol(closes, i)
+                    enriched.append(row)
+
+                def _percentile_keep_set(key, reverse, pct):
+                    valid = [r for r in enriched if r.get(key) is not None]
+                    valid.sort(key=lambda r: r[key], reverse=reverse)
+                    cutoff = max(1, round(len(valid) * pct / 100))
+                    return {r["ticker"] for r in valid[:cutoff]}
+
+                keep = None
+                if use_value:
+                    keep = _percentile_keep_set("per", False, value_percentile)
+                if use_quality:
+                    s = _percentile_keep_set("roe", True, quality_percentile)
+                    keep = s if keep is None else (keep & s)
+                if use_low_vol:
+                    s = _percentile_keep_set("vol", False, low_vol_percentile)
+                    keep = s if keep is None else (keep & s)
+                if keep is not None:
+                    candidates = [(t, e) for t, e in candidates if t in keep]
+
             candidates.sort(key=lambda te: -(te[1].get("rsRating") or 0))
             max_position_value = seed / max_positions
             for ticker, e in candidates[:open_slots]:
@@ -445,6 +557,11 @@ def run_risk_managed_backtest(market, strategy, start_date, end_date,
         "timeStopDays": time_stop_days, "ddHaltPct": dd_halt_pct,
         "maxPositions": max_positions,
         "minRs": min_rs, "minRelVolume": min_rel_volume, "marketRegimeFilter": market_regime_filter,
+        "minAvgTradeValue": min_avg_trade_value,
+        "useValue": use_value, "useQuality": use_quality, "useLowVol": use_low_vol,
+        "valuePercentile": value_percentile if use_value else None,
+        "qualityPercentile": quality_percentile if use_quality else None,
+        "lowVolPercentile": low_vol_percentile if use_low_vol else None,
         "returnPct": return_pct, "finalValue": round(final_value, 2),
         "tradeCount": len(trades), "winCount": len(win_trades), "winRatePct": win_rate_pct,
         "avgHoldDays": avg_hold_days, "mddPct": round(mdd_pct, 2),

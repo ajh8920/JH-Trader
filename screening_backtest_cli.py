@@ -15,13 +15,40 @@
 """
 import argparse
 import json
+import os
 from datetime import date
+from pathlib import Path
 
 import screening_backtest as sb
 from local_price_cache import cached_fetch_ohlc_history_batches
 
 
 DEFAULT_START = "2020-01-01"
+PROJECT_DIR = Path(__file__).resolve().parent
+
+
+def _load_fundamentals_and_shares():
+    """가치/퀄리티 팩터용 - app.py를 통째로 import하면 백그라운드 스레드가 같이
+    떠서(data_pipeline/import_fundamentals_to_db.py와 같은 이유) DB 접속 설정만
+    복제한 최소 Flask 앱으로 KrFundamental을 읽는다. shares_map은 DB 없이
+    kr_stocks.json에서 바로 읽는다."""
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_DIR / ".env")
+    from flask import Flask
+    from models import KrFundamental, db
+    from kr_quant import get_shares_outstanding_map
+
+    app = Flask(__name__)
+    database_url = os.environ.get("DATABASE_URL", f"sqlite:///{PROJECT_DIR / 'data' / 'app.db'}")
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    db.init_app(app)
+    with app.app_context():
+        fundamentals_rows = KrFundamental.query.filter(KrFundamental.rcept_no != "").all()
+    shares_map = get_shares_outstanding_map()
+    return fundamentals_rows, shares_map
 
 
 def main():
@@ -51,11 +78,24 @@ def main():
     p.add_argument("--trail-start-r", type=float, default=sb.DEFAULT_TRAIL_START_R, dest="trail_start_r")
     p.add_argument("--time-stop-days", type=int, default=sb.DEFAULT_TIME_STOP_DAYS, dest="time_stop_days")
     p.add_argument("--dd-halt-pct", type=float, default=sb.DEFAULT_DD_HALT_PCT, dest="dd_halt_pct")
+
+    p.add_argument("--min-avg-trade-value", type=float, default=None, dest="min_avg_trade_value",
+                    help="최근 20일 평균 거래대금(원) 하한선 - 유동성 필터(예: 300000000)")
+    p.add_argument("--use-value", action="store_true", dest="use_value", help="PER 저평가 팩터(상위 --value-pct%%)")
+    p.add_argument("--use-quality", action="store_true", dest="use_quality", help="ROE 우량 팩터(상위 --quality-pct%%)")
+    p.add_argument("--use-low-vol", action="store_true", dest="use_low_vol", help="저변동성 팩터(하위 --lowvol-pct%%)")
+    p.add_argument("--value-pct", type=float, default=50, dest="value_percentile")
+    p.add_argument("--quality-pct", type=float, default=50, dest="quality_percentile")
+    p.add_argument("--lowvol-pct", type=float, default=50, dest="low_vol_percentile")
     args = p.parse_args()
 
     end = args.end or date.today().isoformat()
 
     fetch_fn = cached_fetch_ohlc_history_batches(args.market, force_refresh=args.refresh_cache)
+
+    fundamentals_rows, shares_map = (None, None)
+    if args.risk_managed and (args.use_value or args.use_quality):
+        fundamentals_rows, shares_map = _load_fundamentals_and_shares()
 
     if args.risk_managed:
         result = sb.run_risk_managed_backtest(
@@ -66,6 +106,11 @@ def main():
             max_positions=args.max_positions, seed=args.seed,
             fetch_fn=fetch_fn, min_rs=args.min_rs, min_rel_volume=args.min_rel_volume,
             market_regime_filter=args.regime_filter,
+            min_avg_trade_value=args.min_avg_trade_value,
+            use_value=args.use_value, use_quality=args.use_quality, use_low_vol=args.use_low_vol,
+            value_percentile=args.value_percentile, quality_percentile=args.quality_percentile,
+            low_vol_percentile=args.low_vol_percentile,
+            fundamentals_rows=fundamentals_rows, shares_map=shares_map,
         )
     else:
         result = sb.run_screening_backtest(
@@ -85,6 +130,16 @@ def main():
               f" | 리스크 {result['riskPct']}%/트레이드 | 손절 {result['atrMult']}xATR({result['atrPeriod']})"
               f" | 본전 {result['breakevenR']}R | 트레일링 {result['trailStartR']}R+ | 시간손절 {result['timeStopDays']}일"
               f" | 낙폭중단 {result['ddHaltPct']}%")
+        factors = []
+        if result.get("minAvgTradeValue"):
+            factors.append(f"유동성>={result['minAvgTradeValue']:,.0f}원/일")
+        if result.get("useValue"):
+            factors.append(f"가치(PER 상위{result['valuePercentile']}%)")
+        if result.get("useQuality"):
+            factors.append(f"퀄리티(ROE 상위{result['qualityPercentile']}%)")
+        if result.get("useLowVol"):
+            factors.append(f"저변동성(상위{result['lowVolPercentile']}%)")
+        print("적용 팩터: " + (", ".join(factors) if factors else "없음(모멘텀만)"))
     else:
         print(f"기간: {result['start']} ~ {result['end']} | 전략: {result['strategyLabel']} | 손절: {result['stopLossPct']}%"
               f" | RS>= {result['minRs']} | 거래량>= {result['minRelVolume']}x | 레짐필터: {result['marketRegimeFilter']}")
