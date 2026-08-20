@@ -463,6 +463,8 @@ const I18N = {
     ko: '동일 파라미터로 로컬에서 미리 계산해둔 결과입니다 — 최신 데이터로 다시 계산하려면 위 "백테스트 실행" 버튼을 눌러주세요(그 사이 쌓인 거래일·데이터 소급수정 등으로 수치가 약간 달라질 수 있습니다).',
   },
   countUnit: { en: ' trades', ko: '건' },
+  annualizedReturn: { en: 'Annualized Return (CAGR)', ko: '연평균 수익률(CAGR)' },
+  referenceTradesLoadError: { en: 'Failed to load trade history. Please try again shortly.', ko: '거래 내역을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.' },
 
   // 스크리닝
   addedToWatchlist: { en: 'Added to Watchlist', ko: '관심종목에 추가됨' },
@@ -3457,11 +3459,13 @@ function setScreeningBacktestPreset(preset) {
 // 데이터 소급수정 등) - 그 전까지 참고용으로 미리 보여주기 위한 스냅샷이다.
 const MINERVINI_V2_REFERENCE = {
   start: '2020-01-01', end: '2026-08-21', seed: 10000000, finalValue: 33280012.49,
-  returnPct: 232.8, mddPct: 22.73, tradeCount: 1512, winCount: 298, winRatePct: 19.7,
+  returnPct: 232.8, cagrPct: 19.86, mddPct: 22.73, tradeCount: 1512, winCount: 298, winRatePct: 19.7,
   avgHoldDays: 12.4, profitLossRatio: 3.94, alphaPct: 35.3,
   benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 197.5,
   exitReasonCounts: { initialStop: 324, breakevenStop: 266, trailingStop: 294, timeStop: 618, periodEnd: 10 },
 };
+
+let sbtRefTradesLoaded = false;
 
 function renderMinerviniV2Reference(el) {
   const d = MINERVINI_V2_REFERENCE;
@@ -3478,6 +3482,7 @@ function renderMinerviniV2Reference(el) {
         <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">${fmt(d.seed)}</div></div>
         <div class="meta-item"><div class="meta-label">${t('finalValue')}</div><div class="meta-value">${fmt(d.finalValue)}</div></div>
         <div class="meta-item"><div class="meta-label">${t('totalReturn')}</div><div class="meta-value positive">+${d.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('annualizedReturn')}</div><div class="meta-value positive">+${d.cagrPct.toFixed(1)}%</div></div>
         <div class="meta-item"><div class="meta-label">MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
         <div class="meta-item"><div class="meta-label">${t('winRate')}</div><div class="meta-value">${d.winRatePct.toFixed(1)}% (${d.winCount}/${d.tradeCount})</div></div>
         <div class="meta-item"><div class="meta-label">${t('avgHoldDays')}</div><div class="meta-value">${d.avgHoldDays}</div></div>
@@ -3489,7 +3494,53 @@ function renderMinerviniV2Reference(el) {
         ${t('exitReason')}: ${escapeHtml(reasons)}<br>
         ${t('referenceResultNote')}
       </div>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('tradeLog')} (${d.tradeCount})</div>
+      <div id="sbt-ref-trades-body"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i></div></div>
     </div>`;
+  loadMinerviniV2ReferenceTrades();
+}
+
+async function loadMinerviniV2ReferenceTrades() {
+  const body = document.getElementById('sbt-ref-trades-body');
+  if (!body) return;
+  // 1,512건 전체를 app.js에 항상 박아두면 다른 탭만 쓰는 사용자도 매번 그 용량을
+  // 받아야 해서, 이 프리셋을 실제로 열었을 때만 별도 JSON을 지연 로드한다.
+  try {
+    const res = await fetch('/static/minervini_v2_reference.json');
+    if (!res.ok) throw new Error('fetch failed');
+    const data = await res.json();
+    const exitReasonLabel = r => ({
+      stopLoss: t('stopLoss'), conditionExit: t('conditionExit'), periodEnd: t('periodEnd'),
+      initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
+      trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'),
+    }[r] || r);
+    const fmtPrice = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+    body.innerHTML = `
+      <div class="pf-table-wrap">
+        <table class="pf-table">
+          <thead><tr>
+            <th>${t('name')}</th><th>${t('code')}</th>
+            <th style="text-align:right;">${t('buyDate')}</th><th style="text-align:right;">${t('buyPrice')}</th>
+            <th style="text-align:right;">${t('sellDate')}</th><th style="text-align:right;">${t('sellPrice')}</th>
+            <th style="text-align:right;">${t('returnPct')}</th><th>${t('exitReason')}</th>
+          </tr></thead>
+          <tbody>
+            ${data.trades.map(tr => `
+              <tr>
+                <td>${escapeHtml(tr.name)}</td><td>${escapeHtml(tr.code)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.entryDate)}</td><td style="text-align:right;">${fmtPrice(tr.entryPrice)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.exitDate)}</td><td style="text-align:right;">${fmtPrice(tr.exitPrice)}</td>
+                <td style="text-align:right;" class="${tr.pnlPct >= 0 ? 'positive' : 'negative'}">${tr.pnlPct>=0?'+':''}${tr.pnlPct.toFixed(1)}%</td>
+                <td>${exitReasonLabel(tr.exitReason)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${t('referenceTradesLoadError')}</span></div>`;
+  }
 }
 
 async function runScreeningBacktest() {
