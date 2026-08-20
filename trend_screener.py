@@ -283,7 +283,14 @@ def run_screen(market, rs_threshold=DEFAULT_RS_THRESHOLD):
     evaluated = []
     for ticker, bars in history.items():
         code, name, industry, sector = info_by_ticker.get(ticker, (ticker, ticker, None, None))
-        result = evaluate_trend_template(code, name, bars, industry, sector)
+        # 종목 하나의 데이터가 예상 못한 형태(예: 상장폐지 직전 이상치)라 여기서
+        # 예외가 나면, 감싸지 않을 경우 전체 유니버스(국내 기준 2,500여 종목)
+        # 평가가 통째로 실패한다 - us_fundamentals_refresher에서 이미 한 번 겪은
+        # 것과 같은 실패 패턴이라(app.py 주석 참고) 여기도 종목 단위로 격리한다.
+        try:
+            result = evaluate_trend_template(code, name, bars, industry, sector)
+        except Exception:
+            continue
         if result:
             evaluated.append(result)
 
