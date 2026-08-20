@@ -78,16 +78,22 @@ def run_screening_backtest(market, strategy, start_date, end_date,
     fetch_end = (datetime.fromisoformat(end_date) + timedelta(days=1)).strftime("%Y-%m-%d")
 
     # 종목별 전체 기간 가격을 한 번만 받아, 재평가 시점마다 그 시점까지의
-    # 구간만 슬라이스해서 재사용한다(API를 매번 다시 부르지 않는다).
-    history = {}
-    series = {}  # ticker -> (dates, closes, highs, lows)
+    # 구간만 슬라이스해서 재사용한다(API를 매번 다시 부르지 않는다). 원본
+    # bars(딕셔너리 리스트)를 그대로 들고 있지 않고 필드별 배열로만 저장한다 -
+    # evaluate_trend_template이 받는 딕셔너리 리스트 형태로 매번 다시 감싸는
+    # 대신 두 형태를 동시에 들고 있으면(예전 방식) 국내 전체 유니버스×수년치
+    # 데이터가 메모리에 두 배로 쌓여 Render 무료 티어 메모리 한도에서 프로세스가
+    # 죽는 원인이 됐다(trend_screener.fetch_ohlc_history_batch를 제너레이터로
+    # 바꾼 것과 같은 이유). 매 재평가 시점마다 필요한 구간만 잠깐 딕셔너리로
+    # 재구성해 쓰고 곧바로 버린다 - 메모리 대신 약간의 CPU를 더 쓰는 쪽을 택했다.
+    series = {}  # ticker -> (dates, closes, highs, lows, volumes)
     for ticker, bars in ts.fetch_ohlc_history_batches(tickers, fetch_start, fetch_end):
-        history[ticker] = bars
         series[ticker] = (
             [b["date"] for b in bars],
             [b["close"] for b in bars],
             [b["high"] for b in bars],
             [b["low"] for b in bars],
+            [b.get("volume") for b in bars],
         )
 
     all_dates = sorted({d for dates, *_ in series.values() for d in dates if start_date <= d <= end_date})
@@ -109,7 +115,7 @@ def run_screening_backtest(market, strategy, start_date, end_date,
     for rd in rebalance_dates:
         evaluated = []
         idx_at_rd = {}
-        for ticker, (dates, closes, highs, lows) in series.items():
+        for ticker, (dates, closes, highs, lows, volumes) in series.items():
             i = bisect.bisect_right(dates, rd) - 1
             if i < 0:
                 continue
@@ -117,8 +123,12 @@ def run_screening_backtest(market, strategy, start_date, end_date,
             if i + 1 < ts.MIN_BARS:
                 continue
             code, name, industry, sector = info_by_ticker.get(ticker, (ticker, ticker, None, None))
+            bars_slice = [
+                {"date": dates[k], "close": closes[k], "high": highs[k], "low": lows[k], "volume": volumes[k]}
+                for k in range(i + 1)
+            ]
             try:
-                result = ts.evaluate_trend_template(code, name, history[ticker][:i + 1], industry, sector)
+                result = ts.evaluate_trend_template(code, name, bars_slice, industry, sector)
             except Exception:
                 continue
             if result:
@@ -139,7 +149,7 @@ def run_screening_backtest(market, strategy, start_date, end_date,
             if i is None:
                 continue
             pos = positions[ticker]
-            dates, closes, highs, lows = series[ticker]
+            dates, closes, highs, lows, _volumes = series[ticker]
             stop_price = pos["entryPrice"] * (1 + stop_loss_pct / 100)
             start_i = bisect.bisect_right(dates, prev_rd) if prev_rd else 0
             exit_price = None
