@@ -30,10 +30,18 @@ CANSLIM/딥밸류처럼 PER·ROE 등 재무 지표에 의존하는 전략 프리
 - 신규 매수: 이번 재평가에 조건을 만족하는데 아직 보유하지 않은 종목 중,
   RS 등급이 높은 순으로 비어 있는 슬롯 수만큼 채운다.
 - 포지션 크기: 슬롯당 동일 비중(시드 ÷ 최대 보유 종목 수)으로 고정한다.
+
+## 성과 지표
+알파(초과수익률)는 같은 기간 지수(국내=코스피 ^KS11, 미국=S&P500 ^GSPC)를
+첫 재평가일에 매수해 그대로 보유했을 때와 비교한 단순 차이다(전략 수익률 -
+벤치마크 수익률) - kr_quant.py 리밸런싱 백테스트의 벤치마크 계산과 같은
+방식이다. 손익비는 이긴 거래의 평균 수익률 ÷ 진 거래의 평균 손실률(절대값).
 """
 
 import bisect
 from datetime import datetime, timedelta
+
+import yfinance as yf
 
 import trend_screener as ts
 
@@ -41,6 +49,54 @@ DEFAULT_STOP_LOSS_PCT = -8.0
 DEFAULT_MAX_POSITIONS = 10
 RESCAN_INTERVAL_DAYS = 7
 WARMUP_DAYS = 450  # MIN_BARS(200일선) + RS 계산용 12개월 수익률 확보
+BENCHMARK_TICKER = {"KR": "^KS11", "US": "^GSPC"}  # KOSPI / S&P 500
+BENCHMARK_LABEL = {"KR": "KOSPI Buy & Hold", "US": "S&P 500 Buy & Hold"}
+
+
+def _profit_loss_ratio(trades):
+    # 손익비 = 이긴 거래의 평균 수익률 ÷ 진 거래의 평균 손실률(절대값) - kr_swing.py의
+    # 같은 지표와 동일한 정의. 승률과 함께 봐야 전략의 기대값을 판단할 수 있다.
+    wins = [t["pnlPct"] for t in trades if t["pnlPct"] > 0]
+    losses = [t["pnlPct"] for t in trades if t["pnlPct"] < 0]
+    if not losses:
+        return None
+    avg_win = sum(wins) / len(wins) if wins else 0.0
+    avg_loss = abs(sum(losses) / len(losses))
+    if avg_loss == 0:
+        return None
+    return round(avg_win / avg_loss, 2)
+
+
+def _fetch_benchmark_curve(market, dates, seed):
+    """지수(코스피/S&P500)를 첫 재평가일에 매수해 그대로 보유했을 때의 평가액
+    곡선 - kr_quant.py의 벤치마크 계산과 같은 방식이다. 실패해도 백테스트
+    자체는 계속 진행해야 하므로 예외는 조용히 삼키고 빈 결과를 돌려준다."""
+    if not dates:
+        return [], None
+    ticker = BENCHMARK_TICKER.get(market)
+    if not ticker:
+        return [], None
+    try:
+        idx = yf.download(ticker, start=dates[0], end=dates[-1], progress=False, timeout=15)
+        if idx is None or idx.empty:
+            return [], None
+        if hasattr(idx.columns, "get_level_values") and idx.columns.nlevels > 1:
+            idx.columns = idx.columns.get_level_values(0)
+        closes = idx["Close"].dropna()
+        first_close = float(closes.iloc[0])
+        curve = []
+        for d in dates:
+            window = closes.loc[:d]
+            if window.empty:
+                continue
+            px = float(window.iloc[-1])
+            curve.append({"date": d, "value": round(seed * (px / first_close), 2)})
+        if not curve:
+            return [], None
+        return_pct = round((curve[-1]["value"] - seed) / seed * 100, 2)
+        return curve, return_pct
+    except Exception:
+        return [], None
 
 
 def _strategy_predicate(strategy):
@@ -234,6 +290,11 @@ def run_screening_backtest(market, strategy, start_date, end_date,
         if peak > 0:
             mdd_pct = max(mdd_pct, (peak - pt["value"]) / peak * 100)
 
+    profit_loss_ratio = _profit_loss_ratio(trades)
+    benchmark_curve, benchmark_return_pct = _fetch_benchmark_curve(
+        market, [pt["date"] for pt in equity_curve], seed)
+    alpha_pct = round(return_pct - benchmark_return_pct, 2) if benchmark_return_pct is not None else None
+
     return {
         "market": market, "strategy": strategy, "strategyLabel": _strategy_label(strategy),
         "start": start_date, "end": end_date, "seed": seed,
@@ -241,5 +302,8 @@ def run_screening_backtest(market, strategy, start_date, end_date,
         "returnPct": return_pct, "finalValue": round(final_value, 2),
         "tradeCount": len(trades), "winCount": len(win_trades), "winRatePct": win_rate_pct,
         "avgHoldDays": avg_hold_days, "mddPct": round(mdd_pct, 2),
+        "profitLossRatio": profit_loss_ratio, "alphaPct": alpha_pct,
+        "benchmark": {"label": BENCHMARK_LABEL.get(market, "Benchmark"), "returnPct": benchmark_return_pct,
+                      "equityCurve": benchmark_curve},
         "equityCurve": equity_curve, "trades": trades,
     }

@@ -3443,9 +3443,12 @@ function renderScreeningBacktestResult(d) {
         <div class="meta-item"><div class="meta-label">MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
         <div class="meta-item"><div class="meta-label">${t('winRate')}</div><div class="meta-value">${d.winRatePct != null ? d.winRatePct.toFixed(1) + '%' : '-'} (${d.winCount}/${d.tradeCount})</div></div>
         <div class="meta-item"><div class="meta-label">${t('avgHoldDays')}</div><div class="meta-value">${d.avgHoldDays ?? '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('profitLossRatio')}</div><div class="meta-value">${d.profitLossRatio ?? '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('alphaExcessReturn')}</div><div class="meta-value ${d.alphaPct >= 0 ? 'positive' : 'negative'}">${d.alphaPct != null ? (d.alphaPct >= 0 ? '+' : '') + d.alphaPct.toFixed(1) + '%p' : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(tv(d.benchmark.label))}</div><div class="meta-value ${(d.benchmark.returnPct ?? 0) >= 0 ? 'positive' : 'negative'}">${d.benchmark.returnPct != null ? (d.benchmark.returnPct >= 0 ? '+' : '') + d.benchmark.returnPct.toFixed(1) + '%' : '-'}</div></div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 8px;">
-        <div style="font-size:13px;font-weight:600;">${t('equityCurve')} (${escapeHtml(d.strategyLabel)})</div>
+        <div style="font-size:13px;font-weight:600;">${t('equityCurve')} (${escapeHtml(d.strategyLabel)} vs. ${escapeHtml(tv(d.benchmark.label))})</div>
         <button class="btn-secondary" onclick="resetScreeningBacktestZoom()" style="padding:4px 10px;font-size:12px;"><i class="ti ti-zoom-reset" aria-hidden="true"></i> ${t('resetZoom')}</button>
       </div>
       <div class="chart-wrap">
@@ -3479,37 +3482,45 @@ function renderScreeningBacktestResult(d) {
       </div>` : `<div class="empty-state" style="padding:1.5rem;"><p>${t('noStocksSelected')}</p></div>`}
     </div>`;
 
-  requestAnimationFrame(() => requestAnimationFrame(() => drawScreeningBacktestChart(d.equityCurve, d.seed)));
+  requestAnimationFrame(() => requestAnimationFrame(() => drawScreeningBacktestChart(d.equityCurve, d.seed, d.benchmark)));
 }
 
 let screenbtChart = null;
 const screenbtPanState = { cleanup: null };
 
-function drawScreeningBacktestChart(curve, seed) {
+function drawScreeningBacktestChart(curve, seed, benchmark) {
   const canvas = document.getElementById('screenbt-chart');
   if (!canvas || !curve?.length) return;
   if (screenbtChart) screenbtChart.destroy();
   const dates = curve.map(p => p.date);
   const toPct = v => (v - seed) / seed * 100;
 
+  const datasets = [{
+    label: t('strategy'),
+    data: curve.map((p, i) => ({ x: i, y: toPct(p.value) })),
+    borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
+    fill: true, pointRadius: 0, borderWidth: 2, tension: 0.1,
+  }];
+  if (benchmark?.equityCurve?.length) {
+    datasets.push({
+      label: tv(benchmark.label),
+      data: benchmark.equityCurve.map((p, i) => ({ x: i, y: toPct(p.value) })),
+      borderColor: '#97C459', backgroundColor: 'transparent',
+      fill: false, pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: 0.1,
+    });
+  }
+
   screenbtChart = new Chart(canvas, {
     type: 'line',
-    data: {
-      datasets: [{
-        label: t('strategy'),
-        data: curve.map((p, i) => ({ x: i, y: toPct(p.value) })),
-        borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.12)',
-        fill: true, pointRadius: 0, borderWidth: 2, tension: 0.1,
-      }],
-    },
+    data: { datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
-        legend: { display: false },
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
         tooltip: {
           callbacks: {
             title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
-            label: ctx => ` ${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(1)}%`,
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(1)}%`,
           },
         },
         zoom: {
