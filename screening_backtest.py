@@ -122,9 +122,16 @@ def _strategy_label(strategy):
 
 def run_screening_backtest(market, strategy, start_date, end_date,
                             stop_loss_pct=DEFAULT_STOP_LOSS_PCT, max_positions=DEFAULT_MAX_POSITIONS,
-                            seed=10_000_000):
+                            seed=10_000_000, fetch_fn=None):
+    """fetch_fn: (tickers, start_date, end_date) -> Iterable[(ticker, bars)] 시그니처를
+    맞추면 가격 조회 방식을 바꿔 끼울 수 있다. 기본값(운영 서버에서 쓰는 경로)은
+    매번 야후에서 새로 받아오는 trend_screener.fetch_ohlc_history_batches이지만,
+    같은 파라미터를 여러 번 반복 실행하는 로컬 스크립트(screening_backtest_cli.py)는
+    local_price_cache의 캐싱 버전을 넘겨 매번 몇 분씩 걸리는 재조회를 건너뛴다."""
     if market not in ("KR", "US"):
         return {"error": "market은 KR 또는 US여야 합니다"}
+    if fetch_fn is None:
+        fetch_fn = ts.fetch_ohlc_history_batches
 
     universe = ts.load_universe(market)
     tickers = [t for _, _, t, _, _ in universe]
@@ -143,7 +150,7 @@ def run_screening_backtest(market, strategy, start_date, end_date,
     # 바꾼 것과 같은 이유). 매 재평가 시점마다 필요한 구간만 잠깐 딕셔너리로
     # 재구성해 쓰고 곧바로 버린다 - 메모리 대신 약간의 CPU를 더 쓰는 쪽을 택했다.
     series = {}  # ticker -> (dates, closes, highs, lows, volumes)
-    for ticker, bars in ts.fetch_ohlc_history_batches(tickers, fetch_start, fetch_end):
+    for ticker, bars in fetch_fn(tickers, fetch_start, fetch_end):
         series[ticker] = (
             [b["date"] for b in bars],
             [b["close"] for b in bars],
