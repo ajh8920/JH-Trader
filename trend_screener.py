@@ -163,6 +163,16 @@ def _weighted_return_score(closes):
     return r3 * 0.4 + r6 * 0.2 + r9 * 0.2 + r12 * 0.2
 
 
+def _avg_trade_value_20d(bars):
+    """최근 20거래일 평균 거래대금(원/달러) - 유동성 팩터(미너비니 v2 전략 등)용.
+    거래량 없는 날은 평균에서 제외한다."""
+    recent = bars[-20:]
+    vals = [b["close"] * b["volume"] for b in recent if b.get("volume") is not None and b.get("close") is not None]
+    if not vals:
+        return None
+    return sum(vals) / len(vals)
+
+
 def _volume_stats(bars):
     """최근 거래일 거래량과 상대거래량(최근 거래량 / 직전 20거래일 평균거래량)을 계산한다.
     일봉 데이터만 있어 TradingView의 장중 상대볼륨과는 다르게, 전일 마감 기준 근사치다."""
@@ -233,6 +243,7 @@ def evaluate_trend_template(code, name, bars, industry=None, sector=None):
     week52_low = min(lows[-252:])
     weighted_return = _weighted_return_score(closes)
     volume, rel_volume = _volume_stats(bars)
+    avg_trade_value = _avg_trade_value_20d(bars)
 
     conditions = {
         "priceAboveMa150And200": price > ma150 and price > ma200,
@@ -257,6 +268,7 @@ def evaluate_trend_template(code, name, bars, industry=None, sector=None):
         "weightedReturn": weighted_return,
         "volume": volume,
         "relVolume": rel_volume,
+        "avgTradeValue": avg_trade_value,
     }
 
 

@@ -1072,7 +1072,7 @@ def screener_results():
         "pctAbove52wLow": r.pct_above_52w_low, "pctBelow52wHigh": r.pct_below_52w_high,
         "rsRating": r.rs_rating, "passCount": r.pass_count, "allPass": r.all_pass, "stage": r.stage,
         "conditions": json.loads(r.conditions_json) if r.conditions_json else {},
-        "volume": r.volume, "relVolume": r.rel_volume,
+        "volume": r.volume, "relVolume": r.rel_volume, "avgTradeValue": r.avg_trade_value,
         "marketCap": r.market_cap, "peRatio": r.pe_ratio, "epsGrowth": r.eps_growth,
         "dividendYield": r.dividend_yield, "analystRating": r.analyst_rating,
         "metrics": json.loads(r.metrics_json) if r.metrics_json else {},
@@ -1124,7 +1124,7 @@ def screener_detail():
         "rsRating": row.rs_rating, "passCount": row.pass_count, "allPass": row.all_pass, "stage": row.stage,
         "conditions": json.loads(row.conditions_json) if row.conditions_json else {},
         "priceCurve": [{"date": b["date"], "close": b["close"], "volume": b.get("volume")} for b in bars],
-        "volume": row.volume, "relVolume": row.rel_volume,
+        "volume": row.volume, "relVolume": row.rel_volume, "avgTradeValue": row.avg_trade_value,
         "marketCap": row.market_cap, "peRatio": row.pe_ratio, "epsGrowth": row.eps_growth,
         "dividendYield": row.dividend_yield, "analystRating": row.analyst_rating,
         "metrics": json.loads(row.metrics_json) if row.metrics_json else {},
@@ -1236,7 +1236,26 @@ def remove_screener_watchlist():
 # 타임아웃(30초) 안에 못 끝난다 - job을 만들고 즉시 id를 반환한 뒤 백그라운드
 # 스레드에서 계산하고, 프런트는 GET으로 폴링한다.
 
-def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, stop_loss_pct, max_positions, seed):
+def _screening_backtest_fetch_fn(market):
+    """로컬(DATABASE_URL 미설정 = 로컬 SQLite)에서는 local_price_cache.py의
+    디스크 캐시(threads=True 병렬 다운로드)를 써서 웹 화면 백테스트도 CLI만큼
+    빠르게 만든다. 프로덕션(Render)은 디스크가 배포마다 초기화되는 데다 무료
+    티어 메모리 한도에서 병렬 다운로드를 켜면 예전에 실제로 겪은 OOM(트렌드
+    스크리너 38시간 정지, CLAUDE.md 히스토리 참고)이 재발할 수 있어 절대 쓰지
+    않는다 - None을 돌려주면 각 백테스트 함수가 기본값(운영 안전 경로인
+    trend_screener.fetch_ohlc_history_batches)을 그대로 쓴다."""
+    if os.environ.get("DATABASE_URL"):
+        return None
+    try:
+        from local_price_cache import cached_fetch_ohlc_history_batches
+        return cached_fetch_ohlc_history_batches(market)
+    except Exception:
+        app.logger.exception("로컬 가격 캐시 사용 실패 - 기본 경로로 폴백")
+        return None
+
+
+def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, stop_loss_pct, max_positions, seed,
+                                 preset=None):
     import screening_backtest as sb
     from models import ScreeningBacktestJob
 
@@ -1247,10 +1266,23 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
         job.status = "running"
         db.session.commit()
         try:
-            result = sb.run_screening_backtest(
-                market, strategy, start_date, end_date,
-                stop_loss_pct=stop_loss_pct, max_positions=max_positions, seed=seed,
-            )
+            if preset == "minervini_v2":
+                p = sb.MINERVINI_V2_PARAMS
+                result = sb.run_risk_managed_backtest(
+                    p["market"], p["strategy"], start_date, end_date,
+                    risk_pct=p["risk_pct"], atr_period=p["atr_period"], atr_mult=p["atr_mult"],
+                    breakeven_r=p["breakeven_r"], trail_start_r=p["trail_start_r"],
+                    time_stop_days=p["time_stop_days"], dd_halt_pct=p["dd_halt_pct"],
+                    max_positions=p["max_positions"], seed=seed,
+                    min_avg_trade_value=p["min_avg_trade_value"],
+                    fetch_fn=_screening_backtest_fetch_fn(p["market"]),
+                )
+            else:
+                result = sb.run_screening_backtest(
+                    market, strategy, start_date, end_date,
+                    stop_loss_pct=stop_loss_pct, max_positions=max_positions, seed=seed,
+                    fetch_fn=_screening_backtest_fetch_fn(market),
+                )
         except Exception as e:
             app.logger.exception("스크리닝 백테스트 작업 실패: job=%s", job_id)
             job = db.session.get(ScreeningBacktestJob, job_id)
@@ -1276,13 +1308,25 @@ def create_screening_backtest():
     from models import ScreeningBacktestJob
 
     body = request.json or {}
-    market = str(body.get("market", "KR")).upper()
-    strategy = str(body.get("strategy", "trendTemplate"))
+    preset = body.get("preset")
+    preset = str(preset) if preset else None
+    if preset not in (None, "minervini_v2"):
+        return jsonify({"error": "알 수 없는 전략 프리셋입니다"}), 400
+
+    if preset == "minervini_v2":
+        import screening_backtest as sb
+        p = sb.MINERVINI_V2_PARAMS
+        market, strategy = p["market"], p["strategy"]
+        stop_loss_pct, max_positions = None, p["max_positions"]
+    else:
+        market = str(body.get("market", "KR")).upper()
+        strategy = str(body.get("strategy", "trendTemplate"))
+
     start_date = str(body.get("start", ""))
     end_date = str(body.get("end", ""))
     try:
-        stop_loss_pct = float(body.get("stopLossPct", -8))
-        max_positions = int(body.get("maxPositions", 10))
+        stop_loss_pct = float(body.get("stopLossPct", -8)) if preset is None else stop_loss_pct
+        max_positions = int(body.get("maxPositions", 10)) if preset is None else max_positions
         seed = float(body.get("seed", 10_000_000))
     except (TypeError, ValueError):
         return jsonify({"error": "입력값이 올바르지 않습니다"}), 400
@@ -1300,10 +1344,11 @@ def create_screening_backtest():
         return jsonify({"error": "기간은 최대 5년까지 가능합니다"}), 400
     if seed <= 0:
         return jsonify({"error": "시드는 0보다 커야 합니다"}), 400
-    if not (1 <= max_positions <= 30):
-        return jsonify({"error": "최대 보유 종목 수는 1~30 사이여야 합니다"}), 400
-    if not (-50 <= stop_loss_pct < 0):
-        return jsonify({"error": "손절률은 -50~0 사이의 음수여야 합니다"}), 400
+    if preset is None:
+        if not (1 <= max_positions <= 30):
+            return jsonify({"error": "최대 보유 종목 수는 1~30 사이여야 합니다"}), 400
+        if not (-50 <= stop_loss_pct < 0):
+            return jsonify({"error": "손절률은 -50~0 사이의 음수여야 합니다"}), 400
 
     job = ScreeningBacktestJob(user_id=current_user.id, status="pending")
     db.session.add(job)
@@ -1311,7 +1356,7 @@ def create_screening_backtest():
 
     threading.Thread(
         target=_run_screening_backtest_job,
-        args=(job.id, market, strategy, start_date, end_date, stop_loss_pct, max_positions, seed),
+        args=(job.id, market, strategy, start_date, end_date, stop_loss_pct, max_positions, seed, preset),
         daemon=True,
     ).start()
 
@@ -1332,6 +1377,105 @@ def screening_backtest_status(job_id):
     if job.status == "error":
         return jsonify({"status": "error", "error": job.error})
     return jsonify({"status": job.status})
+
+
+# ─── 모의투자 (실시간 자동 페이퍼 트레이딩) ───────────────────────────────────
+# 백테스트(screening_backtest.py)와 매매 규칙은 동일하지만, 여기는 "오늘 실제로
+# 확정된 가격"을 매일 하루치씩 실시간으로 누적 반영한다(paper_trading.py).
+# 무거운 계산(야후 조회 + 종목별 판정)은 백그라운드 리프레셔(paper_trading_runner)가
+# 미리 끝내두고, 이 라우트들은 이미 DB에 반영된 계좌 상태를 읽기만 한다.
+
+@app.route("/api/paper-trading/start", methods=["POST"])
+@login_required
+@limiter.limit("5 per minute")
+def paper_trading_start():
+    from models import PaperStrategyAccount
+    import paper_trading as pt
+
+    body = request.json or {}
+    strategy = str(body.get("strategy", "minervini_v2"))
+    if strategy not in pt.STRATEGY_PRESETS:
+        return jsonify({"error": "알 수 없는 전략입니다"}), 400
+    try:
+        seed = float(body.get("seed", 10_000_000))
+    except (TypeError, ValueError):
+        return jsonify({"error": "입력값이 올바르지 않습니다"}), 400
+    if seed <= 0:
+        return jsonify({"error": "시드는 0보다 커야 합니다"}), 400
+
+    preset = pt.STRATEGY_PRESETS[strategy]
+    account = PaperStrategyAccount.query.filter_by(user_id=current_user.id, strategy=strategy).first()
+    if account:
+        if not account.is_active:
+            account.is_active = True
+            db.session.commit()
+        return jsonify({"ok": True, "alreadyStarted": True})
+
+    account = PaperStrategyAccount(
+        user_id=current_user.id, strategy=strategy, market=preset["market"],
+        seed=seed, cash=seed, peak_equity=seed,
+        started_on=datetime.today().strftime("%Y-%m-%d"), is_active=True,
+    )
+    db.session.add(account)
+    db.session.commit()
+    return jsonify({"ok": True, "alreadyStarted": False})
+
+
+@app.route("/api/paper-trading/status")
+@login_required
+def paper_trading_status():
+    from models import PaperStrategyAccount, PaperPosition, PaperTrade
+    import kr_quant
+
+    strategy = request.args.get("strategy", "minervini_v2")
+    account = PaperStrategyAccount.query.filter_by(user_id=current_user.id, strategy=strategy).first()
+    if not account:
+        return jsonify({"exists": False})
+
+    positions = PaperPosition.query.filter_by(account_id=account.id).order_by(PaperPosition.entry_date).all()
+    codes = [p.code for p in positions]
+    prices = {}
+    if codes:
+        try:
+            market_map = kr_quant._load_market_map()
+            prices = kr_quant.fetch_prices_near_date(
+                codes, market_map, datetime.today().strftime("%Y-%m-%d"), window_days=10)
+        except Exception:
+            prices = {}
+
+    held_value = 0.0
+    position_list = []
+    for p in positions:
+        price = prices.get(p.code, p.entry_price)
+        value = p.shares * price
+        held_value += value
+        position_list.append({
+            "code": p.code, "name": p.name, "entryDate": p.entry_date, "entryPrice": round(p.entry_price, 2),
+            "shares": p.shares, "currentPrice": round(price, 2),
+            "unrealizedPct": round((price - p.entry_price) / p.entry_price * 100, 2),
+            "stopPrice": round(p.stop_price, 2), "stopState": p.stop_state, "value": round(value, 2),
+        })
+
+    equity = account.cash + held_value
+    return_pct = round((equity / account.seed - 1) * 100, 2) if account.seed > 0 else 0.0
+    drawdown_pct = round((account.peak_equity - equity) / account.peak_equity * 100, 2) if account.peak_equity > 0 else 0.0
+
+    trades = PaperTrade.query.filter_by(account_id=account.id).order_by(PaperTrade.exit_date.desc()).all()
+    win_trades = [t for t in trades if t.pnl_pct > 0]
+
+    return jsonify(sanitize_json({
+        "exists": True, "strategy": account.strategy, "market": account.market,
+        "seed": account.seed, "cash": round(account.cash, 2), "equity": round(equity, 2),
+        "returnPct": return_pct, "drawdownPct": drawdown_pct,
+        "startedOn": account.started_on, "lastProcessedDate": account.last_processed_date,
+        "positions": position_list,
+        "tradeCount": len(trades), "winRatePct": round(len(win_trades) / len(trades) * 100, 1) if trades else None,
+        "trades": [{
+            "code": t.code, "name": t.name, "entryDate": t.entry_date, "entryPrice": round(t.entry_price, 2),
+            "exitDate": t.exit_date, "exitPrice": round(t.exit_price, 2), "shares": t.shares,
+            "pnlPct": t.pnl_pct, "exitReason": t.exit_reason, "holdDays": t.hold_days,
+        } for t in trades],
+    }))
 
 
 # ─── 무한매수법 실전 현황 API ─────────────────────────────────────────────────
@@ -1512,6 +1656,7 @@ for _view in (
     kr_quant_status, kr_quant_screen, kr_quant_backtest, kr_quant_backtest_status,
     screener_status, screener_results, screener_detail,
     create_screening_backtest, screening_backtest_status,
+    paper_trading_start,
     list_screener_watchlist, add_screener_watchlist, remove_screener_watchlist,
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
@@ -1558,6 +1703,23 @@ def alert_checker():
 # 조회하면 Render의 요청 타임아웃(30초)을 훌쩍 넘겨 요청이 죽는다(500 응답).
 # 그래서 이 스레드가 백그라운드에서 주기적으로 미리 받아 kr_quant의 캐시를
 # 채워두고, /api/kr-quant/screen은 그 캐시만 읽는다.
+
+def paper_trading_runner():
+    """모의투자 계좌들을 주기적으로 최신 거래일까지 진행시킨다. 실제 무거운
+    작업(paper_trading.run_all_accounts)은 계좌별 예외 격리 + 롤백을 자체적으로
+    갖추고 있다(RULES.md R7과 같은 이유 - 이 스레드 자체가 죽으면 안 된다)."""
+    import random
+    import paper_trading
+
+    time.sleep(random.uniform(30, 90))
+    while True:
+        with app.app_context():
+            try:
+                paper_trading.run_all_accounts()
+            except Exception:
+                app.logger.exception("모의투자 일별 처리 오류")
+        time.sleep(1800)  # 30분마다 깨어나 새 거래일 데이터가 나왔는지 확인
+
 
 def kr_quant_price_cache_refresher():
     import random
@@ -1737,6 +1899,7 @@ def trend_screen_refresher():
                         row.conditions_json = json.dumps(r["conditions"])
                         row.volume = r.get("volume")
                         row.rel_volume = r.get("relVolume")
+                        row.avg_trade_value = r.get("avgTradeValue")
                         if market == "KR":
                             row.market_cap = r.get("marketCap")
                             row.pe_ratio = r.get("peRatio")
@@ -1998,12 +2161,14 @@ def _backfill_stage_column():
 with app.app_context():
     db.create_all()
     _ensure_column("trend_screen_cache", "stage", "INTEGER")
+    _ensure_column("trend_screen_cache", "avg_trade_value", "FLOAT")
     _backfill_stage_column()
 
 threading.Thread(target=alert_checker, daemon=True).start()
 threading.Thread(target=kr_quant_price_cache_refresher, daemon=True).start()
 threading.Thread(target=trend_screen_refresher, daemon=True).start()
 threading.Thread(target=us_fundamentals_refresher, daemon=True).start()
+threading.Thread(target=paper_trading_runner, daemon=True).start()
 
 
 # ─── 실행 (로컬 개발 서버) ───────────────────────────────────────────────────

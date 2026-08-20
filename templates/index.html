@@ -84,6 +84,7 @@
       {% endif %}
       <button class="tab" data-tab="screener" onclick="switchTab('screener')" role="tab"><i class="ti ti-trending-up" aria-hidden="true"></i> <span data-i18n="tabScreener">Screener</span></button>
       <button class="tab" data-tab="screenbt" onclick="switchTab('screenbt')" role="tab"><i class="ti ti-replace" aria-hidden="true"></i> <span data-i18n="tabScreenBacktest">Screen Backtest</span></button>
+      <button class="tab" data-tab="papertrade" onclick="switchTab('papertrade')" role="tab"><i class="ti ti-robot" aria-hidden="true"></i> <span data-i18n="tabPaperTrading">Paper Trading</span></button>
     </nav>
 
     <main>
@@ -508,15 +509,23 @@
       <!-- 스크리닝 백테스트: 트렌드 템플릿/단계 조건으로 과거 구간을 워크포워드 시뮬레이션 -->
       <section id="sec-screenbt" class="section">
         <div class="card">
+          <div class="bt-preset-row" style="display:flex;gap:8px;margin-bottom:14px;">
+            <button type="button" id="sbt-preset-default" class="bt-preset-btn selected" onclick="setScreeningBacktestPreset(null)">
+              <span data-i18n="btPresetCustom">⚙️ 직접 설정</span>
+            </button>
+            <button type="button" id="sbt-preset-minervini_v2" class="bt-preset-btn" onclick="setScreeningBacktestPreset('minervini_v2')">
+              <span data-i18n="btPresetMinerviniV2">🎯 미너비니 v2</span>
+            </button>
+          </div>
           <div class="bt-form-grid">
-            <div class="bt-field">
+            <div class="bt-field" id="sbt-field-market">
               <label for="sbt-market" data-i18n="market">Market</label>
               <select id="sbt-market">
                 <option value="KR">🇰🇷 Korea · KOSPI/KOSDAQ</option>
                 <option value="US">🇺🇸 US · S&amp;P 500 + Nasdaq</option>
               </select>
             </div>
-            <div class="bt-field">
+            <div class="bt-field" id="sbt-field-strategy">
               <label for="sbt-strategy" data-i18n="strategy">Strategy</label>
               <select id="sbt-strategy">
                 <option value="trendTemplate" data-i18n="trendTemplate8Conditions">Trend Template 8/8</option>
@@ -534,11 +543,11 @@
               <label for="sbt-end" data-i18n="endDate">End Date</label>
               <input type="date" id="sbt-end" />
             </div>
-            <div class="bt-field">
+            <div class="bt-field" id="sbt-field-stoploss">
               <label for="sbt-stoploss" data-i18n="stopLossPct">Stop-Loss %</label>
               <input type="number" id="sbt-stoploss" value="-8" step="0.5" max="-1" />
             </div>
-            <div class="bt-field">
+            <div class="bt-field" id="sbt-field-maxpos">
               <label for="sbt-maxpos" data-i18n="maxPositions">Max Positions</label>
               <input type="number" id="sbt-maxpos" value="10" min="1" max="30" step="1" />
             </div>
@@ -550,7 +559,7 @@
           <button class="btn-primary" onclick="runScreeningBacktest()" style="margin-top:10px;">
             <i class="ti ti-player-play" aria-hidden="true"></i> <span data-i18n="runBacktest">Run Backtest</span>
           </button>
-          <div class="info-box" style="margin-top:12px;">
+          <div class="info-box" id="sbt-info-default" style="margin-top:12px;">
             <i class="ti ti-info-circle" aria-hidden="true"></i>
             <span>
             선택한 전략(트렌드 템플릿 또는 단계 조건)을 주 단위로 재평가해, 그 시점까지의 가격만으로 조건을 만족하는 종목을 매수하고
@@ -558,8 +567,22 @@
             국내 전체 유니버스 기준 계산에 수 분~수십 분 걸릴 수 있습니다.
             </span>
           </div>
+          <div class="info-box" id="sbt-info-minervini_v2" style="display:none;margin-top:12px;">
+            <i class="ti ti-info-circle" aria-hidden="true"></i>
+            <span>
+            국내 트렌드 템플릿 8/8 + 유동성(최근 20일 평균 거래대금 3억원 이상)만으로 진입하고,
+            트레이드당 리스크 1.5%로 포지션을 정해 손절은 진입가-2×ATR, +1R에서 본전 이동, +2R부터 트레일링,
+            7거래일 무진전 시 시간손절, 계좌 낙폭 10%↑ 시 신규매수를 중단합니다(모의투자 "미너비니 v2"와 동일 규칙).
+            시장은 국내(KR), 최대 보유는 10종목으로 고정됩니다.
+            </span>
+          </div>
         </div>
         <div id="screenbt-result"></div>
+      </section>
+
+      <!-- 모의투자: 실제 돈 없이 매일 자동으로 전략을 그대로 따라가는 가상 계좌 -->
+      <section id="sec-papertrade" class="section">
+        <div id="papertrade-body"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i></div></div>
       </section>
     </main>
   </div>

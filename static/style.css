@@ -742,6 +742,14 @@ input::placeholder { color: var(--text-muted); }
 /* 전략 프리셋 카드 - 재무 필터 항목(fftier/ffchip)과 달리 이름 하나만으로는
    기준을 알 수 없어 짧은 설명까지 같이 보여줘야 해서 칩보다 큰 카드 형태로 둔다. */
 .ffstrategy-list { display: flex; flex-direction: column; gap: 8px; }
+.bt-preset-btn {
+  padding: 8px 14px; border-radius: var(--radius-md); border: 1px solid var(--border);
+  background: var(--bg-secondary); color: var(--text); cursor: pointer; font-size: 13px; font-weight: 600;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+.bt-preset-btn:hover { border-color: var(--border-strong); }
+.bt-preset-btn.selected { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
+
 .ffstrategy-card {
   padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--border);
   background: var(--bg-secondary); cursor: pointer; transition: border-color .15s ease, background-color .15s ease;

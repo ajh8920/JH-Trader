@@ -201,6 +201,18 @@ EXIT_REASON_LABEL = {
     "timeStop": "시간 손절", "periodEnd": "기간 종료",
 }
 
+# "미너비니 v2" 전략 프리셋 - 스크리닝 백테스트 웹 화면과 모의투자 탭(paper_trading.py)이
+# 정확히 같은 규칙을 쓰도록 파라미터를 한 곳에서만 정의한다(따로 정의하면 둘 사이에
+# 파라미터가 슬금슬금 달라질 위험이 있다). 8종 팩터 조합 스윕에서 수익률·알파·손익비
+# 전부 1위였던 "유동성만"(모멘텀+유동성, 가치/퀄리티/저변동성 없음) 조합 그대로다.
+MINERVINI_V2_PARAMS = {
+    "market": "KR", "strategy": "trendTemplate",
+    "risk_pct": DEFAULT_RISK_PCT, "atr_period": DEFAULT_ATR_PERIOD, "atr_mult": DEFAULT_ATR_MULT,
+    "breakeven_r": DEFAULT_BREAKEVEN_R, "trail_start_r": DEFAULT_TRAIL_START_R,
+    "time_stop_days": DEFAULT_TIME_STOP_DAYS, "dd_halt_pct": DEFAULT_DD_HALT_PCT,
+    "max_positions": DEFAULT_MAX_POSITIONS, "min_avg_trade_value": 300_000_000,
+}
+
 
 def run_risk_managed_backtest(market, strategy, start_date, end_date,
                                risk_pct=DEFAULT_RISK_PCT, atr_period=DEFAULT_ATR_PERIOD, atr_mult=DEFAULT_ATR_MULT,

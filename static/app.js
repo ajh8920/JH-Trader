@@ -433,6 +433,31 @@ const I18N = {
   errorDuringBacktest: { en: 'An error occurred during the backtest', ko: '백테스트 중 오류가 발생했습니다' },
   backtestTakingLong: { en: 'The backtest is taking longer than expected. Please try again shortly.', ko: '백테스트가 예상보다 오래 걸리고 있습니다. 잠시 후 다시 시도해주세요.' },
 
+  // 모의투자
+  tabPaperTrading: { en: 'Paper Trading', ko: '모의투자' },
+  paperTradingIntroTitle: { en: 'Start automated paper trading', ko: '자동 모의투자를 시작하세요' },
+  paperTradingIntroBody: {
+    en: 'Once started, the "Minervini v2" strategy (Trend Template + liquidity entry, ATR-based risk-managed exit) '
+      + 'runs automatically every day with no real money — entering and exiting positions on its own and logging '
+      + 'every trade with the exact reason it sold.',
+    ko: '시작하면 "미너비니 v2" 전략(트렌드템플릿+유동성 진입, ATR 기반 리스크관리 청산)이 실제 돈 없이 '
+      + '매일 자동으로 매수·매도를 진행하며, 팔 때마다 정확히 어떤 사유로 팔았는지까지 전부 기록합니다.',
+  },
+  paperTradingStartNote: {
+    en: 'Runs in the background even while you\'re away — progress accumulates from the next trading day.',
+    ko: '접속해 있지 않아도 서버가 백그라운드에서 계속 진행합니다 — 다음 거래일부터 결과가 쌓입니다.',
+  },
+  startedOn: { en: 'Started', ko: '시작일' },
+  lastProcessedDate: { en: 'Last Updated', ko: '마지막 반영일' },
+  currentDrawdown: { en: 'Current Drawdown', ko: '현재 낙폭' },
+  cashBalance: { en: 'Cash', ko: '현금' },
+  openPositions: { en: 'Open Positions', ko: '보유 포지션' },
+  currentPrice: { en: 'Current Price', ko: '현재가' },
+  stopPrice: { en: 'Stop Price', ko: '손절가' },
+  stopState: { en: 'Stop Type', ko: '손절 단계' },
+  noOpenPositions: { en: 'No open positions', ko: '보유 중인 포지션이 없습니다' },
+  noTradesYet: { en: 'No trades yet', ko: '아직 거래 내역이 없습니다' },
+
   // 스크리닝
   addedToWatchlist: { en: 'Added to Watchlist', ko: '관심종목에 추가됨' },
   addToWatchlist: { en: 'Add to Watchlist', ko: '관심종목에 추가' },
@@ -474,6 +499,19 @@ const I18N = {
   stratReboundNote: {
     en: 'Stage 1 (basing) stocks just beginning to rebound — 30-60% above the 52-week low.',
     ko: '1단계(바닥 다지기)에서 막 반등을 시작한 종목(52주 저점 대비 +30~60%).',
+  },
+  btPresetCustom: { en: '⚙️ Custom', ko: '⚙️ 직접 설정' },
+  btPresetMinerviniV2: { en: '🎯 Minervini v2', ko: '🎯 미너비니 v2' },
+  exitInitialStop: { en: 'Stop-loss (2×ATR)', ko: '초기 손절(2×ATR)' },
+  exitBreakevenStop: { en: 'Breakeven stop', ko: '본전 손절' },
+  exitTrailingStop: { en: 'Trailing stop', ko: '트레일링 손절' },
+  exitTimeStop: { en: 'Time stop', ko: '시간 손절' },
+  stratMinerviniV2Title: { en: 'Minervini v2', ko: '미너비니 v2' },
+  stratMinerviniV2Note: {
+    en: 'Trend Template pass + liquid enough to trade (avg. daily trading value ≥ ₩300M) — the exact entry '
+      + 'filter used by the "Minervini v2" paper-trading strategy.',
+    ko: '트렌드 템플릿 통과 + 실제로 매매 가능한 유동성(최근 20일 평균 거래대금 3억원 이상) — 모의투자 '
+      + '"미너비니 v2" 전략이 신규 진입에 실제로 쓰는 조건과 동일합니다.',
   },
   stage1: { en: 'Stage 1 (Basing)', ko: '1단계(바닥 다지기)' },
   stage2: { en: 'Stage 2 (Advancing)', ko: '2단계(상승 추세)' },
@@ -723,6 +761,7 @@ function switchTab(name) {
   if (name === 'krquant') initKrQuantTab();
   if (name === 'screener') initScreenerTab();
   if (name === 'screenbt') initScreeningBacktestTab();
+  if (name === 'papertrade') loadPaperTrading();
 }
 
 document.addEventListener('DOMContentLoaded', () => loadMacro());
@@ -2375,6 +2414,10 @@ const SCREENER_STRATEGY_PRESETS = [
     key: 'rebound', icon: '🌅', titleKey: 'stratReboundTitle', noteKey: 'stratReboundNote',
     predicate: r => r.stage === 1 && r.pctAbove52wLow != null && r.pctAbove52wLow >= 30 && r.pctAbove52wLow <= 60,
   },
+  {
+    key: 'minervini_v2', icon: '🎯', titleKey: 'stratMinerviniV2Title', noteKey: 'stratMinerviniV2Note',
+    predicate: r => !!r.allPass && r.avgTradeValue != null && r.avgTradeValue >= 300_000_000,
+  },
 ];
 
 const FIN_FILTER_CATEGORIES = [
@@ -3365,6 +3408,8 @@ function drawScreenerDetailChart(d) {
 
 // ─── 스크리닝 백테스트 ────────────────────────────────────────────────────────
 
+let sbtPreset = null; // null(직접 설정) | 'minervini_v2'
+
 function initScreeningBacktestTab() {
   const startEl = document.getElementById('sbt-start');
   const endEl = document.getElementById('sbt-end');
@@ -3374,6 +3419,19 @@ function initScreeningBacktestTab() {
     d.setFullYear(d.getFullYear() - 1);
     startEl.value = d.toISOString().slice(0, 10);
   }
+}
+
+function setScreeningBacktestPreset(preset) {
+  sbtPreset = preset;
+  document.getElementById('sbt-preset-default').classList.toggle('selected', preset === null);
+  document.getElementById('sbt-preset-minervini_v2').classList.toggle('selected', preset === 'minervini_v2');
+  const locked = preset === 'minervini_v2';
+  for (const id of ['sbt-field-market', 'sbt-field-strategy', 'sbt-field-stoploss', 'sbt-field-maxpos']) {
+    document.getElementById(id).style.opacity = locked ? '0.45' : '1';
+    document.getElementById(id).querySelectorAll('select, input').forEach(elm => { elm.disabled = locked; });
+  }
+  document.getElementById('sbt-info-default').style.display = locked ? 'none' : 'flex';
+  document.getElementById('sbt-info-minervini_v2').style.display = locked ? 'flex' : 'none';
 }
 
 async function runScreeningBacktest() {
@@ -3392,7 +3450,7 @@ async function runScreeningBacktest() {
   el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('runningScreeningBacktest')}</div>`;
   try {
     const { jobId } = await api('POST', '/api/screening-backtest', {
-      market, strategy, start, end, stopLossPct, maxPositions, seed,
+      market, strategy, start, end, stopLossPct, maxPositions, seed, preset: sbtPreset,
     });
     await pollScreeningBacktestJob(jobId, el);
   } catch (e) {
@@ -3432,7 +3490,11 @@ function renderScreeningBacktestResult(d) {
   const isUS = d.market === 'US';
   const fmtCap = v => isUS ? `$${Number(v).toLocaleString('en-US')}` : formatKrw(v);
   const fmtPrice = v => isUS ? `$${Number(v).toFixed(2)}` : `₩${Math.round(v).toLocaleString('en-US')}`;
-  const exitReasonLabel = r => ({ stopLoss: t('stopLoss'), conditionExit: t('conditionExit'), periodEnd: t('periodEnd') }[r] || r);
+  const exitReasonLabel = r => ({
+    stopLoss: t('stopLoss'), conditionExit: t('conditionExit'), periodEnd: t('periodEnd'),
+    initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
+    trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'),
+  }[r] || r);
 
   el.innerHTML = `
     <div class="card">
@@ -3544,6 +3606,133 @@ function drawScreeningBacktestChart(curve, seed, benchmark) {
 
 function resetScreeningBacktestZoom() {
   if (screenbtChart) screenbtChart.resetZoom();
+}
+
+// ─── 모의투자 (실시간 자동 페이퍼 트레이딩) ─────────────────────────────────
+// 실제 돈 없이 "미너비니 v2" 전략(트렌드템플릿+유동성 진입, ATR 기반 리스크관리
+// 청산)을 매일 자동으로 그대로 따라가는 가상 계좌. 무거운 계산은 서버
+// 백그라운드 리프레셔가 하고, 이 화면은 이미 반영된 계좌 상태만 폴링해서 보여준다.
+
+const PAPER_TRADING_EXIT_REASON_LABEL = r => ({
+  initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
+  trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'), periodEnd: t('periodEnd'),
+}[r] || r);
+
+async function loadPaperTrading() {
+  const el = document.getElementById('papertrade-body');
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i></div>`;
+  try {
+    const data = await api('GET', '/api/paper-trading/status?strategy=minervini_v2');
+    if (!data.exists) {
+      renderPaperTradingStart(el);
+    } else {
+      renderPaperTradingDashboard(el, data);
+    }
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
+  }
+}
+
+function renderPaperTradingStart(el) {
+  el.innerHTML = `
+    <div class="card" style="text-align:center;padding:2.5rem 1.5rem;">
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px;">${t('paperTradingIntroTitle')}</div>
+      <div style="font-size:13px;color:var(--text-muted);max-width:560px;margin:0 auto 20px;line-height:1.6;">
+        ${t('paperTradingIntroBody')}
+      </div>
+      <div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:16px;">
+        <label for="pt-start-seed" style="font-size:13px;color:var(--text-secondary);">${t('capital')}</label>
+        <input type="number" id="pt-start-seed" value="10000000" step="1000000" min="1" style="width:160px;" />
+      </div>
+      <button class="bt-preset-btn selected" style="padding:12px 22px;font-size:14px;" onclick="startPaperTrading()">
+        🎯 ${t('stratMinerviniV2Title')}
+      </button>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:14px;">${t('paperTradingStartNote')}</div>
+    </div>`;
+}
+
+async function startPaperTrading() {
+  const seed = parseFloat(document.getElementById('pt-start-seed').value);
+  if (!seed || seed <= 0) { alert(t('checkCapital') || '시드를 확인하세요'); return; }
+  try {
+    await api('POST', '/api/paper-trading/start', { strategy: 'minervini_v2', seed });
+    await loadPaperTrading();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+function renderPaperTradingDashboard(el, d) {
+  const pnlCls = d.returnPct >= 0 ? 'positive' : 'negative';
+  const fmt = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+  el.innerHTML = `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+        <div style="font-size:14px;font-weight:700;">🎯 ${t('stratMinerviniV2Title')}</div>
+        <div style="font-size:11.5px;color:var(--text-muted);">
+          ${t('startedOn')} ${escapeHtml(d.startedOn || '-')} · ${t('lastProcessedDate')} ${escapeHtml(d.lastProcessedDate || '-')}
+        </div>
+      </div>
+      <div class="bt-summary-grid">
+        <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">${fmt(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('finalValue')}</div><div class="meta-value">${fmt(d.equity)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('totalReturn')}</div><div class="meta-value ${pnlCls}">${d.returnPct>=0?'+':''}${d.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('currentDrawdown')}</div><div class="meta-value negative">-${d.drawdownPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('winRate')}</div><div class="meta-value">${d.winRatePct != null ? d.winRatePct.toFixed(1) + '%' : '-'} (${d.tradeCount})</div></div>
+        <div class="meta-item"><div class="meta-label">${t('cashBalance')}</div><div class="meta-value">${fmt(d.cash)}</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('openPositions')} (${d.positions.length})</div>
+      ${d.positions.length ? `
+      <div class="pf-table-wrap">
+        <table class="pf-table">
+          <thead><tr>
+            <th>${t('name')}</th><th>${t('code')}</th>
+            <th style="text-align:right;">${t('buyDate')}</th><th style="text-align:right;">${t('buyPrice')}</th>
+            <th style="text-align:right;">${t('currentPrice')}</th><th style="text-align:right;">${t('returnPct')}</th>
+            <th style="text-align:right;">${t('stopPrice')}</th><th>${t('stopState')}</th>
+          </tr></thead>
+          <tbody>
+            ${d.positions.map(p => `
+              <tr>
+                <td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.code)}</td>
+                <td style="text-align:right;">${escapeHtml(p.entryDate)}</td><td style="text-align:right;">₩${Math.round(p.entryPrice).toLocaleString('en-US')}</td>
+                <td style="text-align:right;">₩${Math.round(p.currentPrice).toLocaleString('en-US')}</td>
+                <td style="text-align:right;" class="${p.unrealizedPct >= 0 ? 'positive' : 'negative'}">${p.unrealizedPct>=0?'+':''}${p.unrealizedPct.toFixed(1)}%</td>
+                <td style="text-align:right;">₩${Math.round(p.stopPrice).toLocaleString('en-US')}</td>
+                <td>${PAPER_TRADING_EXIT_REASON_LABEL(p.stopState)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : `<div class="empty-state" style="padding:1.5rem;"><p>${t('noOpenPositions')}</p></div>`}
+    </div>
+
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('tradeLog')} (${d.trades.length})</div>
+      ${d.trades.length ? `
+      <div class="pf-table-wrap">
+        <table class="pf-table">
+          <thead><tr>
+            <th>${t('name')}</th><th>${t('code')}</th>
+            <th style="text-align:right;">${t('buyDate')}</th><th style="text-align:right;">${t('buyPrice')}</th>
+            <th style="text-align:right;">${t('sellDate')}</th><th style="text-align:right;">${t('sellPrice')}</th>
+            <th style="text-align:right;">${t('returnPct')}</th><th>${t('exitReason')}</th>
+          </tr></thead>
+          <tbody>
+            ${d.trades.map(tr => `
+              <tr>
+                <td>${escapeHtml(tr.name)}</td><td>${escapeHtml(tr.code)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.entryDate)}</td><td style="text-align:right;">₩${Math.round(tr.entryPrice).toLocaleString('en-US')}</td>
+                <td style="text-align:right;">${escapeHtml(tr.exitDate)}</td><td style="text-align:right;">₩${Math.round(tr.exitPrice).toLocaleString('en-US')}</td>
+                <td style="text-align:right;" class="${tr.pnlPct >= 0 ? 'positive' : 'negative'}">${tr.pnlPct>=0?'+':''}${tr.pnlPct.toFixed(1)}%</td>
+                <td>${PAPER_TRADING_EXIT_REASON_LABEL(tr.exitReason)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : `<div class="empty-state" style="padding:1.5rem;"><p>${t('noTradesYet')}</p></div>`}
+    </div>`;
 }
 
 // ─── 무한매수법 실전 현황 ────────────────────────────────────────────────────

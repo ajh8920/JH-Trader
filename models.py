@@ -257,6 +257,7 @@ class TrendScreenCache(db.Model):
     conditions_json = db.Column(db.Text)
     volume = db.Column(db.Float)  # 최근 거래일 거래량
     rel_volume = db.Column(db.Float)  # 최근 거래량 / 직전 20거래일 평균거래량
+    avg_trade_value = db.Column(db.Float)  # 최근 20거래일 평균 거래대금(원) - 유동성 팩터(미너비니 v2)용
     market_cap = db.Column(db.Float)  # 국내: 원, 미국: 백만 달러(Finnhub 기준)
     pe_ratio = db.Column(db.Float)
     eps_growth = db.Column(db.Float)  # YoY %. 국내는 순이익 증가율로 근사
@@ -287,4 +288,92 @@ class ScreenerWatchlist(db.Model):
     market = db.Column(db.String(4), nullable=False)
     code = db.Column(db.String(10), nullable=False)
     name = db.Column(db.String(128), default="")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class PaperStrategyAccount(db.Model):
+    """모의투자 탭 - 전략 하나(예: "미너비니 v2")를 실제 돈 없이 매일 자동으로
+    그대로 따라가며 시뮬레이션하는 가상 계좌. 사용자별로 전략마다 독립된
+    계좌를 갖는다(같은 전략을 여러 사용자가 각자 시작해도 서로 섞이지 않음).
+
+    paper_trading.py의 일별 처리 로직이 background_thread(app.py의
+    paper_trading_runner)에서 주기적으로 이 계좌를 찾아 진행 상황을 갱신한다.
+    실제 백테스트(screening_backtest.py)와 같은 매매 규칙을 쓰지만, 여기는
+    "그 시점까지의 과거"가 아니라 "오늘 실제로 확정된 가격"을 매일 하루치씩
+    누적 반영한다는 점이 다르다(워크포워드가 아니라 진짜 실시간 진행).
+    """
+
+    __tablename__ = "paper_strategy_accounts"
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "strategy", name="uq_paper_account_user_strategy"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    strategy = db.Column(db.String(30), nullable=False)  # 예: "minervini_v2"
+    market = db.Column(db.String(4), nullable=False, default="KR")
+    seed = db.Column(db.Float, nullable=False, default=10_000_000)
+    cash = db.Column(db.Float, nullable=False, default=10_000_000)
+    peak_equity = db.Column(db.Float, nullable=False, default=10_000_000)
+    started_on = db.Column(db.String(10))  # 최초 시작일(YYYY-MM-DD)
+    # 마지막으로 "일별 처리"(보유 종목 손절/본전/트레일링/시간손절 판정)를 끝낸
+    # 거래일. 이 날짜까지는 이미 반영이 끝났다는 뜻이라, 같은 날 리프레셔가
+    # 여러 번 깨어나도 중복 처리하지 않는다.
+    last_processed_date = db.Column(db.String(10))
+    last_rescan_date = db.Column(db.String(10))  # 마지막으로 신규 진입 후보를 스캔한 날(주 단위)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    positions = db.relationship(
+        "PaperPosition", backref="account", cascade="all, delete-orphan",
+        order_by="PaperPosition.entry_date",
+    )
+    trades = db.relationship(
+        "PaperTrade", backref="account", cascade="all, delete-orphan",
+        order_by="PaperTrade.entry_date",
+    )
+
+
+class PaperPosition(db.Model):
+    """모의투자 계좌가 현재 보유 중인 포지션 - screening_backtest.py의
+    run_risk_managed_backtest가 메모리에서만 들고 있는 포지션 dict를 그대로
+    DB 행으로 옮긴 것(재시작해도 유지되어야 하므로)."""
+
+    __tablename__ = "paper_positions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey("paper_strategy_accounts.id"), nullable=False)
+    code = db.Column(db.String(10), nullable=False)
+    name = db.Column(db.String(128), default="")
+    entry_date = db.Column(db.String(10), nullable=False)
+    entry_price = db.Column(db.Float, nullable=False)
+    shares = db.Column(db.Integer, nullable=False)
+    entry_atr = db.Column(db.Float, nullable=False)
+    risk_per_share = db.Column(db.Float, nullable=False)
+    stop_price = db.Column(db.Float, nullable=False)
+    stop_state = db.Column(db.String(20), nullable=False, default="initialStop")
+    highest_high = db.Column(db.Float, nullable=False)
+    bars_held = db.Column(db.Integer, nullable=False, default=0)  # 시간손절용 - 일별 처리 통과 횟수
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class PaperTrade(db.Model):
+    """모의투자 계좌의 확정(청산 완료) 매매 이력. exit_reason으로 왜 팔았는지
+    (손절/본전손절/트레일링손절/시간손절/기간종료) 그대로 남긴다."""
+
+    __tablename__ = "paper_trades"
+
+    id = db.Column(db.Integer, primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey("paper_strategy_accounts.id"), nullable=False)
+    code = db.Column(db.String(10), nullable=False)
+    name = db.Column(db.String(128), default="")
+    entry_date = db.Column(db.String(10), nullable=False)
+    entry_price = db.Column(db.Float, nullable=False)
+    exit_date = db.Column(db.String(10), nullable=False)
+    exit_price = db.Column(db.Float, nullable=False)
+    shares = db.Column(db.Integer, nullable=False)
+    pnl_pct = db.Column(db.Float, nullable=False)
+    exit_reason = db.Column(db.String(20), nullable=False)
+    hold_days = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
