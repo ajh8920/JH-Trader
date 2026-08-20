@@ -54,8 +54,8 @@ def load_universe(market):
     return tickers
 
 
-def fetch_ohlc_history_batch(tickers, start_date, end_date, max_attempts=3, dl_timeout=30, backoff_base=1.5):
-    """여러 종목의 전체 기간 OHLC 히스토리를 배치로 가져온다.
+def fetch_ohlc_history_batches(tickers, start_date, end_date, max_attempts=3, dl_timeout=30, backoff_base=1.5):
+    """여러 종목의 전체 기간 OHLC 히스토리를 청크 단위로 즉시 내어주는 제너레이터.
 
     max_attempts/dl_timeout/backoff_base로 재시도 강도를 조절할 수 있다 - 백그라운드
     스크리닝(전체 유니버스)처럼 실패해도 다음 주기에 다시 채우면 되는 경우는 기본값
@@ -64,14 +64,18 @@ def fetch_ohlc_history_batch(tickers, start_date, end_date, max_attempts=3, dl_t
     (재시도 3회×30초 타임아웃이면 최악의 경우 요청 하나가 90초 넘게 걸려 그 자체로
     요청이 죽는 문제가 있었다).
 
-    반환: {ticker: [{"date":..., "close":..., "high":..., "low":...}, ...]} (날짜 오름차순)
+    yield: (ticker, [{"date":..., "close":..., "high":..., "low":...}, ...]) (날짜 오름차순)
     """
     if not tickers:
-        return {}
+        return
     # 청크를 작게, threads=False로 순간 메모리/CPU 사용량을 낮춘다(운영 서버 메모리
-    # 한도에서 여러 워커가 동시에 큰 배치를 처리하다 죽는 문제를 피하기 위함).
+    # 한도에서 여러 워커가 동시에 큰 배치를 처리하다 죽는 문제를 피하기 위함). 다만
+    # 청크 자체를 작게 받아도 결과를 dict 하나에 전부 모아뒀다가 반환하면(예전 방식)
+    # 국내처럼 유니버스가 큰 경우 끝에 가서는 결국 전종목 히스토리를 한꺼번에 메모리에
+    # 들고 있게 된다 - 국내 스크리닝이 장시간(며칠 단위) 정체되는 문제의 유력한
+    # 원인으로 지목되어, 청크를 가져오는 즉시 호출부에 넘기고 이 함수는 아무것도
+    # 누적하지 않도록 제너레이터로 바꿨다(호출부가 평가 후 바로 버릴 수 있게).
     CHUNK = 25
-    history = {}
 
     for i in range(0, len(tickers), CHUNK):
         chunk = tickers[i:i + CHUNK]
@@ -105,9 +109,16 @@ def fetch_ohlc_history_batch(tickers, start_date, end_date, max_attempts=3, dl_t
                 continue
             bars = _extract_bars(sub)
             if bars:
-                history[t] = bars
+                yield t, bars
+        del df
 
-    return history
+
+def fetch_ohlc_history_batch(tickers, start_date, end_date, **kwargs):
+    """fetch_ohlc_history_batches를 dict로 모아 반환하는 얇은 래퍼 - 종목 상세
+    모달처럼 애초에 1종목만 조회해 전체를 메모리에 들고 있어도 무방한 소규모
+    호출부용이다. 전체 유니버스를 도는 run_screen은 메모리 절약을 위해 이 함수
+    대신 제너레이터를 직접 순회한다."""
+    return dict(fetch_ohlc_history_batches(tickers, start_date, end_date, **kwargs))
 
 
 def _extract_bars(df):
@@ -278,10 +289,9 @@ def run_screen(market, rs_threshold=DEFAULT_RS_THRESHOLD):
 
     end = datetime.today()
     start = end - timedelta(days=450)
-    history = fetch_ohlc_history_batch(tickers, start.strftime("%Y-%m-%d"), (end + timedelta(days=1)).strftime("%Y-%m-%d"))
 
     evaluated = []
-    for ticker, bars in history.items():
+    for ticker, bars in fetch_ohlc_history_batches(tickers, start.strftime("%Y-%m-%d"), (end + timedelta(days=1)).strftime("%Y-%m-%d")):
         code, name, industry, sector = info_by_ticker.get(ticker, (ticker, ticker, None, None))
         # 종목 하나의 데이터가 예상 못한 형태(예: 상장폐지 직전 이상치)라 여기서
         # 예외가 나면, 감싸지 않을 경우 전체 유니버스(국내 기준 2,500여 종목)
