@@ -610,8 +610,20 @@ input::placeholder { color: var(--text-muted); }
 .scr-modal {
   background: var(--bg); border-radius: var(--radius-lg); border: 1px solid var(--border-strong);
   box-shadow: 0 20px 50px rgba(0,0,0,0.4); width: 100%; max-width: 840px; max-height: 88vh;
-  overflow-y: auto; position: relative; padding: 26px;
+  position: relative; padding: 26px;
   transform: translateZ(0);
+  /* overflow-y:auto → scroll: 데이터/차트가 비동기로 채워지며 콘텐츠 높이가
+     88vh 경계를 넘나들 때마다 세로 스크롤바가 나타났다 사라지길 반복해 내부
+     너비가 스크롤바 폭(약 15px)만큼 흔들렸다 - html에 overflow-y:scroll을 쓴
+     것(위 주석 참고)과 정확히 같은 원인·같은 처방이라 스크롤바를 항상
+     예약해둔다. */
+  overflow-y: scroll;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.scr-modal::-webkit-scrollbar { width: 14px; }
+.scr-modal::-webkit-scrollbar-track { background: transparent; }
+.scr-modal::-webkit-scrollbar-thumb {
+  background-color: var(--border); border-radius: 999px; border: 4px solid transparent; background-clip: padding-box;
 }
 .scr-modal-close {
   position: absolute; top: 14px; right: 14px; background: var(--bg-tertiary); border: none;
@@ -726,6 +738,21 @@ input::placeholder { color: var(--text-muted); }
 }
 .fftier:hover { border-color: var(--border-strong); color: var(--text); }
 .fftier.selected { background: var(--blue); border-color: var(--blue); color: white; }
+
+/* 전략 프리셋 카드 - 재무 필터 항목(fftier/ffchip)과 달리 이름 하나만으로는
+   기준을 알 수 없어 짧은 설명까지 같이 보여줘야 해서 칩보다 큰 카드 형태로 둔다. */
+.ffstrategy-list { display: flex; flex-direction: column; gap: 8px; }
+.ffstrategy-card {
+  padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--border);
+  background: var(--bg-secondary); cursor: pointer; transition: border-color .15s ease, background-color .15s ease;
+}
+.ffstrategy-card:hover { border-color: var(--border-strong); }
+.ffstrategy-card.selected { background: var(--blue-bg); border-color: var(--blue); }
+.ffstrategy-head { display: flex; align-items: center; gap: 8px; }
+.ffstrategy-icon { font-size: 15px; }
+.ffstrategy-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.ffstrategy-card.selected .ffstrategy-title { color: var(--blue); }
+.ffstrategy-note { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; line-height: 1.4; }
 .scr-detail-cond-row.fail { color: var(--text-muted); }
 .scr-detail-cond-row i.pass { color: var(--green); }
 .scr-detail-cond-row i.fail { color: var(--text-muted); }

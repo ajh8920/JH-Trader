@@ -131,6 +131,7 @@ const BACKEND_TEXT_KO = {
   'Declining': '감소', 'Slow': '저성장', 'Strong': '고성장', 'Explosive': '폭발적', 'None': '없음',
   // 스크리너 재무 필터 - 기타
   'Analyst Rating': '애널리스트 의견', 'Financial Filters': '재무 필터', 'Reset': '초기화', 'Rating': '등급',
+  'Strategy Presets': '전략 프리셋',
   "Some metrics (stability, consensus, EV/EBITDA, etc.) aren't available for KR stocks.":
     '일부 지표(안정성, 컨센서스, EV/EBITDA 등)는 국내 종목에서 제공되지 않습니다.',
   // 스크리너 재무 필터 - 미너비니 스테이지
@@ -426,6 +427,27 @@ const I18N = {
   stage2Short: { en: 'Stage 2', ko: '2단계' },
   stage3Short: { en: 'Stage 3', ko: '3단계' },
   stage4Short: { en: 'Stage 4', ko: '4단계' },
+  bollingerBands: { en: 'Bollinger Bands', ko: '볼린저 밴드' },
+  stratCanslimTitle: { en: 'CANSLIM', ko: 'CANSLIM' },
+  stratCanslimNote: {
+    en: "William O'Neil's growth-stock criteria, approximated: Stage 2+ uptrend, strong EPS growth, and high relative strength.",
+    ko: '윌리엄 오닐의 성장주 발굴 기준 근사: 2단계 이상 상승 추세 + 높은 EPS 성장률 + 강한 상대강도(RS).',
+  },
+  stratTrendTemplateTitle: { en: 'Minervini Trend Template', ko: '미너비니 트렌드 템플릿' },
+  stratTrendTemplateNote: {
+    en: "Stocks that satisfy all 8 Trend Template conditions — this screener's own core criteria.",
+    ko: '트렌드 템플릿 8개 조건을 모두 만족하는 종목(이 화면의 기본 스크리닝 기준).',
+  },
+  stratValueTitle: { en: 'Deep Value', ko: '딥 밸류(저평가 가치주)' },
+  stratValueNote: {
+    en: 'Graham/Buffett-style value approximation: low P/E, low P/B, solid ROE.',
+    ko: '그레이엄·버핏류 가치투자 근사: 저PER + 저PBR + 견조한 ROE.',
+  },
+  stratReboundTitle: { en: 'Rebound from Lows', ko: '저점 반등 초입' },
+  stratReboundNote: {
+    en: 'Stage 1 (basing) stocks just beginning to rebound — 30-60% above the 52-week low.',
+    ko: '1단계(바닥 다지기)에서 막 반등을 시작한 종목(52주 저점 대비 +30~60%).',
+  },
   stage1: { en: 'Stage 1 (Basing)', ko: '1단계(바닥 다지기)' },
   stage2: { en: 'Stage 2 (Advancing)', ko: '2단계(상승 추세)' },
   stage3: { en: 'Stage 3 (Topping)', ko: '3단계(천장)' },
@@ -2303,9 +2325,34 @@ function renderScreenerResults(data) {
 // 빠른 1차 필터용 버튼이다. 왼쪽→오른쪽은 항상 "수치가 낮음→높음" 순서로 두고
 // (부채비율처럼 낮을수록 좋은 지표는 라벨만 반대로 붙는다), 성장률처럼 실제로
 // 음수가 나올 수 있는 지표는 그대로 음수 구간을 첫 번째 단계로 둔다.
+// 잘 알려진 스크리닝 전략을 한 번의 클릭으로 적용하는 프리셋. 각 전략은 이미
+// 이 화면이 계산해둔 필드(stage/rsRating/epsGrowth/peRatio/metrics.*)만으로
+// 근사한 것으로, 원 저자의 정확한 기준(예: CANSLIM의 기관 매수세, 실적 서프라이즈
+// 등)을 전부 반영하지는 못한다 - 빠른 1차 후보군 추리기용이다.
+const SCREENER_STRATEGY_PRESETS = [
+  {
+    key: 'canslim', icon: '🚀', titleKey: 'stratCanslimTitle', noteKey: 'stratCanslimNote',
+    predicate: r => r.stage >= 2 && r.epsGrowth != null && r.epsGrowth >= 25 && r.rsRating != null && r.rsRating >= 80,
+  },
+  {
+    key: 'trendtemplate', icon: '🏆', titleKey: 'stratTrendTemplateTitle', noteKey: 'stratTrendTemplateNote',
+    predicate: r => !!r.allPass,
+  },
+  {
+    key: 'value', icon: '💎', titleKey: 'stratValueTitle', noteKey: 'stratValueNote',
+    predicate: r => r.peRatio != null && r.peRatio <= 18 && r.metrics?.pbr != null && r.metrics.pbr <= 3
+      && r.metrics?.roe != null && r.metrics.roe >= 15,
+  },
+  {
+    key: 'rebound', icon: '🌅', titleKey: 'stratReboundTitle', noteKey: 'stratReboundNote',
+    predicate: r => r.stage === 1 && r.pctAbove52wLow != null && r.pctAbove52wLow >= 30 && r.pctAbove52wLow <= 60,
+  },
+];
+
 const FIN_FILTER_CATEGORIES = [
-  // 'stage' 카테고리는 숫자 범위(items)가 아니라 1~4단계 다중선택 칩이라 items를
-  // 비워두고 buildFinFilterPanel에서 'consensus'처럼 별도 분기로 렌더링한다.
+  // 'strategy'/'stage' 카테고리는 숫자 범위(items)가 아니라 각각 전략 카드/1~4단계
+  // 선택 버튼이라 items를 비워두고 buildFinFilterPanel에서 별도 분기로 렌더링한다.
+  { key: 'strategy', icon: '🧭', title: 'Strategy Presets', items: [] },
   { key: 'stage', icon: '🔄', title: 'Stage (Minervini)', items: [] },
   { key: 'bs', icon: '🧾', title: 'Balance Sheet', items: [
     { key: 'totalAssets', label: 'Total Assets', abs: true, get: r => r.metrics?.totalAssets },
@@ -2370,6 +2417,7 @@ const FIN_FILTER_CATEGORIES = [
 let scrActiveFilters = {}; // { [itemKey]: {min, max} }
 let scrActiveRatings = new Set(); // 컨센서스(투자의견) 다중 선택
 let scrActiveStage = null; // 미너비니 단계(1~4) 단일 선택 - 종목당 단계가 하나뿐이라 다중선택은 의미가 없어 단일 선택으로 둔다
+let scrActiveStrategy = null; // 전략 프리셋(SCREENER_STRATEGY_PRESETS) 단일 선택
 let scrFilterActiveCat = FIN_FILTER_CATEGORIES[0].key; // 지금 하단에 펼쳐진 카테고리
 
 function absScale() { return scrIsUS ? 1e6 : 1e8; }
@@ -2402,6 +2450,7 @@ function tierRangeLabel(tier) {
 function countActiveInCat(cat) {
   if (cat.key === 'consensus') return scrActiveRatings.size;
   if (cat.key === 'stage') return scrActiveStage != null ? 1 : 0;
+  if (cat.key === 'strategy') return scrActiveStrategy != null ? 1 : 0;
   return cat.items.filter(it => scrActiveFilters[it.key]).length;
 }
 
@@ -2437,7 +2486,15 @@ function buildFinFilterPanel() {
         `).join('')}
       </span>
     </div>
-    <div class="ffnote">${tv("Stage is an approximate classification based on moving-average alignment and position within the 52-week range (it doesn't factor in breakout volume or trend duration).")}</div>` : activeCat.items.map(item => {
+    <div class="ffnote">${tv("Stage is an approximate classification based on moving-average alignment and position within the 52-week range (it doesn't factor in breakout volume or trend duration).")}</div>` : activeCat.key === 'strategy' ? `
+    <div class="ffstrategy-list">
+      ${SCREENER_STRATEGY_PRESETS.map(s => `
+        <div class="ffstrategy-card ${scrActiveStrategy === s.key ? 'selected' : ''}" onclick="toggleFinFilterStrategy('${s.key}')">
+          <div class="ffstrategy-head"><span class="ffstrategy-icon">${s.icon}</span><span class="ffstrategy-title">${t(s.titleKey)}</span></div>
+          <div class="ffstrategy-note">${t(s.noteKey)}</div>
+        </div>
+      `).join('')}
+    </div>` : activeCat.items.map(item => {
     const unitLabel = item.abs ? `(${absUnitLabel()})` : item.unit ? `(${item.unit})` : '';
     const cur = scrActiveFilters[item.key] || {};
     const tiersHtml = item.tiers ? `
@@ -2530,17 +2587,26 @@ function toggleFinFilterStage(n) {
   renderFilteredScreenerRows();
 }
 
+function toggleFinFilterStrategy(key) {
+  scrActiveStrategy = scrActiveStrategy === key ? null : key;
+  buildFinFilterPanel();
+  updateFinFilterCount();
+  renderFilteredScreenerRows();
+}
+
 function resetFinFilters() {
   scrActiveFilters = {};
   scrActiveRatings = new Set();
   scrActiveStage = null;
+  scrActiveStrategy = null;
   buildFinFilterPanel();
   updateFinFilterCount();
   renderFilteredScreenerRows();
 }
 
 function updateFinFilterCount() {
-  const n = Object.keys(scrActiveFilters).length + (scrActiveRatings.size ? 1 : 0) + (scrActiveStage != null ? 1 : 0);
+  const n = Object.keys(scrActiveFilters).length + (scrActiveRatings.size ? 1 : 0) + (scrActiveStage != null ? 1 : 0)
+    + (scrActiveStrategy != null ? 1 : 0);
   const badge = document.getElementById('scr-filter-count');
   if (!badge) return;
   badge.textContent = n;
@@ -2560,6 +2626,10 @@ function passesFinFilters(r) {
   }
   if (scrActiveRatings.size && !scrActiveRatings.has(r.analystRating)) return false;
   if (scrActiveStage != null && (r.stage == null || r.stage < scrActiveStage)) return false;
+  if (scrActiveStrategy != null) {
+    const strat = SCREENER_STRATEGY_PRESETS.find(s => s.key === scrActiveStrategy);
+    if (strat && !strat.predicate(r)) return false;
+  }
   return true;
 }
 
@@ -2756,8 +2826,6 @@ function hideScrPopover() {
 // ─── 스크리닝 종목 상세 모달 ────────────────────────────────────────────────────
 
 let scrDetailChart = null;
-let scrDetailVolumeChart = null;
-let scrDetailRsiChart = null;
 const scrDetailPanState = { cleanup: null };
 
 async function openScreenerDetail(code) {
@@ -2784,8 +2852,6 @@ function closeScreenerDetail() {
   document.getElementById('scr-detail-overlay').style.display = 'none';
   document.removeEventListener('keydown', scrDetailEscHandler);
   if (scrDetailChart) { scrDetailChart.destroy(); scrDetailChart = null; }
-  if (scrDetailVolumeChart) { scrDetailVolumeChart.destroy(); scrDetailVolumeChart = null; }
-  if (scrDetailRsiChart) { scrDetailRsiChart.destroy(); scrDetailRsiChart = null; }
   if (scrDetailPanState.cleanup) { scrDetailPanState.cleanup(); scrDetailPanState.cleanup = null; }
 }
 
@@ -2820,6 +2886,22 @@ function rsiSeries(closes, period = 14) {
     out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
   }
   return out;
+}
+
+// 표준 볼린저 밴드: n일 단순이동평균 ± k * n일 표준편차(기본 20일, k=2).
+function bollingerBands(closes, period = 20, mult = 2) {
+  const mid = smaSeries(closes, period);
+  const upper = new Array(closes.length).fill(null);
+  const lower = new Array(closes.length).fill(null);
+  for (let i = period - 1; i < closes.length; i++) {
+    const window = closes.slice(i - period + 1, i + 1);
+    const mean = mid[i];
+    const variance = window.reduce((s, v) => s + (v - mean) ** 2, 0) / period;
+    const sd = Math.sqrt(variance);
+    upper[i] = mean + mult * sd;
+    lower[i] = mean - mult * sd;
+  }
+  return { mid, upper, lower };
 }
 
 function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
@@ -3082,17 +3164,10 @@ function renderScreenerDetail(d) {
         </button>` : ''}
     </div>
 
-    <div class="chart-wrap" style="height:260px;">
-      <canvas id="scr-detail-chart" role="img" aria-label="${escapeHtml(d.name)} price chart"></canvas>
+    <div class="chart-wrap" style="height:460px;">
+      <canvas id="scr-detail-chart" role="img" aria-label="${escapeHtml(d.name)} price/volume/RSI chart"></canvas>
     </div>
     <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">${t('scrollZoomDragPan')}</div>
-
-    <div class="chart-wrap" style="height:90px;margin-top:10px;">
-      <canvas id="scr-detail-volume-chart" role="img" aria-label="${escapeHtml(d.name)} volume chart"></canvas>
-    </div>
-    <div class="chart-wrap" style="height:110px;margin-top:10px;">
-      <canvas id="scr-detail-rsi-chart" role="img" aria-label="${escapeHtml(d.name)} RSI chart"></canvas>
-    </div>
 
     <div class="scr-detail-section">
       <div class="scr-detail-section-title">${t('trendTemplate8Conditions')}</div>
@@ -3107,12 +3182,53 @@ function renderScreenerDetail(d) {
   // 캔버스 크기를 감지하는 ResizeObserver가 레이아웃이 안정되는 동안 계속 리사이즈를
   // 반복해 화면이 깜박이는 문제가 있었다. 고정 지연(setTimeout) 대신 두 번의
   // requestAnimationFrame으로 레이아웃/페인트가 실제로 끝난 뒤에 그리도록 한다.
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    drawScreenerDetailChart(d);
-    drawScreenerDetailVolumeChart(d);
-    drawScreenerDetailRsiChart(d);
-  }));
+  requestAnimationFrame(() => requestAnimationFrame(() => drawScreenerDetailChart(d)));
 }
+
+// 가격+거래량+RSI를 캔버스 하나에 세 개의 수직 패널로 합쳐서 그린다. 예전에는
+// 캔버스 3개(별도 Chart.js 인스턴스)로 나눠 그렸는데, 가격 차트에만 확대/축소·
+// 드래그 이동이 걸려 있어 그걸 조작하면 거래량/RSI 차트의 날짜축과 어긋나
+// "차트마다 날짜가 다르다"는 불편함이 있었다. 캔버스 하나·x축 하나를 공유하면
+// 확대/이동이 항상 세 패널에 동시에 적용되어 이 문제 자체가 사라진다.
+// Chart.js는 기본적으로 여러 y축을 세로로 겹쳐 그리므로, afterLayout 훅에서
+// 각 축의 top/bottom을 수동으로 나눠 위(가격)·중간(거래량)·아래(RSI) 밴드로
+// 분할한다(거래량/RSI 축은 숫자 눈금 없이 기준선+텍스트 라벨만 그린다).
+const SCR_DETAIL_PANEL_RATIOS = { price: 0.56, volume: 0.15, rsi: 0.29 };
+const SCR_DETAIL_PANEL_GAP = 12;
+
+const scrDetailMultiPanelPlugin = {
+  id: 'scrDetailMultiPanel',
+  afterLayout(chart) {
+    const { top, bottom } = chart.chartArea;
+    const yPrice = chart.scales.y, yVol = chart.scales.yVolume, yRsi = chart.scales.yRsi;
+    if (!yPrice || !yVol || !yRsi) return;
+    const totalH = bottom - top;
+    const priceH = totalH * SCR_DETAIL_PANEL_RATIOS.price;
+    const volH = totalH * SCR_DETAIL_PANEL_RATIOS.volume;
+    const rsiH = totalH - priceH - volH - SCR_DETAIL_PANEL_GAP * 2;
+    yPrice.top = top; yPrice.bottom = top + priceH; yPrice.height = priceH;
+    yVol.top = yPrice.bottom + SCR_DETAIL_PANEL_GAP; yVol.bottom = yVol.top + volH; yVol.height = volH;
+    yRsi.top = yVol.bottom + SCR_DETAIL_PANEL_GAP; yRsi.bottom = bottom; yRsi.height = rsiH;
+    // top/bottom을 바꾸는 것만으로는 부족하다 - Chart.js는 각 스케일의 실제 픽셀
+    // 변환에 쓰는 _startPixel/_length를 configure() 시점에 top/bottom으로부터
+    // 미리 캐싱해두는데, 그 캐싱이 이미 끝난 뒤(레이아웃 단계)에 top/bottom만
+    // 덮어쓰면 눈금 위치(afterDraw에서 쓰는 top)는 바뀌어도 실제 막대/선은 여전히
+    // 옛 캐시값 그대로 그려진다(거래량 막대·RSI 선이 가격 패널 범위 전체에 걸쳐
+    // 그려지던 원인). configure()를 다시 호출해 새 top/bottom으로 캐시를 갱신한다.
+    yPrice.configure(); yVol.configure(); yRsi.configure();
+  },
+  afterDraw(chart) {
+    const { ctx, chartArea, scales } = chart;
+    if (!scales.yVolume || !scales.yRsi) return;
+    ctx.save();
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = 'rgba(148,148,148,0.85)';
+    ctx.textBaseline = 'top';
+    ctx.fillText(t('volume'), chartArea.left + 2, scales.yVolume.top + 2);
+    ctx.fillText('RSI(14)', chartArea.left + 2, scales.yRsi.top + 2);
+    ctx.restore();
+  },
+};
 
 function drawScreenerDetailChart(d) {
   const canvas = document.getElementById('scr-detail-chart');
@@ -3121,70 +3237,15 @@ function drawScreenerDetailChart(d) {
 
   const dates = d.priceCurve.map(p => p.date);
   const closes = d.priceCurve.map(p => p.close);
+  const volumes = d.priceCurve.map(p => p.volume);
+  const n = dates.length;
   const ma50 = smaSeries(closes, 50);
   const ma150 = smaSeries(closes, 150);
   const ma200 = smaSeries(closes, 200);
+  const bb = bollingerBands(closes, 20, 2);
+  const rsi = rsiSeries(closes, 14);
   const isUS = d.market === 'US';
   const fmtY = v => isUS ? `$${v.toFixed(0)}` : `${Number(v).toLocaleString('en-US')}`;
-
-  // data 배열 원소를 null과 {x,y} 객체로 섞어서 넣으면 Chart.js가 그 데이터셋
-  // 전체를 파싱하지 못해 선이 아예 안 그려진다(50/150/200일선이 안 보이던 원인) -
-  // 항상 {x, y} 형태를 유지하고 y만 null로 둬서 그 구간만 끊기게(gap) 한다.
-  const mkLine = (data, color, label, dash) => ({
-    label, data: data.map((v, i) => ({ x: i, y: v })),
-    borderColor: color, backgroundColor: 'transparent', fill: false,
-    pointRadius: 0, borderWidth: label === t('close') ? 1.5 : 1.2, tension: 0.1, spanGaps: false,
-    borderDash: dash || [],
-  });
-
-  scrDetailChart = new Chart(canvas, {
-    type: 'line',
-    data: {
-      datasets: [
-        mkLine(closes, '#888780', t('close')),
-        mkLine(ma50, '#E24B4A', 'MA50'),
-        mkLine(ma150, '#EF9F27', 'MA150'),
-        mkLine(ma200, '#378ADD', 'MA200'),
-      ],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
-            label: ctx => ctx.parsed.y == null ? undefined : ` ${ctx.dataset.label}: ${fmtY(ctx.parsed.y)}`,
-          },
-        },
-        zoom: {
-          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
-          pan: { enabled: false },
-          limits: { x: { min: 0, max: Math.max(dates.length - 1, 0), minRange: 10 } },
-        },
-      },
-      scales: {
-        y: { ticks: { callback: v => fmtY(Number(v)) }, grid: { color: 'rgba(128,128,128,0.1)' } },
-        x: {
-          type: 'linear', min: 0, max: Math.max(dates.length - 1, 0),
-          ticks: { maxTicksLimit: 8, callback: v => dates[Math.round(v)] ?? '' },
-          grid: { display: false },
-        },
-      },
-    },
-  });
-  attachChartPan(scrDetailChart, canvas, scrDetailPanState);
-}
-
-function drawScreenerDetailVolumeChart(d) {
-  const canvas = document.getElementById('scr-detail-volume-chart');
-  if (!canvas || !d.priceCurve?.length) return;
-  if (scrDetailVolumeChart) scrDetailVolumeChart.destroy();
-
-  const dates = d.priceCurve.map(p => p.date);
-  const closes = d.priceCurve.map(p => p.close);
-  const volumes = d.priceCurve.map(p => p.volume);
   const fmtVol = v => {
     if (v == null) return '-';
     if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
@@ -3192,84 +3253,86 @@ function drawScreenerDetailVolumeChart(d) {
     if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
     return `${Math.round(v).toLocaleString('en-US')}`;
   };
-  // 전일 대비 상승/하락으로 막대 색을 나눈다(첫 캔들은 비교 대상이 없어 중립색).
-  const colors = closes.map((c, i) => i === 0 || closes[i - 1] == null || c == null ? 'rgba(136,135,128,0.6)'
+
+  // data 배열 원소를 null과 {x,y} 객체로 섞어서 넣으면 Chart.js가 그 데이터셋
+  // 전체를 파싱하지 못해 선이 아예 안 그려진다(50/150/200일선이 안 보이던 원인) -
+  // 항상 {x, y} 형태를 유지하고 y만 null로 둬서 그 구간만 끊기게(gap) 한다.
+  const mkLine = (data, color, label, extra) => ({
+    label, data: data.map((v, i) => ({ x: i, y: v })), yAxisID: 'y',
+    borderColor: color, backgroundColor: 'transparent', fill: false,
+    pointRadius: 0, borderWidth: label === t('close') ? 1.5 : 1.2, tension: 0.1, spanGaps: false,
+    ...extra,
+  });
+  // 전일 대비 상승/하락으로 거래량 막대 색을 나눈다(첫 캔들은 비교 대상이 없어 중립색).
+  const volColors = closes.map((c, i) => i === 0 || closes[i - 1] == null || c == null ? 'rgba(136,135,128,0.6)'
     : c >= closes[i - 1] ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.6)');
-
-  scrDetailVolumeChart = new Chart(canvas, {
-    type: 'bar',
-    data: { datasets: [{ label: t('volume'), data: volumes.map((v, i) => ({ x: i, y: v })), backgroundColor: colors, barPercentage: 1, categoryPercentage: 1 }] },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
-            label: ctx => ctx.parsed.y == null ? undefined : ` ${t('volume')}: ${fmtVol(ctx.parsed.y)}`,
-          },
-        },
-      },
-      scales: {
-        y: { ticks: { maxTicksLimit: 3, callback: v => fmtVol(Number(v)) }, grid: { color: 'rgba(128,128,128,0.1)' } },
-        x: {
-          type: 'linear', min: 0, max: Math.max(dates.length - 1, 0),
-          ticks: { display: false }, grid: { display: false },
-        },
-      },
-    },
-  });
-}
-
-function drawScreenerDetailRsiChart(d) {
-  const canvas = document.getElementById('scr-detail-rsi-chart');
-  if (!canvas || !d.priceCurve?.length) return;
-  if (scrDetailRsiChart) scrDetailRsiChart.destroy();
-
-  const dates = d.priceCurve.map(p => p.date);
-  const closes = d.priceCurve.map(p => p.close);
-  const rsi = rsiSeries(closes, 14);
-  const n = dates.length;
-  // 30/70 기준선은 별도 플러그인 없이 처음/끝 두 점만 있는 평평한 선 데이터셋으로 그린다.
-  const flatLine = (y, color) => ({
-    data: [{ x: 0, y }, { x: n - 1, y }], borderColor: color, borderWidth: 1, borderDash: [4, 4],
-    pointRadius: 0, fill: false, label: `RSI ${y}`,
+  // RSI 30/70 기준선은 별도 플러그인 없이 처음/끝 두 점만 있는 평평한 선으로 그린다.
+  const flatLine = (y, color, label) => ({
+    label, data: [{ x: 0, y }, { x: n - 1, y }], yAxisID: 'yRsi', borderColor: color, borderWidth: 1,
+    borderDash: [4, 4], pointRadius: 0, fill: false,
   });
 
-  scrDetailRsiChart = new Chart(canvas, {
+  const LEGEND_ALLOW = new Set([t('close'), 'MA50', 'MA150', 'MA200', t('bollingerBands')]);
+
+  scrDetailChart = new Chart(canvas, {
     type: 'line',
     data: {
       datasets: [
-        { label: 'RSI(14)', data: rsi.map((v, i) => ({ x: i, y: v })), borderColor: '#a855f7', backgroundColor: 'transparent',
-          fill: false, pointRadius: 0, borderWidth: 1.3, tension: 0.1, spanGaps: false },
-        flatLine(70, 'rgba(239,68,68,0.45)'),
-        flatLine(30, 'rgba(34,197,94,0.45)'),
+        mkLine(bb.upper, 'rgba(168,133,225,0.55)', t('bollingerBands'), { borderDash: [3, 3], borderWidth: 1 }),
+        mkLine(bb.lower, 'rgba(168,133,225,0.55)', 'BB Lower', { borderDash: [3, 3], borderWidth: 1, fill: '-1', backgroundColor: 'rgba(168,133,225,0.08)' }),
+        mkLine(closes, '#888780', t('close')),
+        mkLine(ma50, '#E24B4A', 'MA50'),
+        mkLine(ma150, '#EF9F27', 'MA150'),
+        mkLine(ma200, '#378ADD', 'MA200'),
+        { label: t('volume'), type: 'bar', yAxisID: 'yVolume', data: volumes.map((v, i) => ({ x: i, y: v })),
+          backgroundColor: volColors, barPercentage: 1, categoryPercentage: 1 },
+        { label: 'RSI(14)', data: rsi.map((v, i) => ({ x: i, y: v })), yAxisID: 'yRsi', borderColor: '#a855f7',
+          backgroundColor: 'transparent', fill: false, pointRadius: 0, borderWidth: 1.3, tension: 0.1, spanGaps: false },
+        flatLine(70, 'rgba(239,68,68,0.45)', 'RSI 70'),
+        flatLine(30, 'rgba(34,197,94,0.45)', 'RSI 30'),
       ],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 }, filter: item => LEGEND_ALLOW.has(item.text) },
+        },
         tooltip: {
-          filter: ctx => ctx.dataset.label === 'RSI(14)',
+          filter: ctx => ctx.dataset.label !== 'RSI 70' && ctx.dataset.label !== 'RSI 30',
           callbacks: {
             title: items => items.length ? (dates[Math.round(items[0].parsed.x)] ?? '') : '',
-            label: ctx => ctx.parsed.y == null ? undefined : ` RSI(14): ${Number(ctx.parsed.y).toFixed(1)}`,
+            label: ctx => {
+              const v = ctx.parsed.y;
+              if (v == null) return undefined;
+              const lbl = ctx.dataset.label;
+              if (lbl === t('volume')) return ` ${t('volume')}: ${fmtVol(v)}`;
+              if (lbl === 'RSI(14)') return ` RSI(14): ${v.toFixed(1)}`;
+              return ` ${lbl}: ${fmtY(v)}`;
+            },
           },
+        },
+        zoom: {
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+          pan: { enabled: false },
+          limits: { x: { min: 0, max: Math.max(n - 1, 0), minRange: 10 } },
         },
       },
       scales: {
-        y: { min: 0, max: 100, ticks: { stepSize: 50, callback: v => v }, grid: { color: 'rgba(128,128,128,0.1)' } },
         x: {
           type: 'linear', min: 0, max: Math.max(n - 1, 0),
           ticks: { maxTicksLimit: 8, callback: v => dates[Math.round(v)] ?? '' },
           grid: { display: false },
         },
+        y: { position: 'left', ticks: { callback: v => fmtY(Number(v)) }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        yVolume: { display: false, min: 0 },
+        yRsi: { display: false, min: 0, max: 100 },
       },
     },
+    plugins: [scrDetailMultiPanelPlugin],
   });
+  attachChartPan(scrDetailChart, canvas, scrDetailPanState);
 }
 
 // ─── 무한매수법 실전 현황 ────────────────────────────────────────────────────
