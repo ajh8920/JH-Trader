@@ -40,31 +40,65 @@ def main():
                     help="지수가 200일선 아래인 시점엔 신규 매수를 쉰다")
     p.add_argument("--refresh-cache", action="store_true", dest="refresh_cache")
     p.add_argument("--out", default=None, help="전체 결과(거래 내역 포함)를 저장할 JSON 파일 경로")
+
+    p.add_argument("--risk-managed", action="store_true", dest="risk_managed",
+                    help="고정 % 손절 대신 ATR 기반 리스크관리 청산 규칙 사용(본전이동/트레일링/시간손절/낙폭중단)")
+    p.add_argument("--risk-pct", type=float, default=sb.DEFAULT_RISK_PCT, dest="risk_pct",
+                    help="트레이드당 리스크(계좌 평가액 대비 %%, risk-managed 전용)")
+    p.add_argument("--atr-period", type=int, default=sb.DEFAULT_ATR_PERIOD, dest="atr_period")
+    p.add_argument("--atr-mult", type=float, default=sb.DEFAULT_ATR_MULT, dest="atr_mult")
+    p.add_argument("--breakeven-r", type=float, default=sb.DEFAULT_BREAKEVEN_R, dest="breakeven_r")
+    p.add_argument("--trail-start-r", type=float, default=sb.DEFAULT_TRAIL_START_R, dest="trail_start_r")
+    p.add_argument("--time-stop-days", type=int, default=sb.DEFAULT_TIME_STOP_DAYS, dest="time_stop_days")
+    p.add_argument("--dd-halt-pct", type=float, default=sb.DEFAULT_DD_HALT_PCT, dest="dd_halt_pct")
     args = p.parse_args()
 
     end = args.end or date.today().isoformat()
 
     fetch_fn = cached_fetch_ohlc_history_batches(args.market, force_refresh=args.refresh_cache)
-    result = sb.run_screening_backtest(
-        args.market, args.strategy, args.start, end,
-        stop_loss_pct=args.stop_loss, max_positions=args.max_positions, seed=args.seed,
-        fetch_fn=fetch_fn, min_rs=args.min_rs, min_rel_volume=args.min_rel_volume,
-        market_regime_filter=args.regime_filter,
-    )
+
+    if args.risk_managed:
+        result = sb.run_risk_managed_backtest(
+            args.market, args.strategy, args.start, end,
+            risk_pct=args.risk_pct, atr_period=args.atr_period, atr_mult=args.atr_mult,
+            breakeven_r=args.breakeven_r, trail_start_r=args.trail_start_r,
+            time_stop_days=args.time_stop_days, dd_halt_pct=args.dd_halt_pct,
+            max_positions=args.max_positions, seed=args.seed,
+            fetch_fn=fetch_fn, min_rs=args.min_rs, min_rel_volume=args.min_rel_volume,
+            market_regime_filter=args.regime_filter,
+        )
+    else:
+        result = sb.run_screening_backtest(
+            args.market, args.strategy, args.start, end,
+            stop_loss_pct=args.stop_loss, max_positions=args.max_positions, seed=args.seed,
+            fetch_fn=fetch_fn, min_rs=args.min_rs, min_rel_volume=args.min_rel_volume,
+            market_regime_filter=args.regime_filter,
+        )
 
     if "error" in result:
         print("오류:", result["error"])
         return
 
     print()
-    print(f"기간: {result['start']} ~ {result['end']} | 전략: {result['strategyLabel']} | 손절: {result['stopLossPct']}%"
-          f" | RS>= {result['minRs']} | 거래량>= {result['minRelVolume']}x | 레짐필터: {result['marketRegimeFilter']}")
+    if args.risk_managed:
+        print(f"기간: {result['start']} ~ {result['end']} | 전략: {result['strategyLabel']} | 모드: 리스크관리"
+              f" | 리스크 {result['riskPct']}%/트레이드 | 손절 {result['atrMult']}xATR({result['atrPeriod']})"
+              f" | 본전 {result['breakevenR']}R | 트레일링 {result['trailStartR']}R+ | 시간손절 {result['timeStopDays']}일"
+              f" | 낙폭중단 {result['ddHaltPct']}%")
+    else:
+        print(f"기간: {result['start']} ~ {result['end']} | 전략: {result['strategyLabel']} | 손절: {result['stopLossPct']}%"
+              f" | RS>= {result['minRs']} | 거래량>= {result['minRelVolume']}x | 레짐필터: {result['marketRegimeFilter']}")
     print(f"수익률: {result['returnPct']:+.2f}% | 최종평가액: {result['finalValue']:,.0f}")
     print(f"거래수: {result['tradeCount']} | 승률: {result['winRatePct']}% | 평균보유일: {result['avgHoldDays']}")
     print(f"MDD: -{result['mddPct']:.2f}% | 손익비: {result['profitLossRatio']}")
     if result["alphaPct"] is not None:
         print(f"알파(초과수익률): {result['alphaPct']:+.2f}%p | 벤치마크({result['benchmark']['label']}): "
               f"{result['benchmark']['returnPct']:+.2f}%")
+    if args.risk_managed:
+        reasons = result.get("exitReasonCounts", {})
+        label = sb.EXIT_REASON_LABEL
+        print("청산사유: " + ", ".join(f"{label.get(k, k)} {v}건" for k, v in reasons.items()))
+        print(f"낙폭중단 발동 횟수(신규매수 정지된 재평가 시점 수): {result.get('ddHaltPeriods', 0)}")
 
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:

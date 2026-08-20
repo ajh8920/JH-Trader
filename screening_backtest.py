@@ -140,6 +140,322 @@ def _strategy_label(strategy):
     return "Trend Template 8/8"
 
 
+def _atr(highs, lows, closes, i, period=14):
+    """i번 인덱스(포함)까지의 ATR(period) - 트루레인지의 단순평균. 데이터가
+    부족하면 None(호출부에서 해당 종목은 이번 재평가에 진입 후보에서 제외)."""
+    if i < period:
+        return None
+    total = 0.0
+    for k in range(i - period + 1, i + 1):
+        prev_close = closes[k - 1] if k > 0 else closes[k]
+        total += max(highs[k] - lows[k], abs(highs[k] - prev_close), abs(lows[k] - prev_close))
+    return total / period
+
+
+DEFAULT_RISK_PCT = 1.5
+DEFAULT_ATR_PERIOD = 14
+DEFAULT_ATR_MULT = 2.0
+DEFAULT_BREAKEVEN_R = 1.0
+DEFAULT_TRAIL_START_R = 2.0
+DEFAULT_TIME_STOP_DAYS = 7
+DEFAULT_DD_HALT_PCT = 10.0
+
+EXIT_REASON_LABEL = {
+    "initialStop": "초기 손절(2×ATR)", "breakevenStop": "본전 손절", "trailingStop": "트레일링 손절",
+    "timeStop": "시간 손절", "periodEnd": "기간 종료",
+}
+
+
+def run_risk_managed_backtest(market, strategy, start_date, end_date,
+                               risk_pct=DEFAULT_RISK_PCT, atr_period=DEFAULT_ATR_PERIOD, atr_mult=DEFAULT_ATR_MULT,
+                               breakeven_r=DEFAULT_BREAKEVEN_R, trail_start_r=DEFAULT_TRAIL_START_R,
+                               time_stop_days=DEFAULT_TIME_STOP_DAYS, dd_halt_pct=DEFAULT_DD_HALT_PCT,
+                               max_positions=DEFAULT_MAX_POSITIONS, seed=10_000_000, fetch_fn=None,
+                               min_rs=None, min_rel_volume=None, market_regime_filter=False):
+    """run_screening_backtest과 진입 신호(트렌드 템플릿/단계)는 동일하지만,
+    청산 로직을 고정 % 손절 대신 다음 리스크 관리 규칙으로 완전히 대체한 버전:
+
+    - 포지션 크기: 트레이드당 리스크(계좌 평가액의 risk_pct%) ÷ 손절폭(2×ATR)으로
+      역산한 주식수. 단, 슬롯당 최대 비중(seed/max_positions)과 보유 현금을
+      넘지 않게 캡을 둔다(ATR이 매우 작은 저변동성 종목에 과도하게 몰빵되는
+      것을 막기 위함 - 순수 리스크 역산만 쓰면 이론상 슬롯 하나가 계좌 전체를
+      먹을 수 있다).
+    - 손절: 진입가 - atr_mult×ATR(entry_atr_period). 이후 가격이 유리하게
+      움직이면 손절선을 다음 순서로만 올린다(내리지 않음):
+        1) +breakeven_r×R 도달 시 손절선을 진입가(본전)로 이동
+        2) +trail_start_r×R 도달 이후로는 (그 시점까지의 고가 - atr_mult×ATR)로
+           트레일링(고가 갱신될 때마다 재계산, entry_atr은 고정값을 계속 사용 -
+           포지션마다 매일 ATR을 재계산하지 않는다는 단순화)
+      R(1R)은 진입가-초기손절가(진입 시점 리스크폭)로 고정.
+    - 시간 손절: 진입 후 time_stop_days 거래일이 지났는데 아직 종가가 진입가
+      이상으로 오르지 못했으면("무진전") 그날 종가로 청산.
+    - 손절/시간손절 판정은 직전~이번 재평가 사이 일별 저가/종가를 스캔해
+      실제 그 손절선에 처음 닿은 날 기준으로 청산한다(run_screening_backtest와
+      같은 이유 - 재평가 시점 종가만 보면 그 사이 급락분을 실제보다 과장/축소
+      해서 잡는다).
+    - 신규 진입 중단: 이 시점까지의 최고 평가액 대비 낙폭이 dd_halt_pct% 이상이면
+      신규 매수를 쉰다(보유 종목 청산 판정은 평소대로 진행). 낙폭은 재평가
+      주기(주 단위) 스냅샷 기준으로 판정한다(일별 낙폭까지는 추적하지 않는다 -
+      이 엔진 전체가 주 단위 재평가 설계라 다른 지표들과 일관되게 맞췄다).
+      기준 고점(peak_equity)은 보유 종목이 하나도 없는(완전 청산된) 시점마다
+      그 시점 평가액으로 리셋한다 - 리셋하지 않으면 급락장에서 전종목이 한꺼번에
+      손절되어 현금 100%가 된 이후 평가액이 다시는 움직이지 않아(포지션이 없으니
+      마크투마켓 대상이 없다) 옛 고점을 영원히 회복하지 못해 신규 매수가 남은
+      기간 내내 영구 정지되는 결함이 있었다(최초 구현에서 실제로 발생 확인 -
+      2020년 3월 코로나 급락 이후 2026년까지 거래가 완전히 멈췄다). 완전 청산
+      시점엔 더 지킬 미실현 이익이 없으므로 그 시점을 새 기준으로 삼는 것이
+      타당하다 - 이 낙폭 한도는 "보유 중인 포지션이 이미 크게 물려 있을 때
+      더 태우지 않는다"는 취지로 재해석한 것이다.
+    - 물타기 없음: 이미 보유 중인 종목은 재평가 시점에 후보로 다시 고려하지
+      않는다(진입은 종목당 한 번뿐, 추가매수 로직 자체가 없다).
+    - 최소 손익비 1:2는 별도 필터가 아니라 위 청산 구조(본전 이동 +1R, 트레일링
+      +2R) 자체로 구현한다 - 스크리너 기반 전략은 진입 시점에 확정적인 목표가를
+      알 수 없어(개별 종목 저항선 등을 미리 계산하지 않음), "최소 1R은 손실
+      없이, 2R부터는 추세를 최대한 따라간다"는 구조로 손익비 하한을 확보한다.
+    """
+    if market not in ("KR", "US"):
+        return {"error": "market은 KR 또는 US여야 합니다"}
+    if fetch_fn is None:
+        fetch_fn = ts.fetch_ohlc_history_batches
+
+    universe = ts.load_universe(market)
+    tickers = [t for _, _, t, _, _ in universe]
+    info_by_ticker = {t: (code, name, industry, sector) for code, name, t, industry, sector in universe}
+
+    fetch_start = (datetime.fromisoformat(start_date) - timedelta(days=WARMUP_DAYS)).strftime("%Y-%m-%d")
+    fetch_end = (datetime.fromisoformat(end_date) + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    regime_dates, regime_closes = ([], [])
+    if market_regime_filter:
+        regime_dates, regime_closes = _fetch_index_series(market, fetch_start, fetch_end)
+
+    series = {}
+    for ticker, bars in fetch_fn(tickers, fetch_start, fetch_end):
+        series[ticker] = (
+            [b["date"] for b in bars],
+            [b["close"] for b in bars],
+            [b["high"] for b in bars],
+            [b["low"] for b in bars],
+            [b.get("volume") for b in bars],
+        )
+
+    all_dates = sorted({d for dates, *_ in series.values() for d in dates if start_date <= d <= end_date})
+    if not all_dates:
+        return {"error": "해당 기간에 사용 가능한 가격 데이터가 없습니다"}
+
+    rebalance_dates = all_dates[::RESCAN_INTERVAL_DAYS]
+    if rebalance_dates[-1] != all_dates[-1]:
+        rebalance_dates.append(all_dates[-1])
+
+    predicate = _strategy_predicate(strategy)
+
+    cash = float(seed)
+    positions = {}  # ticker -> dict(code,name,entryDate,entryPrice,entryIdx,shares,entryAtr,stopPrice,stopState,riskPerShare,highestHigh)
+    trades = []
+    equity_curve = []
+    peak_equity = float(seed)
+    prev_rd = None
+    dd_halt_periods = 0
+
+    for rd in rebalance_dates:
+        evaluated = []
+        idx_at_rd = {}
+        for ticker, (dates, closes, highs, lows, volumes) in series.items():
+            i = bisect.bisect_right(dates, rd) - 1
+            if i < 0:
+                continue
+            idx_at_rd[ticker] = i
+            if i + 1 < ts.MIN_BARS:
+                continue
+            code, name, industry, sector = info_by_ticker.get(ticker, (ticker, ticker, None, None))
+            bars_slice = [
+                {"date": dates[k], "close": closes[k], "high": highs[k], "low": lows[k], "volume": volumes[k]}
+                for k in range(i + 1)
+            ]
+            try:
+                result = ts.evaluate_trend_template(code, name, bars_slice, industry, sector)
+            except Exception:
+                continue
+            if result:
+                result["_ticker"] = ticker
+                evaluated.append(result)
+        ts.compute_universe_screen(evaluated)
+        by_ticker = {e["_ticker"]: e for e in evaluated}
+        qualifying = {t: e for t, e in by_ticker.items() if predicate(e)}
+
+        # 1) 보유 종목 청산 판정 - 일별로 스캔하며 손절선 히트 > 시간손절 > 본전/트레일링 갱신 순으로 확인
+        for ticker in list(positions.keys()):
+            pos = positions[ticker]
+            dates, closes, highs, lows, _volumes = series[ticker]
+            i = idx_at_rd.get(ticker)
+            if i is None:
+                continue
+            start_i = bisect.bisect_right(dates, prev_rd) if prev_rd else pos["entryIdx"] + 1
+            start_i = max(start_i, pos["entryIdx"] + 1)
+            exit_price = exit_date = reason = None
+            for j in range(start_i, i + 1):
+                if lows[j] <= pos["stopPrice"]:
+                    exit_price, exit_date, reason = pos["stopPrice"], dates[j], pos["stopState"]
+                    break
+                held_bars = j - pos["entryIdx"]
+                if held_bars >= time_stop_days and closes[j] <= pos["entryPrice"]:
+                    exit_price, exit_date, reason = closes[j], dates[j], "timeStop"
+                    break
+                pos["highestHigh"] = max(pos["highestHigh"], highs[j])
+                r_reached = ((pos["highestHigh"] - pos["entryPrice"]) / pos["riskPerShare"]
+                             if pos["riskPerShare"] > 0 else 0)
+                if r_reached >= trail_start_r:
+                    new_stop = pos["highestHigh"] - atr_mult * pos["entryAtr"]
+                    if new_stop > pos["stopPrice"]:
+                        pos["stopPrice"] = new_stop
+                        pos["stopState"] = "trailingStop"
+                elif r_reached >= breakeven_r and pos["entryPrice"] > pos["stopPrice"]:
+                    pos["stopPrice"] = pos["entryPrice"]
+                    pos["stopState"] = "breakevenStop"
+            if reason:
+                shares = pos["shares"]
+                pnl_pct = round((exit_price - pos["entryPrice"]) / pos["entryPrice"] * 100, 2)
+                cash += shares * exit_price
+                trades.append({
+                    "code": pos["code"], "name": pos["name"],
+                    "entryDate": pos["entryDate"], "entryPrice": round(pos["entryPrice"], 2),
+                    "exitDate": exit_date, "exitPrice": round(exit_price, 2),
+                    "pnlPct": pnl_pct, "exitReason": reason, "shares": shares,
+                    "holdDays": (datetime.fromisoformat(exit_date) - datetime.fromisoformat(pos["entryDate"])).days,
+                })
+                del positions[ticker]
+        prev_rd = rd
+
+        # 낙폭 한도 판정 (신규 진입 전 시점 평가액 기준)
+        held_value = 0.0
+        for ticker, pos in positions.items():
+            i = idx_at_rd.get(ticker)
+            price = series[ticker][1][i] if i is not None else pos["entryPrice"]
+            held_value += pos["shares"] * price
+        equity_now = cash + held_value
+        if not positions:
+            peak_equity = equity_now  # 완전 청산 시점엔 그 평가액을 새 고점 기준으로 리셋(위 docstring 참고)
+        else:
+            peak_equity = max(peak_equity, equity_now)
+        drawdown_pct = (peak_equity - equity_now) / peak_equity * 100 if peak_equity > 0 else 0.0
+        dd_halt = drawdown_pct >= dd_halt_pct
+        if dd_halt:
+            dd_halt_periods += 1
+
+        # 2) 시장 레짐 + 낙폭 한도 모두 통과해야 신규 매수. 빈 슬롯을 RS 등급 높은 순으로 채운다.
+        regime_ok = True
+        if market_regime_filter and regime_dates:
+            ri = bisect.bisect_right(regime_dates, rd) - 1
+            if ri + 1 >= 200:
+                regime_ma200 = sum(regime_closes[ri - 199:ri + 1]) / 200
+                regime_ok = regime_closes[ri] >= regime_ma200
+            else:
+                regime_ok = False
+
+        open_slots = max_positions - len(positions) if (regime_ok and not dd_halt) else 0
+        if open_slots > 0:
+            candidates = [
+                (t, e) for t, e in qualifying.items()
+                if t not in positions
+                and (min_rs is None or (e.get("rsRating") or 0) >= min_rs)
+                and (min_rel_volume is None or (e.get("relVolume") or 0) >= min_rel_volume)
+            ]
+            candidates.sort(key=lambda te: -(te[1].get("rsRating") or 0))
+            max_position_value = seed / max_positions
+            for ticker, e in candidates[:open_slots]:
+                i = idx_at_rd.get(ticker)
+                if i is None:
+                    continue
+                dates, closes, highs, lows, _v = series[ticker]
+                price = closes[i]
+                if price is None or price <= 0:
+                    continue
+                atr = _atr(highs, lows, closes, i, atr_period)
+                if not atr or atr <= 0:
+                    continue
+                stop_price = price - atr_mult * atr
+                risk_per_share = price - stop_price
+                if risk_per_share <= 0:
+                    continue
+                risk_amount = equity_now * risk_pct / 100
+                shares = int(risk_amount // risk_per_share)
+                cap_shares = int(min(cash, max_position_value) // price)
+                shares = min(shares, cap_shares)
+                if shares <= 0:
+                    continue
+                position_value = shares * price
+                cash -= position_value
+                held_value += position_value
+                positions[ticker] = {
+                    "code": e["code"], "name": e["name"], "entryDate": rd, "entryPrice": price,
+                    "entryIdx": i, "shares": shares, "entryAtr": atr,
+                    "stopPrice": stop_price, "stopState": "initialStop",
+                    "riskPerShare": risk_per_share, "highestHigh": price,
+                }
+
+        equity_curve.append({"date": rd, "value": round(cash + held_value, 2)})
+
+    # 종료 시점까지 남은 보유 종목은 마지막 가격으로 강제 청산해 손익을 확정한다.
+    last_rd = rebalance_dates[-1]
+    for ticker, pos in list(positions.items()):
+        i = bisect.bisect_right(series[ticker][0], last_rd) - 1
+        if i < 0:
+            continue
+        price = series[ticker][1][i]
+        pnl_pct = round((price - pos["entryPrice"]) / pos["entryPrice"] * 100, 2)
+        cash += pos["shares"] * price
+        trades.append({
+            "code": pos["code"], "name": pos["name"],
+            "entryDate": pos["entryDate"], "entryPrice": round(pos["entryPrice"], 2),
+            "exitDate": last_rd, "exitPrice": round(price, 2),
+            "pnlPct": pnl_pct, "exitReason": "periodEnd", "shares": pos["shares"],
+            "holdDays": (datetime.fromisoformat(last_rd) - datetime.fromisoformat(pos["entryDate"])).days,
+        })
+    positions.clear()
+
+    trades.sort(key=lambda t: t["entryDate"])
+
+    final_value = equity_curve[-1]["value"] if equity_curve else seed
+    return_pct = round((final_value / seed - 1) * 100, 2) if seed > 0 else 0.0
+    win_trades = [t for t in trades if t["pnlPct"] > 0]
+    win_rate_pct = round(len(win_trades) / len(trades) * 100, 1) if trades else None
+    avg_hold_days = round(sum(t["holdDays"] for t in trades) / len(trades), 1) if trades else None
+
+    peak = seed
+    mdd_pct = 0.0
+    for pt in equity_curve:
+        peak = max(peak, pt["value"])
+        if peak > 0:
+            mdd_pct = max(mdd_pct, (peak - pt["value"]) / peak * 100)
+
+    profit_loss_ratio = _profit_loss_ratio(trades)
+    benchmark_curve, benchmark_return_pct = _fetch_benchmark_curve(
+        market, [pt["date"] for pt in equity_curve], seed)
+    alpha_pct = round(return_pct - benchmark_return_pct, 2) if benchmark_return_pct is not None else None
+
+    exit_reason_counts = {}
+    for t in trades:
+        exit_reason_counts[t["exitReason"]] = exit_reason_counts.get(t["exitReason"], 0) + 1
+
+    return {
+        "market": market, "strategy": strategy, "strategyLabel": _strategy_label(strategy),
+        "start": start_date, "end": end_date, "seed": seed, "mode": "riskManaged",
+        "riskPct": risk_pct, "atrPeriod": atr_period, "atrMult": atr_mult,
+        "breakevenR": breakeven_r, "trailStartR": trail_start_r,
+        "timeStopDays": time_stop_days, "ddHaltPct": dd_halt_pct,
+        "maxPositions": max_positions,
+        "minRs": min_rs, "minRelVolume": min_rel_volume, "marketRegimeFilter": market_regime_filter,
+        "returnPct": return_pct, "finalValue": round(final_value, 2),
+        "tradeCount": len(trades), "winCount": len(win_trades), "winRatePct": win_rate_pct,
+        "avgHoldDays": avg_hold_days, "mddPct": round(mdd_pct, 2),
+        "profitLossRatio": profit_loss_ratio, "alphaPct": alpha_pct,
+        "exitReasonCounts": exit_reason_counts, "ddHaltPeriods": dd_halt_periods,
+        "benchmark": {"label": BENCHMARK_LABEL.get(market, "Benchmark"), "returnPct": benchmark_return_pct,
+                      "equityCurve": benchmark_curve},
+        "equityCurve": equity_curve, "trades": trades,
+    }
+
+
 def run_screening_backtest(market, strategy, start_date, end_date,
                             stop_loss_pct=DEFAULT_STOP_LOSS_PCT, max_positions=DEFAULT_MAX_POSITIONS,
                             seed=10_000_000, fetch_fn=None,
