@@ -457,6 +457,12 @@ const I18N = {
   stopState: { en: 'Stop Type', ko: '손절 단계' },
   noOpenPositions: { en: 'No open positions', ko: '보유 중인 포지션이 없습니다' },
   noTradesYet: { en: 'No trades yet', ko: '아직 거래 내역이 없습니다' },
+  referenceResultTitle: { en: 'Reference result (pre-computed)', ko: '참고 결과(사전 계산됨)' },
+  referenceResultNote: {
+    en: 'Pre-computed locally with the same parameters — click "Run Backtest" above for a fresh calculation on the latest data (numbers may differ slightly due to newly accumulated trading days or data revisions).',
+    ko: '동일 파라미터로 로컬에서 미리 계산해둔 결과입니다 — 최신 데이터로 다시 계산하려면 위 "백테스트 실행" 버튼을 눌러주세요(그 사이 쌓인 거래일·데이터 소급수정 등으로 수치가 약간 달라질 수 있습니다).',
+  },
+  countUnit: { en: ' trades', ko: '건' },
 
   // 스크리닝
   addedToWatchlist: { en: 'Added to Watchlist', ko: '관심종목에 추가됨' },
@@ -3432,6 +3438,58 @@ function setScreeningBacktestPreset(preset) {
   }
   document.getElementById('sbt-info-default').style.display = locked ? 'none' : 'flex';
   document.getElementById('sbt-info-minervini_v2').style.display = locked ? 'flex' : 'none';
+
+  const refEl = document.getElementById('sbt-reference-minervini_v2');
+  if (locked) {
+    document.getElementById('sbt-start').value = '2020-01-01';
+    document.getElementById('sbt-end').value = new Date().toISOString().slice(0, 10);
+    renderMinerviniV2Reference(refEl);
+    refEl.style.display = 'block';
+  } else {
+    refEl.style.display = 'none';
+    refEl.innerHTML = '';
+  }
+}
+
+// 2020-01-01~2026-08-21(로컬 캐시로 계산, run_risk_managed_backtest와 동일 파라미터 -
+// MINERVINI_V2_PARAMS) 기준 사전 계산 결과. 실행 버튼을 눌러 직접 돌리면 최신
+// 데이터로 다시 계산되며 이 값과 약간 다를 수 있다(그 사이 새로 쌓인 거래일,
+// 데이터 소급수정 등) - 그 전까지 참고용으로 미리 보여주기 위한 스냅샷이다.
+const MINERVINI_V2_REFERENCE = {
+  start: '2020-01-01', end: '2026-08-21', seed: 10000000, finalValue: 33280012.49,
+  returnPct: 232.8, mddPct: 22.73, tradeCount: 1512, winCount: 298, winRatePct: 19.7,
+  avgHoldDays: 12.4, profitLossRatio: 3.94, alphaPct: 35.3,
+  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 197.5,
+  exitReasonCounts: { initialStop: 324, breakevenStop: 266, trailingStop: 294, timeStop: 618, periodEnd: 10 },
+};
+
+function renderMinerviniV2Reference(el) {
+  const d = MINERVINI_V2_REFERENCE;
+  const fmt = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+  const reasons = Object.entries(d.exitReasonCounts)
+    .map(([k, v]) => `${PAPER_TRADING_EXIT_REASON_LABEL(k)} ${v}${t('countUnit') || '건'}`).join(', ');
+  el.innerHTML = `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+        <div style="font-size:13px;font-weight:700;">📌 ${t('referenceResultTitle')}</div>
+        <div style="font-size:11.5px;color:var(--text-muted);">${escapeHtml(d.start)} ~ ${escapeHtml(d.end)}</div>
+      </div>
+      <div class="bt-summary-grid">
+        <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">${fmt(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('finalValue')}</div><div class="meta-value">${fmt(d.finalValue)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('totalReturn')}</div><div class="meta-value positive">+${d.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('winRate')}</div><div class="meta-value">${d.winRatePct.toFixed(1)}% (${d.winCount}/${d.tradeCount})</div></div>
+        <div class="meta-item"><div class="meta-label">${t('avgHoldDays')}</div><div class="meta-value">${d.avgHoldDays}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('profitLossRatio')}</div><div class="meta-value">${d.profitLossRatio}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('alphaExcessReturn')}</div><div class="meta-value positive">+${d.alphaPct.toFixed(1)}%p</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmarkLabel)}</div><div class="meta-value positive">+${d.benchmarkReturnPct.toFixed(1)}%</div></div>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px;line-height:1.5;">
+        ${t('exitReason')}: ${escapeHtml(reasons)}<br>
+        ${t('referenceResultNote')}
+      </div>
+    </div>`;
 }
 
 async function runScreeningBacktest() {
