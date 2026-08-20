@@ -1350,6 +1350,24 @@ def create_screening_backtest():
         if not (-50 <= stop_loss_pct < 0):
             return jsonify({"error": "손절률은 -50~0 사이의 음수여야 합니다"}), 400
 
+    # 스크리닝 백테스트 하나가 국내 전체 유니버스 가격 히스토리를 통째로 메모리에
+    # 들고 있는 무거운 작업이라(RULES.md 컨텍스트 - Render 무료 티어 메모리 한도),
+    # 두 개 이상이 동시에 돌면 메모리 압박으로 요청 자체가 500으로 죽는 현상을
+    # 실제로 확인했다(사용자 보고 "연결이 끊김"의 원인). 사용자 단위가 아니라
+    # 서버 전체 기준으로 한 번에 하나만 허용한다(Render 무료 티어는 인스턴스가
+    # 하나뿐이라 어차피 자원을 나눠 쓴다). 서버가 계산 도중 재시작되면(배포,
+    # 크래시 등) 그 작업은 "running" 상태로 영원히 멈춘 채 남는데, 이 잠금이
+    # 그 좀비 행 때문에 이후 백테스트를 영구히 막아버리면 안 되므로 45분보다
+    # 오래된 pending/running 행은 무시한다(정상적인 국내 전체 유니버스 계산도
+    # 이 시간 안에는 끝난다고 보고 잡은 여유).
+    stale_before = datetime.utcnow() - timedelta(minutes=45)
+    in_flight = ScreeningBacktestJob.query.filter(
+        ScreeningBacktestJob.status.in_(("pending", "running")),
+        ScreeningBacktestJob.updated_at >= stale_before,
+    ).first()
+    if in_flight:
+        return jsonify({"error": "이미 다른 스크리닝 백테스트가 진행 중입니다. 완료 후 다시 시도해주세요."}), 409
+
     job = ScreeningBacktestJob(user_id=current_user.id, status="pending")
     db.session.add(job)
     db.session.commit()
