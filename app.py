@@ -1511,6 +1511,7 @@ for _view in (
     backtest_infinite_buying, kr_swing_backtest, search_kr_stocks,
     kr_quant_status, kr_quant_screen, kr_quant_backtest, kr_quant_backtest_status,
     screener_status, screener_results, screener_detail,
+    create_screening_backtest, screening_backtest_status,
     list_screener_watchlist, add_screener_watchlist, remove_screener_watchlist,
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
