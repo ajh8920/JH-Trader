@@ -289,6 +289,37 @@ input:focus, select:focus {
 }
 input::placeholder { color: var(--text-muted); }
 
+/* 날짜 입력(모든 탭 공통) - 브라우저 기본 팝업 캘린더는 DOM 밖에서 그려져
+   CSS로 직접 색을 입힐 수 없지만, color-scheme을 현재 테마에 맞춰주면
+   Chromium/Edge가 팝업 자체를 라이트/다크로 맞춰 그려준다(다크 모드에서
+   달력 아이콘이 거의 안 보이던 것도 이걸로 같이 해결된다 - 아이콘 색상도
+   color-scheme을 따라간다). 라이트/다크/명시적 선택 3단계는 다른 색상
+   토큰과 동일한 패턴(:root, 시스템 다크, data-theme 강제 선택 순). */
+:root { color-scheme: light; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { color-scheme: dark; }
+}
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+
+input[type="date"] {
+  position: relative;
+  font-variant-numeric: tabular-nums;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+  padding: 5px;
+  margin-left: 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0.85;
+  transition: background-color 0.15s, opacity 0.15s;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  background: var(--bg-tertiary);
+  opacity: 1;
+}
+input[type="date"]:hover { border-color: var(--border-strong); }
+
 /* Card */
 .card {
   background: var(--bg); border: 1px solid var(--border);
