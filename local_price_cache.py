@@ -21,7 +21,7 @@ import yfinance as yf
 import trend_screener as ts
 
 CACHE_DIR = Path(__file__).parent / "data" / "price_cache"
-DEFAULT_LOOKBACK_DAYS = 6 * 365  # 여러 기간의 백테스트를 캐시 하나로 커버
+DEFAULT_LOOKBACK_DAYS = 8 * 365  # 2020-01-01 시작 백테스트(+450일 워밍업)까지 여유 있게 커버
 CHUNK = 25
 
 

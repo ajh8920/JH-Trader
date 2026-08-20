@@ -99,6 +99,26 @@ def _fetch_benchmark_curve(market, dates, seed):
         return [], None
 
 
+def _fetch_index_series(market, fetch_start, fetch_end):
+    """시장 레짐 필터용 - 지수 자체의 종가 시계열을 받아온다(개별 종목과 같은
+    워밍업 구간을 써서 재평가 시점마다 그 지수의 200일선을 계산할 수 있게 한다).
+    실패하면 (빈 리스트, 빈 리스트)를 돌려주고, 호출부에서 레짐 필터를 그냥
+    끄는 것으로 처리한다(필터를 켰다고 백테스트 자체가 죽으면 안 된다)."""
+    ticker = BENCHMARK_TICKER.get(market)
+    if not ticker:
+        return [], []
+    try:
+        idx = yf.download(ticker, start=fetch_start, end=fetch_end, progress=False, timeout=15)
+        if idx is None or idx.empty:
+            return [], []
+        if hasattr(idx.columns, "get_level_values") and idx.columns.nlevels > 1:
+            idx.columns = idx.columns.get_level_values(0)
+        closes = idx["Close"].dropna()
+        return [d.strftime("%Y-%m-%d") for d in closes.index], [float(v) for v in closes.values]
+    except Exception:
+        return [], []
+
+
 def _strategy_predicate(strategy):
     """strategy: 'trendTemplate' 또는 'stageN'(N=1~4)."""
     if strategy and strategy.startswith("stage"):
@@ -122,12 +142,27 @@ def _strategy_label(strategy):
 
 def run_screening_backtest(market, strategy, start_date, end_date,
                             stop_loss_pct=DEFAULT_STOP_LOSS_PCT, max_positions=DEFAULT_MAX_POSITIONS,
-                            seed=10_000_000, fetch_fn=None):
+                            seed=10_000_000, fetch_fn=None,
+                            min_rs=None, min_rel_volume=None, market_regime_filter=False):
     """fetch_fn: (tickers, start_date, end_date) -> Iterable[(ticker, bars)] 시그니처를
     맞추면 가격 조회 방식을 바꿔 끼울 수 있다. 기본값(운영 서버에서 쓰는 경로)은
     매번 야후에서 새로 받아오는 trend_screener.fetch_ohlc_history_batches이지만,
     같은 파라미터를 여러 번 반복 실행하는 로컬 스크립트(screening_backtest_cli.py)는
-    local_price_cache의 캐싱 버전을 넘겨 매번 몇 분씩 걸리는 재조회를 건너뛴다."""
+    local_price_cache의 캐싱 버전을 넘겨 매번 몇 분씩 걸리는 재조회를 건너뛴다.
+
+    세 가지 매수 진입 필터를 추가로 걸 수 있다(전부 기존 전략 조건 위에 AND로
+    덧붙는 추가 확인이며, 이미 보유 중인 포지션의 청산 판정에는 영향을 주지
+    않는다 - 매수 시점만 더 깐깐하게 고른다는 뜻이다):
+    - min_rs: RS 등급이 이 값 이상인 후보만 신규 매수(예: 85) - 트렌드 템플릿
+      기본 조건(RS>=70)보다 더 강한 모멘텀만 남긴다.
+    - min_rel_volume: 최근 거래량/직전 20일 평균거래량 비율이 이 값 이상인
+      후보만 신규 매수(예: 1.5) - 미너비니 원 방법론의 "돌파 거래량" 확인을
+      근사한다(trend_screener.py의 정량 조건에는 원래 빠져 있는 항목).
+    - market_regime_filter: 지수(코스피/S&P500) 종가가 그 지수의 200일선보다
+      낮은 재평가 시점에는 신규 매수를 쉰다(보유 종목의 손절/조건이탈 청산은
+      평소대로 진행) - 전체 시장이 눌려 있는 국면에 새로 사는 것 자체를 줄여
+      낙폭을 완화하려는 필터다.
+    """
     if market not in ("KR", "US"):
         return {"error": "market은 KR 또는 US여야 합니다"}
     if fetch_fn is None:
@@ -139,6 +174,10 @@ def run_screening_backtest(market, strategy, start_date, end_date,
 
     fetch_start = (datetime.fromisoformat(start_date) - timedelta(days=WARMUP_DAYS)).strftime("%Y-%m-%d")
     fetch_end = (datetime.fromisoformat(end_date) + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    regime_dates, regime_closes = ([], [])
+    if market_regime_filter:
+        regime_dates, regime_closes = _fetch_index_series(market, fetch_start, fetch_end)
 
     # 종목별 전체 기간 가격을 한 번만 받아, 재평가 시점마다 그 시점까지의
     # 구간만 슬라이스해서 재사용한다(API를 매번 다시 부르지 않는다). 원본
@@ -238,12 +277,25 @@ def run_screening_backtest(market, strategy, start_date, end_date,
                 del positions[ticker]
         prev_rd = rd
 
-        # 2) 빈 슬롯을 RS 등급 높은 순으로 채운다
-        open_slots = max_positions - len(positions)
+        # 2) 빈 슬롯을 RS 등급 높은 순으로 채운다 - 시장 레짐 필터가 켜져 있고
+        #    이 시점에 지수가 자기 200일선 아래면 신규 매수 자체를 쉰다(보유
+        #    종목의 청산 판정은 위에서 이미 평소대로 끝났다).
+        regime_ok = True
+        if market_regime_filter and regime_dates:
+            ri = bisect.bisect_right(regime_dates, rd) - 1
+            if ri + 1 >= 200:
+                regime_ma200 = sum(regime_closes[ri - 199:ri + 1]) / 200
+                regime_ok = regime_closes[ri] >= regime_ma200
+            else:
+                regime_ok = False  # 200일선을 계산할 데이터가 아직 없으면 보수적으로 매수를 쉰다
+
+        open_slots = max_positions - len(positions) if regime_ok else 0
         if open_slots > 0:
             candidates = [
                 (t, e) for t, e in qualifying.items()
                 if t not in positions
+                and (min_rs is None or (e.get("rsRating") or 0) >= min_rs)
+                and (min_rel_volume is None or (e.get("relVolume") or 0) >= min_rel_volume)
             ]
             candidates.sort(key=lambda te: -(te[1].get("rsRating") or 0))
             for ticker, e in candidates[:open_slots]:
@@ -306,6 +358,7 @@ def run_screening_backtest(market, strategy, start_date, end_date,
         "market": market, "strategy": strategy, "strategyLabel": _strategy_label(strategy),
         "start": start_date, "end": end_date, "seed": seed,
         "stopLossPct": stop_loss_pct, "maxPositions": max_positions,
+        "minRs": min_rs, "minRelVolume": min_rel_volume, "marketRegimeFilter": market_regime_filter,
         "returnPct": return_pct, "finalValue": round(final_value, 2),
         "tradeCount": len(trades), "winCount": len(win_trades), "winRatePct": win_rate_pct,
         "avgHoldDays": avg_hold_days, "mddPct": round(mdd_pct, 2),
