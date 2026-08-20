@@ -860,11 +860,16 @@ def kr_quant_status():
     total = KrFundamental.query.count()
     codes = db.session.query(KrFundamental.stock_code).distinct().count()
     age = kr_quant.price_cache_age_seconds()
+    year_counts = (
+        db.session.query(KrFundamental.bsns_year, db.func.count(KrFundamental.id))
+        .group_by(KrFundamental.bsns_year).order_by(KrFundamental.bsns_year).all()
+    )
     return jsonify({
         "fundamentalRows": total, "stockCount": codes,
         "priceCacheReady": age is not None,
         "priceCacheAgeSeconds": round(age) if age is not None else None,
         "priceCacheCount": len(kr_quant.get_cached_prices()),
+        "byYear": {year: count for year, count in year_counts},
     })
 
 
