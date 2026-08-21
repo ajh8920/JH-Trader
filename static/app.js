@@ -3440,6 +3440,9 @@ const SBT_PRESET_RENDERERS = {
   minervini_v21: () => renderMinerviniV21Reference,
   relaxed_vcp: () => renderRelaxedVcpReference,
 };
+const SBT_PRESET_DEFAULT_START = {
+  minervini_v2: '2020-01-01', minervini_v21: '2020-01-01', relaxed_vcp: '2017-01-01',
+};
 
 function setScreeningBacktestPreset(preset) {
   sbtPreset = preset;
@@ -3449,7 +3452,7 @@ function setScreeningBacktestPreset(preset) {
     document.getElementById(`sbt-info-${key}`).style.display = preset === key ? 'flex' : 'none';
     const refEl = document.getElementById(`sbt-reference-${key}`);
     if (preset === key) {
-      document.getElementById('sbt-start').value = '2020-01-01';
+      document.getElementById('sbt-start').value = SBT_PRESET_DEFAULT_START[key];
       document.getElementById('sbt-end').value = new Date().toISOString().slice(0, 10);
       SBT_PRESET_RENDERERS[key]()(refEl);
       refEl.style.display = 'block';
@@ -3643,21 +3646,20 @@ async function loadMinerviniV21ReferenceTrades() {
 }
 
 // 완화 VCP 전략 참고 결과 - vcp_strategy.RELAXED_VCP_PARAMS(ADX≥20, VCP 판정 완화,
-// 리스크폭 8%초과 시 8%로 축소해서 진입)로 계산. 명세서 원안보다 거래빈도를
-// 크게 늘리는 대신(6.5년간 30건 -> 110건) 손익비가 6.46 -> 4.35로 다소 낮아졌다.
-// 최초 버전은 재평가일의 61.5%가 포지션 0개(현금 100%)라 알파가 -104.82%p로
-// 크게 마이너스였다 - cash_equitize(현금 유휴화 방지: 국면 OK인데 유휴한 현금을
-// 지수에 태워두다가 개별 셋업이 뜨면 갈아타는 로직) 추가 후 지수노출 상한을
-// 0/40/70/100%로 스윕(알파 -104.82/-15.78/+48.83/+66.78%p, MDD 5.43/24.29/30.61/
-// 37.64%)한 결과, "알파 양수는 달성하되 MDD는 최대안보다 낮출 것"이라는 사용자
-// 선택에 따라 70%를 채택. 개별 종목 매매(승률/손익비/청산사유)는 지수노출 상한과
-// 무관하게 동일 - cash_equitize는 유휴 현금 운용 방식만 바꾼다.
+// 리스크폭 8%초과 시 8%로 축소해서 진입, cash_equitize 지수노출 상한 70%)로 계산.
+// 2020-01-01 시작 기준으로는 재평가일의 61.5%가 포지션 0개(현금 100%)라 알파가
+// -104.82%p로 마이너스였다가, cash_equitize(현금 유휴화 방지) 도입 후 지수노출
+// 상한 0/40/70/100% 스윕(알파 -104.82/-15.78/+48.83/+66.78%p, MDD 5.43/24.29/
+// 30.61/37.64%)에서 70%를 채택했다. 이후 백테스트 시작일을 2017-01-01로 앞당겨
+// (더 긴 구간·더 많은 시장국면 포함) 같은 파라미터로 다시 계산한 값이 아래
+// 수치다(9.6년, 139건, 알파 +113.96%p) - 2020년 시작 결과보다 알파도 크고 MDD도
+// 오히려 더 낮게(-30.61%→-21.58%) 나왔다.
 const RELAXED_VCP_REFERENCE = {
-  start: '2020-01-01', end: '2026-08-21', seed: 10000000, finalValue: 36386825.25,
-  returnPct: 263.87, cagrPct: 21.49, mddPct: 30.61, tradeCount: 110, winCount: 82, winRatePct: 74.5,
-  avgHoldDays: 13.9, profitLossRatio: 4.35, alphaPct: 48.83,
-  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 215.04,
-  exitReasonCounts: { partialProfit: 38, trailingStop: 45, breakevenStop: 12, maBreak: 4, initialStop: 10, timeStop: 1 },
+  start: '2017-01-01', end: '2026-08-21', seed: 10000000, finalValue: 45217220.59,
+  returnPct: 352.17, cagrPct: 16.95, mddPct: 21.58, tradeCount: 139, winCount: 98, winRatePct: 70.5,
+  avgHoldDays: 13.1, profitLossRatio: 4.51, alphaPct: 113.96,
+  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 238.21,
+  exitReasonCounts: { partialProfit: 46, trailingStop: 52, breakevenStop: 19, initialStop: 16, maBreak: 6 },
 };
 
 function renderRelaxedVcpReference(el) {
