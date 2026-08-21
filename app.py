@@ -1302,6 +1302,7 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
                     require_volume_decrease=p["require_volume_decrease"],
                     rescan_interval_days=p["rescan_interval_days"], risk_cap_mode=p["risk_cap_mode"],
                     cash_equitize=p.get("cash_equitize", False), equitize_max_pct=p.get("equitize_max_pct", 100.0),
+                    min_trend_pass_count=p.get("min_trend_pass_count"),
                 )
                 job = db.session.get(ScreeningBacktestJob, job_id)
                 if "error" in result:
@@ -1365,7 +1366,7 @@ def create_screening_backtest():
     if preset == "relaxed_vcp":
         import vcp_strategy as vcp
         market, strategy = vcp.RELAXED_VCP_PARAMS["market"], "trendTemplate"
-        stop_loss_pct, max_positions = None, 10
+        stop_loss_pct, max_positions = None, vcp.RELAXED_VCP_PARAMS.get("max_positions", 10)
     elif preset:
         import screening_backtest as sb
         p = sb.MINERVINI_V2_PARAMS if preset == "minervini_v2" else sb.MINERVINI_V21_PARAMS

@@ -79,10 +79,23 @@ BENCHMARK_LABEL = {"KR": "KOSPI Buy & Hold", "US": "S&P 500 Buy & Hold"}
 # 스윕한 결과 알파-MDD가 함께 커지는 트레이드오프가 뚜렷했다(0%: 알파-104.82%p/MDD
 # 5.43%, 40%: -15.78%p/24.29%, 70%: +48.83%p/30.61%, 100%: +66.78%p/37.64%) - 사용자가
 # "최소 요건인 알파 양수는 달성하되 MDD는 최대안보다 낮출 것"을 목표로 70%를 선택.
+#
+# 이후 "9년이면 최소 1000건 이상 거래해야 한다"는 요청으로 거래빈도를 다시 크게
+# 늘렸다(2017~2026 기준 139건 -> 목표 1000건+). 미너비니 트렌드템플릿(8조건)을
+# 몇 개 이상 통과해야 후보로 볼지(min_trend_pass_count)를 새로 열어 후보 풀 자체를
+# 넓히는 방향과, VCP/ADX 품질기준을 함께 푸는 방향을 나눠 11개 조합을 스윕한 결과
+# "거래빈도를 늘릴수록 손익비가 함께 낮아지는" 트레이드오프가 일관되게 나타났다
+# (트렌드템플릿+슬롯수만 완화·VCP품질 유지: 9.6년환산 315건/손익비4.3 vs 전면 완화:
+# 9.6년환산 1158건/손익비3.66) - "1000건 이상 + 손익비 상승"을 동시에 만족하는
+# 조합은 찾지 못했다. 사용자가 "1000건 이상 달성"을 우선해 아래 완화 조합(ADX≥10,
+# 최종수축비율 95%, 최소지속 1일, 최근성 60일, 트렌드템플릿 3개 이상 통과,
+# 최대 40포지션)을 선택 - 원안(2020-2026, 손익비4.35)/직전 버전(2017-2026,
+# 손익비4.51) 대비 손익비는 낮아지지만(3.66 내외) 거래빈도와 CAGR/알파가 크게 늘었다.
 RELAXED_VCP_PARAMS = {
-    "market": "KR", "adx_threshold": 20, "final_contraction_ratio": 0.65, "min_final_duration": 3,
-    "max_days_since_low": 25, "require_volume_decrease": False, "rescan_interval_days": 7,
+    "market": "KR", "adx_threshold": 10, "final_contraction_ratio": 0.95, "min_final_duration": 1,
+    "max_days_since_low": 60, "require_volume_decrease": False, "rescan_interval_days": 7,
     "risk_cap_mode": "shrink", "cash_equitize": True, "equitize_max_pct": 70.0,
+    "min_trend_pass_count": 3, "max_positions": 40,
 }
 
 
@@ -343,7 +356,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       final_contraction_ratio=0.5, min_final_duration=5, max_days_since_low=15,
                       require_volume_decrease=True, rescan_interval_days=RESCAN_INTERVAL_DAYS,
                       max_initial_risk_pct=MAX_INITIAL_RISK_PCT, risk_cap_mode="skip",
-                      cash_equitize=False, index_slippage_pct=0.1, equitize_max_pct=100.0):
+                      cash_equitize=False, index_slippage_pct=0.1, equitize_max_pct=100.0,
+                      min_trend_pass_count=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -370,7 +384,11 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     지수 프록시에 태울 수 있는 최대 비중(총자산 대비 %) - 100이면 유휴 현금
     전액을 지수에 태워 알파는 커지지만 MDD도 벤치마크 수준까지 같이 커지고,
     낮출수록(예: 40~70) 베타 노출이 줄어 MDD는 낮아지는 대신 알파 개선폭도
-    줄어드는 트레이드오프가 있다 - 실측 결과 참고.
+    줄어드는 트레이드오프가 있다 - 실측 결과 참고. min_trend_pass_count는
+    미너비니 트렌드템플릿(8조건)을 몇 개 이상 통과해야 VCP 후보로 볼지 -
+    기본값 None은 원안대로 8개 전부(allPass) 요구. 값을 낮추면(예: 6) 후보 풀이
+    크게 늘어 거래빈도가 올라가지만, VCP+ADX가 사실상 유일한 최종 필터가 되어
+    승률/손익비가 낮아질 수 있다.
     """
     if market not in ("KR", "US"):
         return {"error": "market은 KR 또는 US여야 합니다"}
@@ -436,7 +454,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 evaluated.append(result)
         ts.compute_universe_screen(evaluated)
         by_ticker = {e["_ticker"]: e for e in evaluated}
-        trend_ok_set = {t for t, e in by_ticker.items() if e.get("allPass")}
+        # min_trend_pass_count가 None이면 원안대로 8개 조건 전부 통과(allPass)만 후보로 삼는다.
+        # 값을 주면(예: 6) 그 개수 이상만 통과해도 후보 풀에 넣어 거래빈도를 늘릴 수 있다 -
+        # 트렌드템플릿 자체가 진입을 막는 게 아니라 VCP+ADX가 최종 필터 역할을 한다.
+        if min_trend_pass_count is not None:
+            trend_ok_set = {t for t, e in by_ticker.items() if (e.get("passCount") or 0) >= min_trend_pass_count}
+        else:
+            trend_ok_set = {t for t, e in by_ticker.items() if e.get("allPass")}
 
         # 1) 보유 포지션 처리 - 하루씩 순서대로(손절/트레일링 히트 > MA50이탈 > 시간손절 > 본전/분할익절/트레일링갱신 > 피라미딩)
         for ticker in list(positions.keys()):

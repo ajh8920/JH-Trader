@@ -3645,21 +3645,23 @@ async function loadMinerviniV21ReferenceTrades() {
   }
 }
 
-// 완화 VCP 전략 참고 결과 - vcp_strategy.RELAXED_VCP_PARAMS(ADX≥20, VCP 판정 완화,
-// 리스크폭 8%초과 시 8%로 축소해서 진입, cash_equitize 지수노출 상한 70%)로 계산.
-// 2020-01-01 시작 기준으로는 재평가일의 61.5%가 포지션 0개(현금 100%)라 알파가
-// -104.82%p로 마이너스였다가, cash_equitize(현금 유휴화 방지) 도입 후 지수노출
-// 상한 0/40/70/100% 스윕(알파 -104.82/-15.78/+48.83/+66.78%p, MDD 5.43/24.29/
-// 30.61/37.64%)에서 70%를 채택했다. 이후 백테스트 시작일을 2017-01-01로 앞당겨
-// (더 긴 구간·더 많은 시장국면 포함) 같은 파라미터로 다시 계산한 값이 아래
-// 수치다(9.6년, 139건, 알파 +113.96%p) - 2020년 시작 결과보다 알파도 크고 MDD도
-// 오히려 더 낮게(-30.61%→-21.58%) 나왔다.
+// 완화 VCP 전략 참고 결과 - vcp_strategy.RELAXED_VCP_PARAMS로 계산. cash_equitize
+// (현금 유휴화 방지, 지수노출 상한 70%) 도입까지의 경위는 이전 버전 주석 참고.
+// 이후 "9년이면 최소 1000건 이상 거래해야 한다"는 요청으로 거래빈도를 다시 크게
+// 늘렸다 - 미너비니 트렌드템플릿 통과기준(min_trend_pass_count, 8개 전부 -> 3개
+// 이상)과 VCP 판정(ADX≥10, 최종수축비율 95%, 최소지속 1일, 최근성 60일), 최대
+// 포지션(10->40)을 함께 풀어 11개 조합을 스윕한 결과 "거래빈도를 늘릴수록 손익비가
+// 낮아지는" 트레이드오프가 뚜렷했다(트렌드템플릿+슬롯만 완화: 9.6년환산 315건/
+// 손익비4.3 vs 전면 완화: 9.6년환산 1158건/손익비3.66) - "1000건+손익비 상승"을
+// 동시에 만족하는 조합은 없어서, 사용자가 "1000건 이상 달성"을 우선해 아래 조합을
+// 채택했다. 손익비는 4.51->3.75로 낮아졌지만 거래빈도(139->1611건)와 CAGR
+// (16.95%->37.28%)/알파(+113.96%p->+1778.37%p)는 크게 개선됐다.
 const RELAXED_VCP_REFERENCE = {
-  start: '2017-01-01', end: '2026-08-21', seed: 10000000, finalValue: 45217220.59,
-  returnPct: 352.17, cagrPct: 16.95, mddPct: 21.58, tradeCount: 139, winCount: 98, winRatePct: 70.5,
-  avgHoldDays: 13.1, profitLossRatio: 4.51, alphaPct: 113.96,
+  start: '2017-01-01', end: '2026-08-21', seed: 10000000, finalValue: 211658357.73,
+  returnPct: 2016.58, cagrPct: 37.28, mddPct: 20.47, tradeCount: 1611, winCount: 1028, winRatePct: 63.8,
+  avgHoldDays: 14.0, profitLossRatio: 3.75, alphaPct: 1778.37,
   benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 238.21,
-  exitReasonCounts: { partialProfit: 46, trailingStop: 52, breakevenStop: 19, initialStop: 16, maBreak: 6 },
+  exitReasonCounts: { breakevenStop: 189, trailingStop: 542, initialStop: 257, partialProfit: 485, maBreak: 116, timeStop: 14, periodEnd: 8 },
 };
 
 function renderRelaxedVcpReference(el) {
