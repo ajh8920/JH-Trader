@@ -3645,10 +3645,17 @@ async function loadMinerviniV21ReferenceTrades() {
 // 완화 VCP 전략 참고 결과 - vcp_strategy.RELAXED_VCP_PARAMS(ADX≥20, VCP 판정 완화,
 // 리스크폭 8%초과 시 8%로 축소해서 진입)로 계산. 명세서 원안보다 거래빈도를
 // 크게 늘리는 대신(6.5년간 30건 -> 110건) 손익비가 6.46 -> 4.35로 다소 낮아졌다.
+// 최초 버전은 재평가일의 61.5%가 포지션 0개(현금 100%)라 알파가 -104.82%p로
+// 크게 마이너스였다 - cash_equitize(현금 유휴화 방지: 국면 OK인데 유휴한 현금을
+// 지수에 태워두다가 개별 셋업이 뜨면 갈아타는 로직) 추가 후 지수노출 상한을
+// 0/40/70/100%로 스윕(알파 -104.82/-15.78/+48.83/+66.78%p, MDD 5.43/24.29/30.61/
+// 37.64%)한 결과, "알파 양수는 달성하되 MDD는 최대안보다 낮출 것"이라는 사용자
+// 선택에 따라 70%를 채택. 개별 종목 매매(승률/손익비/청산사유)는 지수노출 상한과
+// 무관하게 동일 - cash_equitize는 유휴 현금 운용 방식만 바꾼다.
 const RELAXED_VCP_REFERENCE = {
-  start: '2020-01-01', end: '2026-08-21', seed: 10000000, finalValue: 21021530.16,
-  returnPct: 110.22, cagrPct: 11.85, mddPct: 5.43, tradeCount: 110, winCount: 82, winRatePct: 74.5,
-  avgHoldDays: 13.9, profitLossRatio: 4.35, alphaPct: -104.82,
+  start: '2020-01-01', end: '2026-08-21', seed: 10000000, finalValue: 36386825.25,
+  returnPct: 263.87, cagrPct: 21.49, mddPct: 30.61, tradeCount: 110, winCount: 82, winRatePct: 74.5,
+  avgHoldDays: 13.9, profitLossRatio: 4.35, alphaPct: 48.83,
   benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 215.04,
   exitReasonCounts: { partialProfit: 38, trailingStop: 45, breakevenStop: 12, maBreak: 4, initialStop: 10, timeStop: 1 },
 };
@@ -3673,7 +3680,7 @@ function renderRelaxedVcpReference(el) {
         <div class="meta-item"><div class="meta-label">${t('winRate')}</div><div class="meta-value">${d.winRatePct.toFixed(1)}% (${d.winCount}/${d.tradeCount})</div></div>
         <div class="meta-item"><div class="meta-label">${t('avgHoldDays')}</div><div class="meta-value">${d.avgHoldDays}</div></div>
         <div class="meta-item"><div class="meta-label">${t('profitLossRatio')}</div><div class="meta-value">${d.profitLossRatio}</div></div>
-        <div class="meta-item"><div class="meta-label">${t('alphaExcessReturn')}</div><div class="meta-value negative">${d.alphaPct.toFixed(1)}%p</div></div>
+        <div class="meta-item"><div class="meta-label">${t('alphaExcessReturn')}</div><div class="meta-value ${d.alphaPct >= 0 ? 'positive' : 'negative'}">${d.alphaPct >= 0 ? '+' : ''}${d.alphaPct.toFixed(1)}%p</div></div>
         <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmarkLabel)}</div><div class="meta-value positive">+${d.benchmarkReturnPct.toFixed(1)}%</div></div>
       </div>
       <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px;line-height:1.5;">

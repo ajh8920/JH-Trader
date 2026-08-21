@@ -1301,6 +1301,7 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
                     min_final_duration=p["min_final_duration"], max_days_since_low=p["max_days_since_low"],
                     require_volume_decrease=p["require_volume_decrease"],
                     rescan_interval_days=p["rescan_interval_days"], risk_cap_mode=p["risk_cap_mode"],
+                    cash_equitize=p.get("cash_equitize", False), equitize_max_pct=p.get("equitize_max_pct", 100.0),
                 )
                 job = db.session.get(ScreeningBacktestJob, job_id)
                 if "error" in result:

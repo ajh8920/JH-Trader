@@ -70,10 +70,19 @@ BENCHMARK_LABEL = {"KR": "KOSPI Buy & Hold", "US": "S&P 500 Buy & Hold"}
 # 패턴 판정 기준을 완화하고, 리스크폭 8% 초과 셋업은 기각 대신 손절폭을 8%로
 # 줄여서라도 진입시키도록 바꿔 거래빈도를 올렸다 - 그 결과 110건(승률은 오히려
 # 74.5%로 원안과 비슷하게 유지, 손익비 4.35)으로 늘어 이 조합을 최종 채택했다.
+#
+# 이후 실측 결과 재평가일의 61.5%가 포지션 0개(현금 100%)로 드러나 벤치마크(코스피
+# 매수보유 215.04%) 대비 알파가 -104.82%p로 크게 마이너스였다(개별 종목 승률/손익비
+# 자체는 좋았음 - 기회가 너무 드물었을 뿐). cash_equitize(현금 유휴화 방지 - 국면 OK인데
+# 유휴한 현금을 지수에 태워두다가 개별 셋업이 뜨면 갈아타는, 미너비니/오닐류의 "확인된
+# 상승국면에서는 현금을 놀리지 마라" 원칙)를 추가해 0%/40%/70%/100% 지수노출 상한을
+# 스윕한 결과 알파-MDD가 함께 커지는 트레이드오프가 뚜렷했다(0%: 알파-104.82%p/MDD
+# 5.43%, 40%: -15.78%p/24.29%, 70%: +48.83%p/30.61%, 100%: +66.78%p/37.64%) - 사용자가
+# "최소 요건인 알파 양수는 달성하되 MDD는 최대안보다 낮출 것"을 목표로 70%를 선택.
 RELAXED_VCP_PARAMS = {
     "market": "KR", "adx_threshold": 20, "final_contraction_ratio": 0.65, "min_final_duration": 3,
     "max_days_since_low": 25, "require_volume_decrease": False, "rescan_interval_days": 7,
-    "risk_cap_mode": "shrink",
+    "risk_cap_mode": "shrink", "cash_equitize": True, "equitize_max_pct": 70.0,
 }
 
 
@@ -333,7 +342,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       min_avg_trade_value=MIN_AVG_TRADE_VALUE, volume_breakout_mult=VOLUME_BREAKOUT_MULT,
                       final_contraction_ratio=0.5, min_final_duration=5, max_days_since_low=15,
                       require_volume_decrease=True, rescan_interval_days=RESCAN_INTERVAL_DAYS,
-                      max_initial_risk_pct=MAX_INITIAL_RISK_PCT, risk_cap_mode="skip"):
+                      max_initial_risk_pct=MAX_INITIAL_RISK_PCT, risk_cap_mode="skip",
+                      cash_equitize=False, index_slippage_pct=0.1, equitize_max_pct=100.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -345,6 +355,22 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     지정가"로 체결한다 - 그 다음 거래일부터 재평가일까지 저가가 그 지정가
     이하로 닿은 첫날 체결된 것으로 본다. 이 때문에 재평가일과 재평가일 사이에
     돌파했다가 다시 꺼진 경우는 포착하지 못한다(주 단위 재평가의 근본적 한계).
+
+    cash_equitize=True("현금 유휴화 방지"): 실측 결과 완화 VCP는 전체 재평가일의
+    61.5%가 포지션 0개(현금 100%)로, 이게 알파가 크게 마이너스로 나오는 주된
+    원인이었다(개별 종목 승률/손익비 자체는 좋음 - 기회가 너무 드물 뿐). 미너비니/
+    오닐(CANSLIM)이 말하는 "확인된 상승국면에서는 현금을 놀리지 말고 지수/리더에
+    태워두다가 개별 셋업이 뜨면 갈아타라"는 원칙을 그대로 구현: 시장국면이 OK인데
+    포지션에 안 들어간 유휴 현금은 매 재평가일마다 지수(벤치마크 시리즈를 대납용
+    프록시로 사용)에 넣어두고, 개별 종목 매수가 필요하면 그만큼 지수를 팔아 현금화
+    한다. 국면이 꺼지면(코스피<200일선 등) 지수 보유분을 전량 현금화한다(방어적
+    태세 - 국면필터가 신규진입을 막는 것과 같은 이유). index_slippage_pct는 개별
+    종목(슬리피지+세금 합 0.5~0.8%)보다 훨씬 낮게 잡았다 - 국내 지수 추종 ETF는
+    스프레드가 촘촘하고 매도 시 증권거래세가 면제되기 때문. equitize_max_pct는
+    지수 프록시에 태울 수 있는 최대 비중(총자산 대비 %) - 100이면 유휴 현금
+    전액을 지수에 태워 알파는 커지지만 MDD도 벤치마크 수준까지 같이 커지고,
+    낮출수록(예: 40~70) 베타 노출이 줄어 MDD는 낮아지는 대신 알파 개선폭도
+    줄어드는 트레이드오프가 있다 - 실측 결과 참고.
     """
     if market not in ("KR", "US"):
         return {"error": "market은 KR 또는 US여야 합니다"}
@@ -378,6 +404,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
 
     cash = float(seed)
     positions = {}  # ticker -> position dict
+    index_units = 0.0  # cash_equitize용 지수 프록시 보유 수량(주식 아님, 벤치마크 시리즈 기준)
     trades = []
     equity_curve = []
     peak_equity = float(seed)
@@ -507,12 +534,18 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 continue
 
         # 2) 이 시점 평가액/낙폭 (완전 청산 상태면 고점 리셋 - screening_backtest.py와 같은 이유)
+        index_price = None
+        if regime_dates:
+            ri0 = bisect.bisect_right(regime_dates, rd) - 1
+            if ri0 >= 0:
+                index_price = regime_closes[ri0]
+        index_value = index_units * index_price if index_price is not None else 0.0
         held_value = sum(
             pos["shares"] * series[ticker][1][idx_at_rd[ticker]]
             for ticker, pos in positions.items() if ticker in idx_at_rd
         )
-        equity_now = cash + held_value
-        peak_equity = equity_now if not positions else max(peak_equity, equity_now)
+        equity_now = cash + held_value + index_value
+        peak_equity = equity_now if not (positions or index_units > 0) else max(peak_equity, equity_now)
 
         # 3) 시장국면(코스피>200일선 and 200일선 20일 기울기>0)
         regime_ok = True
@@ -524,6 +557,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 regime_ok = regime_closes[ri] >= ma200 and ma200 > ma200_20d_ago
             else:
                 regime_ok = False
+
+        # 3.5) 현금 유휴화 방지(cash_equitize) - 국면이 꺼지면 지수 보유분 전량 현금화(방어)
+        if cash_equitize and not regime_ok and index_units > 0 and index_price is not None:
+            proceeds = index_units * index_price * (1 - index_slippage_pct / 100)
+            cash += proceeds
+            index_units = 0.0
 
         # 4) 신규 진입 - VCP+ADX+유니버스필터를 통과한 후보 중 피벗 돌파(+거래량)를
         #    직전~이번 재평가 사이에서 찾아 피벗가*1.005 지정가로 체결
@@ -607,12 +646,24 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     risk_amount = equity_now * RISK_PCT_PER_TRADE / 100
                     shares = int(risk_amount // risk_per_share)
                     max_pos_value = seed * MAX_POSITION_WEIGHT_PCT / 100
-                    cap_shares = int(min(cash, max_pos_value) // fill_price)
+                    # cash_equitize: 지수에 태워둔 유휴자금까지 매수여력에 포함시킨다(필요한
+                    # 만큼만 아래에서 실제로 청산) - 안 그러면 현금이 대부분 지수에 가 있어
+                    # cap_shares가 0으로 계산돼 버린다.
+                    available_cash = cash
+                    if cash_equitize and index_units > 0 and index_price is not None:
+                        available_cash = cash + index_units * index_price * (1 - index_slippage_pct / 100)
+                    cap_shares = int(min(available_cash, max_pos_value) // fill_price)
                     shares = min(shares, cap_shares)
                     if shares <= 0:
                         continue
                     entry_fill = fill_price * (1 + SLIPPAGE_ENTRY_PCT / 100)
                     cost = shares * entry_fill
+                    if cost > cash and cash_equitize and index_units > 0 and index_price is not None:
+                        shortfall = cost - cash
+                        sell_units = min(index_units, shortfall / (index_price * (1 - index_slippage_pct / 100)))
+                        proceeds = sell_units * index_price * (1 - index_slippage_pct / 100)
+                        index_units -= sell_units
+                        cash += proceeds
                     if cost > cash:
                         continue
                     cash -= cost
@@ -626,11 +677,23 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     }
                     open_slots -= 1
 
+        # 4.5) 현금 유휴화 방지 - 국면 OK인데 남은 유휴 현금을 지수 프록시에 태운다
+        # (equitize_max_pct%까지만 - 그 이상은 베타 노출을 늘리지 않고 현금으로 남긴다)
+        if cash_equitize and regime_ok and index_price is not None and cash > 0:
+            cap_value = equity_now * equitize_max_pct / 100
+            current_index_value = index_units * index_price
+            room = max(0.0, cap_value - current_index_value)
+            buy_cash = min(cash, room)
+            if buy_cash > 0:
+                index_units += buy_cash * (1 - index_slippage_pct / 100) / index_price
+                cash -= buy_cash
+
         held_value = sum(
             pos["shares"] * series[ticker][1][idx_at_rd[ticker]]
             for ticker, pos in positions.items() if ticker in idx_at_rd
         )
-        equity_curve.append({"date": rd, "value": round(cash + held_value, 2)})
+        index_value = index_units * index_price if index_price is not None else 0.0
+        equity_curve.append({"date": rd, "value": round(cash + held_value + index_value, 2)})
         prev_rd = rd
 
     last_rd = rebalance_dates[-1]
@@ -643,6 +706,11 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         trades.append(trade)
         cash += proceeds
     positions.clear()
+    if cash_equitize and index_units > 0 and regime_dates:
+        ri_last = bisect.bisect_right(regime_dates, last_rd) - 1
+        if ri_last >= 0:
+            cash += index_units * regime_closes[ri_last] * (1 - index_slippage_pct / 100)
+            index_units = 0.0
 
     trades.sort(key=lambda t: t["entryDate"])
     final_value = equity_curve[-1]["value"] if equity_curve else seed
