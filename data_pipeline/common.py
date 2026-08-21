@@ -22,10 +22,11 @@ PRICE_US_DIR = PRICE_DIR / "us"
 FUND_DIR = DATA_ROOT / "fundamentals"
 FUND_KR_DIR = FUND_DIR / "kr"  # DART(전자공시) 출처
 FUND_US_DIR = FUND_DIR / "us"  # Finnhub 등 향후 수집 예정, 폴더만 미리 만들어둠
+SHAREHOLDER_KR_DIR = DATA_ROOT / "shareholders" / "kr"  # DART 대량보유상황보고(majorstock) 캐시
 
 
 def ensure_dirs():
-    for d in (PRICE_KR_DIR, PRICE_US_DIR, FUND_KR_DIR, FUND_US_DIR):
+    for d in (PRICE_KR_DIR, PRICE_US_DIR, FUND_KR_DIR, FUND_US_DIR, SHAREHOLDER_KR_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 

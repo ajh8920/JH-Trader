@@ -511,11 +511,14 @@ const I18N = {
   btPresetCustom: { en: '⚙️ Custom', ko: '⚙️ 직접 설정' },
   btPresetMinerviniV2: { en: '🎯 Minervini v2', ko: '🎯 미너비니 v2' },
   btPresetMinerviniV21: { en: '🎯 Minervini v2.1', ko: '🎯 미너비니 v2.1' },
+  btPresetRelaxedVcp: { en: '🎯 Relaxed VCP Strategy', ko: '🎯 완화 VCP 전략' },
   stratMinerviniV21Title: { en: 'Minervini v2.1', ko: '미너비니 v2.1' },
   exitInitialStop: { en: 'Stop-loss (2×ATR)', ko: '초기 손절(2×ATR)' },
   exitBreakevenStop: { en: 'Breakeven stop', ko: '본전 손절' },
   exitTrailingStop: { en: 'Trailing stop', ko: '트레일링 손절' },
   exitTimeStop: { en: 'Time stop', ko: '시간 손절' },
+  exitPartialProfit: { en: 'Partial profit (25%)', ko: '분할 익절(25%)' },
+  exitMaBreak: { en: 'MA50 breakdown', ko: 'MA50 이탈' },
   stratMinerviniV2Title: { en: 'Minervini v2', ko: '미너비니 v2' },
   stratMinerviniV2Note: {
     en: 'Trend Template pass + liquid enough to trade (avg. daily trading value ≥ ₩300M) — the exact entry '
@@ -3431,7 +3434,12 @@ function initScreeningBacktestTab() {
   }
 }
 
-const SBT_PRESET_KEYS = ['minervini_v2', 'minervini_v21'];
+const SBT_PRESET_KEYS = ['minervini_v2', 'minervini_v21', 'relaxed_vcp'];
+const SBT_PRESET_RENDERERS = {
+  minervini_v2: () => renderMinerviniV2Reference,
+  minervini_v21: () => renderMinerviniV21Reference,
+  relaxed_vcp: () => renderRelaxedVcpReference,
+};
 
 function setScreeningBacktestPreset(preset) {
   sbtPreset = preset;
@@ -3443,7 +3451,7 @@ function setScreeningBacktestPreset(preset) {
     if (preset === key) {
       document.getElementById('sbt-start').value = '2020-01-01';
       document.getElementById('sbt-end').value = new Date().toISOString().slice(0, 10);
-      (key === 'minervini_v2' ? renderMinerviniV2Reference : renderMinerviniV21Reference)(refEl);
+      SBT_PRESET_RENDERERS[key]()(refEl);
       refEl.style.display = 'block';
     } else {
       refEl.style.display = 'none';
@@ -3520,6 +3528,7 @@ async function loadMinerviniV2ReferenceTrades() {
       stopLoss: t('stopLoss'), conditionExit: t('conditionExit'), periodEnd: t('periodEnd'),
       initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
       trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'),
+      partialProfit: t('exitPartialProfit'), maBreak: t('exitMaBreak'),
     }[r] || r);
     const fmtPrice = v => `₩${Math.round(v).toLocaleString('en-US')}`;
     body.innerHTML = `
@@ -3604,6 +3613,93 @@ async function loadMinerviniV21ReferenceTrades() {
       stopLoss: t('stopLoss'), conditionExit: t('conditionExit'), periodEnd: t('periodEnd'),
       initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
       trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'),
+      partialProfit: t('exitPartialProfit'), maBreak: t('exitMaBreak'),
+    }[r] || r);
+    const fmtPrice = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+    body.innerHTML = `
+      <div class="pf-table-wrap pf-table-wrap-scroll">
+        <table class="pf-table">
+          <thead><tr>
+            <th>${t('name')}</th><th>${t('code')}</th>
+            <th style="text-align:right;">${t('buyDate')}</th><th style="text-align:right;">${t('buyPrice')}</th>
+            <th style="text-align:right;">${t('sellDate')}</th><th style="text-align:right;">${t('sellPrice')}</th>
+            <th style="text-align:right;">${t('returnPct')}</th><th>${t('exitReason')}</th>
+          </tr></thead>
+          <tbody>
+            ${data.trades.map(tr => `
+              <tr>
+                <td>${escapeHtml(tr.name)}</td><td>${escapeHtml(tr.code)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.entryDate)}</td><td style="text-align:right;">${fmtPrice(tr.entryPrice)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.exitDate)}</td><td style="text-align:right;">${fmtPrice(tr.exitPrice)}</td>
+                <td style="text-align:right;" class="${tr.pnlPct >= 0 ? 'positive' : 'negative'}">${tr.pnlPct>=0?'+':''}${tr.pnlPct.toFixed(1)}%</td>
+                <td>${exitReasonLabel(tr.exitReason)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${t('referenceTradesLoadError')}</span></div>`;
+  }
+}
+
+// 완화 VCP 전략 참고 결과 - vcp_strategy.RELAXED_VCP_PARAMS(ADX≥20, VCP 판정 완화,
+// 리스크폭 8%초과 시 8%로 축소해서 진입)로 계산. 명세서 원안보다 거래빈도를
+// 크게 늘리는 대신(6.5년간 30건 -> 110건) 손익비가 6.46 -> 4.35로 다소 낮아졌다.
+const RELAXED_VCP_REFERENCE = {
+  start: '2020-01-01', end: '2026-08-21', seed: 10000000, finalValue: 21021530.16,
+  returnPct: 110.22, cagrPct: 11.85, mddPct: 5.43, tradeCount: 110, winCount: 82, winRatePct: 74.5,
+  avgHoldDays: 13.9, profitLossRatio: 4.35, alphaPct: -104.82,
+  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 215.04,
+  exitReasonCounts: { partialProfit: 38, trailingStop: 45, breakevenStop: 12, maBreak: 4, initialStop: 10, timeStop: 1 },
+};
+
+function renderRelaxedVcpReference(el) {
+  const d = RELAXED_VCP_REFERENCE;
+  const fmt = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+  const reasons = Object.entries(d.exitReasonCounts)
+    .map(([k, v]) => `${PAPER_TRADING_EXIT_REASON_LABEL(k)} ${v}${t('countUnit') || '건'}`).join(', ');
+  el.innerHTML = `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+        <div style="font-size:13px;font-weight:700;">📌 ${t('referenceResultTitle')}</div>
+        <div style="font-size:11.5px;color:var(--text-muted);">${escapeHtml(d.start)} ~ ${escapeHtml(d.end)}</div>
+      </div>
+      <div class="bt-summary-grid">
+        <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">${fmt(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('finalValue')}</div><div class="meta-value">${fmt(d.finalValue)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('totalReturn')}</div><div class="meta-value positive">+${d.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('annualizedReturn')}</div><div class="meta-value positive">+${d.cagrPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('winRate')}</div><div class="meta-value">${d.winRatePct.toFixed(1)}% (${d.winCount}/${d.tradeCount})</div></div>
+        <div class="meta-item"><div class="meta-label">${t('avgHoldDays')}</div><div class="meta-value">${d.avgHoldDays}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('profitLossRatio')}</div><div class="meta-value">${d.profitLossRatio}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('alphaExcessReturn')}</div><div class="meta-value negative">${d.alphaPct.toFixed(1)}%p</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmarkLabel)}</div><div class="meta-value positive">+${d.benchmarkReturnPct.toFixed(1)}%</div></div>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px;line-height:1.5;">
+        ${t('exitReason')}: ${escapeHtml(reasons)}<br>
+        ${t('referenceResultNote')}
+      </div>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('tradeLog')} (${d.tradeCount})</div>
+      <div id="sbt-refvcp-trades-body"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i></div></div>
+    </div>`;
+  loadRelaxedVcpReferenceTrades();
+}
+
+async function loadRelaxedVcpReferenceTrades() {
+  const body = document.getElementById('sbt-refvcp-trades-body');
+  if (!body) return;
+  try {
+    const res = await fetch('/static/relaxed_vcp_reference.json');
+    if (!res.ok) throw new Error('fetch failed');
+    const data = await res.json();
+    const exitReasonLabel = r => ({
+      stopLoss: t('stopLoss'), conditionExit: t('conditionExit'), periodEnd: t('periodEnd'),
+      initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
+      trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'),
+      partialProfit: t('exitPartialProfit'), maBreak: t('exitMaBreak'),
     }[r] || r);
     const fmtPrice = v => `₩${Math.round(v).toLocaleString('en-US')}`;
     body.innerHTML = `
@@ -3692,6 +3788,7 @@ function renderScreeningBacktestResult(d) {
     stopLoss: t('stopLoss'), conditionExit: t('conditionExit'), periodEnd: t('periodEnd'),
     initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
     trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'),
+    partialProfit: t('exitPartialProfit'), maBreak: t('exitMaBreak'),
   }[r] || r);
 
   el.innerHTML = `
@@ -3814,6 +3911,7 @@ function resetScreeningBacktestZoom() {
 const PAPER_TRADING_EXIT_REASON_LABEL = r => ({
   initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
   trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'), periodEnd: t('periodEnd'),
+  partialProfit: t('exitPartialProfit'), maBreak: t('exitMaBreak'),
 }[r] || r);
 
 const PAPER_STRATEGY_LIST = [

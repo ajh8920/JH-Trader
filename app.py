@@ -1254,9 +1254,34 @@ def _screening_backtest_fetch_fn(market):
         return None
 
 
+def _vcp_shares_map():
+    """kr_stocks.json은 git에 커밋되어 있어 로컬/프로덕션 어디서나 바로 쓸 수 있다
+    (시가총액 필터용 상장주식수만 필요 - DB나 외부 API 불필요)."""
+    with open(Path(__file__).parent / "kr_stocks.json", "r", encoding="utf-8") as f:
+        stocks = json.load(f)
+    return {s["code"]: s["shares"] for s in stocks if s.get("shares")}
+
+
+def _vcp_shareholder_rows():
+    """DART 대량보유상황보고 캐시는 이 저장소 밖(로컬 전용, data_pipeline/common.py의
+    SHAREHOLDER_KR_DIR)에만 있다 - 프로덕션엔 없으므로 파일이 없으면 조용히 빈
+    딕셔너리를 돌려준다(최대주주지분율 필터가 자동으로 꺼지는 것과 같은 효과 -
+    vcp_strategy.latest_max_shareholder_pct가 데이터 없으면 필터를 통과시킨다)."""
+    try:
+        from data_pipeline.common import SHAREHOLDER_KR_DIR
+        import vcp_strategy as vcp
+        paths = [SHAREHOLDER_KR_DIR / "majorstock_1of2.parquet", SHAREHOLDER_KR_DIR / "majorstock_2of2.parquet"]
+        if not any(p.exists() for p in paths):
+            return {}
+        return vcp.load_shareholder_rows(paths)
+    except Exception:
+        return {}
+
+
 def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, stop_loss_pct, max_positions, seed,
                                  preset=None):
     import screening_backtest as sb
+    import vcp_strategy as vcp
     from models import ScreeningBacktestJob
 
     with app.app_context():
@@ -1266,6 +1291,26 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
         job.status = "running"
         db.session.commit()
         try:
+            if preset == "relaxed_vcp":
+                p = vcp.RELAXED_VCP_PARAMS
+                result = vcp.run_vcp_backtest(
+                    p["market"], start_date, end_date, seed=seed, max_positions=max_positions,
+                    fetch_fn=_screening_backtest_fetch_fn(p["market"]),
+                    shares_map=_vcp_shares_map(), shareholder_rows_by_code=_vcp_shareholder_rows(),
+                    adx_threshold=p["adx_threshold"], final_contraction_ratio=p["final_contraction_ratio"],
+                    min_final_duration=p["min_final_duration"], max_days_since_low=p["max_days_since_low"],
+                    require_volume_decrease=p["require_volume_decrease"],
+                    rescan_interval_days=p["rescan_interval_days"], risk_cap_mode=p["risk_cap_mode"],
+                )
+                job = db.session.get(ScreeningBacktestJob, job_id)
+                if "error" in result:
+                    job.status, job.error = "error", result["error"]
+                else:
+                    job.status = "done"
+                    job.result_json = json.dumps(sanitize_json(result))
+                db.session.commit()
+                return
+
             preset_params = {"minervini_v2": sb.MINERVINI_V2_PARAMS, "minervini_v21": sb.MINERVINI_V21_PARAMS}.get(preset)
             if preset_params:
                 p = preset_params
@@ -1313,10 +1358,14 @@ def create_screening_backtest():
     body = request.json or {}
     preset = body.get("preset")
     preset = str(preset) if preset else None
-    if preset not in (None, "minervini_v2", "minervini_v21"):
+    if preset not in (None, "minervini_v2", "minervini_v21", "relaxed_vcp"):
         return jsonify({"error": "알 수 없는 전략 프리셋입니다"}), 400
 
-    if preset:
+    if preset == "relaxed_vcp":
+        import vcp_strategy as vcp
+        market, strategy = vcp.RELAXED_VCP_PARAMS["market"], "trendTemplate"
+        stop_loss_pct, max_positions = None, 10
+    elif preset:
         import screening_backtest as sb
         p = sb.MINERVINI_V2_PARAMS if preset == "minervini_v2" else sb.MINERVINI_V21_PARAMS
         market, strategy = p["market"], p["strategy"]
