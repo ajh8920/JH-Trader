@@ -70,6 +70,9 @@
 
     <nav class="tabs" role="tablist">
       <button class="tab active" data-tab="macro" onclick="switchTab('macro')" role="tab"><i class="ti ti-world" aria-hidden="true"></i> <span data-i18n="tabMacro">Macro</span></button>
+      <button class="tab" data-tab="screener" onclick="switchTab('screener')" role="tab"><i class="ti ti-trending-up" aria-hidden="true"></i> <span data-i18n="tabScreener">Screener</span></button>
+      <button class="tab" data-tab="screenbt" onclick="switchTab('screenbt')" role="tab"><i class="ti ti-replace" aria-hidden="true"></i> <span data-i18n="tabScreenBacktest">Screen Backtest</span></button>
+      <button class="tab" data-tab="papertrade" onclick="switchTab('papertrade')" role="tab"><i class="ti ti-robot" aria-hidden="true"></i> <span data-i18n="tabPaperTrading">Paper Trading</span></button>
       <!-- 종목 검색/포트폴리오/알림 탭은 기능은 그대로 두고 화면에서만 숨김 처리했습니다.
            나중에 다시 노출하려면 아래 3개 버튼의 style="display:none;"만 지우면 됩니다. -->
       <button class="tab" data-tab="search" onclick="switchTab('search')" role="tab" style="display:none;"><i class="ti ti-search" aria-hidden="true"></i> <span data-i18n="tabSearch">Search</span></button>
@@ -82,9 +85,6 @@
       <button class="tab" data-tab="krswing" onclick="switchTab('krswing')" role="tab"><i class="ti ti-chart-candle" aria-hidden="true"></i> <span data-i18n="tabKrSwing">KR Swing</span></button>
       <button class="tab" data-tab="krquant" onclick="switchTab('krquant')" role="tab"><i class="ti ti-filter" aria-hidden="true"></i> <span data-i18n="tabKrQuant">KR Quant</span></button>
       {% endif %}
-      <button class="tab" data-tab="screener" onclick="switchTab('screener')" role="tab"><i class="ti ti-trending-up" aria-hidden="true"></i> <span data-i18n="tabScreener">Screener</span></button>
-      <button class="tab" data-tab="screenbt" onclick="switchTab('screenbt')" role="tab"><i class="ti ti-replace" aria-hidden="true"></i> <span data-i18n="tabScreenBacktest">Screen Backtest</span></button>
-      <button class="tab" data-tab="papertrade" onclick="switchTab('papertrade')" role="tab"><i class="ti ti-robot" aria-hidden="true"></i> <span data-i18n="tabPaperTrading">Paper Trading</span></button>
     </nav>
 
     <main>
