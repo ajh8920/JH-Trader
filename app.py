@@ -1266,15 +1266,18 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
         job.status = "running"
         db.session.commit()
         try:
-            if preset == "minervini_v2":
-                p = sb.MINERVINI_V2_PARAMS
+            preset_params = {"minervini_v2": sb.MINERVINI_V2_PARAMS, "minervini_v21": sb.MINERVINI_V21_PARAMS}.get(preset)
+            if preset_params:
+                p = preset_params
                 result = sb.run_risk_managed_backtest(
                     p["market"], p["strategy"], start_date, end_date,
                     risk_pct=p["risk_pct"], atr_period=p["atr_period"], atr_mult=p["atr_mult"],
-                    breakeven_r=p["breakeven_r"], trail_start_r=p["trail_start_r"],
+                    breakeven_r=p["breakeven_r"], breakeven_lock_r=p.get("breakeven_lock_r", 0.0),
+                    trail_start_r=p["trail_start_r"],
                     time_stop_days=p["time_stop_days"], dd_halt_pct=p["dd_halt_pct"],
                     max_positions=p["max_positions"], seed=seed,
                     min_avg_trade_value=p["min_avg_trade_value"],
+                    market_regime_filter=p.get("market_regime_filter", False),
                     fetch_fn=_screening_backtest_fetch_fn(p["market"]),
                 )
             else:
@@ -1310,12 +1313,12 @@ def create_screening_backtest():
     body = request.json or {}
     preset = body.get("preset")
     preset = str(preset) if preset else None
-    if preset not in (None, "minervini_v2"):
+    if preset not in (None, "minervini_v2", "minervini_v21"):
         return jsonify({"error": "알 수 없는 전략 프리셋입니다"}), 400
 
-    if preset == "minervini_v2":
+    if preset:
         import screening_backtest as sb
-        p = sb.MINERVINI_V2_PARAMS
+        p = sb.MINERVINI_V2_PARAMS if preset == "minervini_v2" else sb.MINERVINI_V21_PARAMS
         market, strategy = p["market"], p["strategy"]
         stop_loss_pct, max_positions = None, p["max_positions"]
     else:

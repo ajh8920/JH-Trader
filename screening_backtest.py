@@ -213,6 +213,22 @@ MINERVINI_V2_PARAMS = {
     "max_positions": DEFAULT_MAX_POSITIONS, "min_avg_trade_value": 300_000_000,
 }
 
+# "미너비니 v2.1" - v2와 진입 신호(트렌드템플릿+유동성)는 동일하지만 청산 규칙만
+# 승률/손익비 튜닝 스윕(2020-01-01~기준 여러 라운드) 결과로 다시 잡은 버전.
+# breakeven_lock_r=1.0: +1R 도달 시 손절선을 정확히 본전(0%)이 아니라 진입가+1R로
+# 올린다(그 시점까지의 고가가 이미 그 값이라 비현실적 체결이 아니다) - "본전에서
+# 되돌아와 0%로 끝나던" 트레이드들이 실제 승리로 바뀌어 승률이 19.7%→33.4%로 오른다.
+# market_regime_filter=True + atr_mult=2.5(2.0→확대): 손익비를 더 끌어올리는 쪽으로
+# 확인된 조합(승률 30~40% 밴드를 지키면서 손익비가 가장 높았던 조합, 사용자 선택).
+MINERVINI_V21_PARAMS = {
+    "market": "KR", "strategy": "trendTemplate",
+    "risk_pct": DEFAULT_RISK_PCT, "atr_period": DEFAULT_ATR_PERIOD, "atr_mult": 2.5,
+    "breakeven_r": DEFAULT_BREAKEVEN_R, "breakeven_lock_r": 1.0, "trail_start_r": DEFAULT_TRAIL_START_R,
+    "time_stop_days": DEFAULT_TIME_STOP_DAYS, "dd_halt_pct": DEFAULT_DD_HALT_PCT,
+    "max_positions": DEFAULT_MAX_POSITIONS, "min_avg_trade_value": 300_000_000,
+    "market_regime_filter": True,
+}
+
 
 def run_risk_managed_backtest(market, strategy, start_date, end_date,
                                risk_pct=DEFAULT_RISK_PCT, atr_period=DEFAULT_ATR_PERIOD, atr_mult=DEFAULT_ATR_MULT,
@@ -223,7 +239,9 @@ def run_risk_managed_backtest(market, strategy, start_date, end_date,
                                min_avg_trade_value=None,
                                use_value=False, use_quality=False, use_low_vol=False,
                                value_percentile=50, quality_percentile=50, low_vol_percentile=50,
-                               fundamentals_rows=None, shares_map=None):
+                               fundamentals_rows=None, shares_map=None,
+                               exclude_codes=None, min_market_cap=None,
+                               breakeven_lock_r=0.0, time_stop_threshold_pct=0.0):
     """run_screening_backtest과 진입 신호(트렌드 템플릿/단계)는 동일하지만,
     청산 로직을 고정 % 손절 대신 다음 리스크 관리 규칙으로 완전히 대체한 버전:
 
@@ -258,6 +276,23 @@ def run_risk_managed_backtest(market, strategy, start_date, end_date,
       시점엔 더 지킬 미실현 이익이 없으므로 그 시점을 새 기준으로 삼는 것이
       타당하다 - 이 낙폭 한도는 "보유 중인 포지션이 이미 크게 물려 있을 때
       더 태우지 않는다"는 취지로 재해석한 것이다.
+    - 승률/손익비 튜닝용 추가 파라미터(둘 다 기본값은 기존 동작 그대로):
+      - breakeven_lock_r: +breakeven_r 도달 시 손절선을 정확히 본전(0%)이 아니라
+        진입가 + breakeven_lock_r×R로 올린다(예: 0.3이면 +0.3R만큼 이익을 미리
+        확정). 본전청산은 pnlPct가 정확히 0%라 "승리"로 집계되지 않는데
+        (win_trades는 pnlPct>0만 집계), 이 값을 양수로 주면 그 케이스들이
+        작은 승리로 바뀌어 승률이 직접 올라간다.
+      - time_stop_threshold_pct: 시간손절 조건을 "종가가 진입가 이하"가 아니라
+        "종가가 진입가×(1+이 값/100) 이하"로 완화한다(예: -3이면 -3%보다
+        더 나쁠 때만 시간손절 - 본전 근처에서 버티는 포지션에게 회복할
+        시간을 더 준다).
+    - 섹터/카테고리 제외(선택): exclude_codes에 담긴 종목코드는 신규 진입 후보에서
+      항상 제외한다(스팩·지주사·특정 업종 등을 호출부가 종목코드 집합으로 미리
+      골라 넘긴다 - 이 함수 자체는 명칭/업종 판정 로직을 모른다). min_market_cap을
+      주면 그 시점 시가총액(가격×shares_map의 상장주식수, 정적 스냅샷이라 과거로
+      갈수록 부정확해질 수 있음 - kr_quant.py와 같은 한계)이 미만인 종목도 제외한다
+      ("저유동성 소형주" 근사 - min_avg_trade_value가 거래대금 기준이라면 이건
+      규모 기준으로 보완한다).
     - 물타기 없음: 이미 보유 중인 종목은 재평가 시점에 후보로 다시 고려하지
       않는다(진입은 종목당 한 번뿐, 추가매수 로직 자체가 없다).
     - 팩터 결합 필터(전부 선택적, AND로 결합 - 트렌드템플릿/RS/거래량/레짐 필터를
@@ -369,7 +404,8 @@ def run_risk_managed_backtest(market, strategy, start_date, end_date,
                     exit_price, exit_date, reason = pos["stopPrice"], dates[j], pos["stopState"]
                     break
                 held_bars = j - pos["entryIdx"]
-                if held_bars >= time_stop_days and closes[j] <= pos["entryPrice"]:
+                time_stop_price = pos["entryPrice"] * (1 + time_stop_threshold_pct / 100)
+                if held_bars >= time_stop_days and closes[j] <= time_stop_price:
                     exit_price, exit_date, reason = closes[j], dates[j], "timeStop"
                     break
                 pos["highestHigh"] = max(pos["highestHigh"], highs[j])
@@ -380,9 +416,11 @@ def run_risk_managed_backtest(market, strategy, start_date, end_date,
                     if new_stop > pos["stopPrice"]:
                         pos["stopPrice"] = new_stop
                         pos["stopState"] = "trailingStop"
-                elif r_reached >= breakeven_r and pos["entryPrice"] > pos["stopPrice"]:
-                    pos["stopPrice"] = pos["entryPrice"]
-                    pos["stopState"] = "breakevenStop"
+                elif r_reached >= breakeven_r:
+                    locked_stop = pos["entryPrice"] + breakeven_lock_r * pos["riskPerShare"]
+                    if locked_stop > pos["stopPrice"]:
+                        pos["stopPrice"] = locked_stop
+                        pos["stopState"] = "breakevenStop"
             if reason:
                 shares = pos["shares"]
                 pnl_pct = round((exit_price - pos["entryPrice"]) / pos["entryPrice"] * 100, 2)
@@ -430,7 +468,17 @@ def run_risk_managed_backtest(market, strategy, start_date, end_date,
                 if t not in positions
                 and (min_rs is None or (e.get("rsRating") or 0) >= min_rs)
                 and (min_rel_volume is None or (e.get("relVolume") or 0) >= min_rel_volume)
+                and (not exclude_codes or e["code"] not in exclude_codes)
             ]
+            if min_market_cap and shares_map:
+                kept = []
+                for t, e in candidates:
+                    i = idx_at_rd.get(t)
+                    shares = shares_map.get(e["code"])
+                    price = series[t][1][i] if i is not None else None
+                    if shares and price and price * shares >= min_market_cap:
+                        kept.append((t, e))
+                candidates = kept
             if min_avg_trade_value:
                 kept = []
                 for t, e in candidates:

@@ -510,6 +510,8 @@ const I18N = {
   },
   btPresetCustom: { en: '⚙️ Custom', ko: '⚙️ 직접 설정' },
   btPresetMinerviniV2: { en: '🎯 Minervini v2', ko: '🎯 미너비니 v2' },
+  btPresetMinerviniV21: { en: '🎯 Minervini v2.1', ko: '🎯 미너비니 v2.1' },
+  stratMinerviniV21Title: { en: 'Minervini v2.1', ko: '미너비니 v2.1' },
   exitInitialStop: { en: 'Stop-loss (2×ATR)', ko: '초기 손절(2×ATR)' },
   exitBreakevenStop: { en: 'Breakeven stop', ko: '본전 손절' },
   exitTrailingStop: { en: 'Trailing stop', ko: '트레일링 손절' },
@@ -3429,28 +3431,31 @@ function initScreeningBacktestTab() {
   }
 }
 
+const SBT_PRESET_KEYS = ['minervini_v2', 'minervini_v21'];
+
 function setScreeningBacktestPreset(preset) {
   sbtPreset = preset;
   document.getElementById('sbt-preset-default').classList.toggle('selected', preset === null);
-  document.getElementById('sbt-preset-minervini_v2').classList.toggle('selected', preset === 'minervini_v2');
-  const locked = preset === 'minervini_v2';
+  for (const key of SBT_PRESET_KEYS) {
+    document.getElementById(`sbt-preset-${key}`).classList.toggle('selected', preset === key);
+    document.getElementById(`sbt-info-${key}`).style.display = preset === key ? 'flex' : 'none';
+    const refEl = document.getElementById(`sbt-reference-${key}`);
+    if (preset === key) {
+      document.getElementById('sbt-start').value = '2020-01-01';
+      document.getElementById('sbt-end').value = new Date().toISOString().slice(0, 10);
+      (key === 'minervini_v2' ? renderMinerviniV2Reference : renderMinerviniV21Reference)(refEl);
+      refEl.style.display = 'block';
+    } else {
+      refEl.style.display = 'none';
+      refEl.innerHTML = '';
+    }
+  }
+  const locked = preset !== null;
   for (const id of ['sbt-field-market', 'sbt-field-strategy', 'sbt-field-stoploss', 'sbt-field-maxpos']) {
     document.getElementById(id).style.opacity = locked ? '0.45' : '1';
     document.getElementById(id).querySelectorAll('select, input').forEach(elm => { elm.disabled = locked; });
   }
   document.getElementById('sbt-info-default').style.display = locked ? 'none' : 'flex';
-  document.getElementById('sbt-info-minervini_v2').style.display = locked ? 'flex' : 'none';
-
-  const refEl = document.getElementById('sbt-reference-minervini_v2');
-  if (locked) {
-    document.getElementById('sbt-start').value = '2020-01-01';
-    document.getElementById('sbt-end').value = new Date().toISOString().slice(0, 10);
-    renderMinerviniV2Reference(refEl);
-    refEl.style.display = 'block';
-  } else {
-    refEl.style.display = 'none';
-    refEl.innerHTML = '';
-  }
 }
 
 // 2020-01-01~2026-08-21(로컬 캐시로 계산, run_risk_managed_backtest와 동일 파라미터 -
@@ -3509,6 +3514,90 @@ async function loadMinerviniV2ReferenceTrades() {
   // 받아야 해서, 이 프리셋을 실제로 열었을 때만 별도 JSON을 지연 로드한다.
   try {
     const res = await fetch('/static/minervini_v2_reference.json');
+    if (!res.ok) throw new Error('fetch failed');
+    const data = await res.json();
+    const exitReasonLabel = r => ({
+      stopLoss: t('stopLoss'), conditionExit: t('conditionExit'), periodEnd: t('periodEnd'),
+      initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
+      trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'),
+    }[r] || r);
+    const fmtPrice = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+    body.innerHTML = `
+      <div class="pf-table-wrap pf-table-wrap-scroll">
+        <table class="pf-table">
+          <thead><tr>
+            <th>${t('name')}</th><th>${t('code')}</th>
+            <th style="text-align:right;">${t('buyDate')}</th><th style="text-align:right;">${t('buyPrice')}</th>
+            <th style="text-align:right;">${t('sellDate')}</th><th style="text-align:right;">${t('sellPrice')}</th>
+            <th style="text-align:right;">${t('returnPct')}</th><th>${t('exitReason')}</th>
+          </tr></thead>
+          <tbody>
+            ${data.trades.map(tr => `
+              <tr>
+                <td>${escapeHtml(tr.name)}</td><td>${escapeHtml(tr.code)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.entryDate)}</td><td style="text-align:right;">${fmtPrice(tr.entryPrice)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.exitDate)}</td><td style="text-align:right;">${fmtPrice(tr.exitPrice)}</td>
+                <td style="text-align:right;" class="${tr.pnlPct >= 0 ? 'positive' : 'negative'}">${tr.pnlPct>=0?'+':''}${tr.pnlPct.toFixed(1)}%</td>
+                <td>${exitReasonLabel(tr.exitReason)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${t('referenceTradesLoadError')}</span></div>`;
+  }
+}
+
+// v2.1 참고 결과 - v2와 진입 신호는 같고 청산 규칙만 다름(승률/손익비 튜닝 스윕
+// 결과로 확정: breakeven_lock_r=1.0, atr_mult=2.5, market_regime_filter=True).
+const MINERVINI_V21_REFERENCE = {
+  start: '2020-01-01', end: '2026-08-21', seed: 10000000, finalValue: 43985007.97,
+  returnPct: 339.85, cagrPct: 25.01, mddPct: 11.12, tradeCount: 1110, winCount: 371, winRatePct: 33.4,
+  avgHoldDays: 10.9, profitLossRatio: 2.94, alphaPct: 142.35,
+  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 197.5,
+  exitReasonCounts: { initialStop: 121, breakevenStop: 290, trailingStop: 77, timeStop: 612, periodEnd: 10 },
+};
+
+function renderMinerviniV21Reference(el) {
+  const d = MINERVINI_V21_REFERENCE;
+  const fmt = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+  const reasons = Object.entries(d.exitReasonCounts)
+    .map(([k, v]) => `${PAPER_TRADING_EXIT_REASON_LABEL(k)} ${v}${t('countUnit') || '건'}`).join(', ');
+  el.innerHTML = `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+        <div style="font-size:13px;font-weight:700;">📌 ${t('referenceResultTitle')}</div>
+        <div style="font-size:11.5px;color:var(--text-muted);">${escapeHtml(d.start)} ~ ${escapeHtml(d.end)}</div>
+      </div>
+      <div class="bt-summary-grid">
+        <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">${fmt(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('finalValue')}</div><div class="meta-value">${fmt(d.finalValue)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('totalReturn')}</div><div class="meta-value positive">+${d.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('annualizedReturn')}</div><div class="meta-value positive">+${d.cagrPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('winRate')}</div><div class="meta-value">${d.winRatePct.toFixed(1)}% (${d.winCount}/${d.tradeCount})</div></div>
+        <div class="meta-item"><div class="meta-label">${t('avgHoldDays')}</div><div class="meta-value">${d.avgHoldDays}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('profitLossRatio')}</div><div class="meta-value">${d.profitLossRatio}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('alphaExcessReturn')}</div><div class="meta-value positive">+${d.alphaPct.toFixed(1)}%p</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmarkLabel)}</div><div class="meta-value positive">+${d.benchmarkReturnPct.toFixed(1)}%</div></div>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px;line-height:1.5;">
+        ${t('exitReason')}: ${escapeHtml(reasons)}<br>
+        ${t('referenceResultNote')}
+      </div>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('tradeLog')} (${d.tradeCount})</div>
+      <div id="sbt-ref21-trades-body"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i></div></div>
+    </div>`;
+  loadMinerviniV21ReferenceTrades();
+}
+
+async function loadMinerviniV21ReferenceTrades() {
+  const body = document.getElementById('sbt-ref21-trades-body');
+  if (!body) return;
+  try {
+    const res = await fetch('/static/minervini_v21_reference.json');
     if (!res.ok) throw new Error('fetch failed');
     const data = await res.json();
     const exitReasonLabel = r => ({
@@ -3727,57 +3816,69 @@ const PAPER_TRADING_EXIT_REASON_LABEL = r => ({
   trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'), periodEnd: t('periodEnd'),
 }[r] || r);
 
+const PAPER_STRATEGY_LIST = [
+  { key: 'minervini_v2', titleKey: 'stratMinerviniV2Title' },
+  { key: 'minervini_v21', titleKey: 'stratMinerviniV21Title' },
+];
+
 async function loadPaperTrading() {
   const el = document.getElementById('papertrade-body');
   el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i></div>`;
   try {
-    const data = await api('GET', '/api/paper-trading/status?strategy=minervini_v2');
-    if (!data.exists) {
-      renderPaperTradingStart(el);
-    } else {
-      renderPaperTradingDashboard(el, data);
-    }
+    const results = await Promise.all(
+      PAPER_STRATEGY_LIST.map(s => api('GET', `/api/paper-trading/status?strategy=${s.key}`))
+    );
+    el.innerHTML = PAPER_STRATEGY_LIST.map((s, i) => `<div id="papertrade-panel-${s.key}"></div>`).join('');
+    PAPER_STRATEGY_LIST.forEach((s, i) => {
+      const panel = document.getElementById(`papertrade-panel-${s.key}`);
+      const data = results[i];
+      if (!data.exists) {
+        renderPaperTradingStart(panel, s);
+      } else {
+        renderPaperTradingDashboard(panel, data, s);
+      }
+    });
   } catch (e) {
     el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
   }
 }
 
-function renderPaperTradingStart(el) {
+function renderPaperTradingStart(el, strategyInfo) {
   el.innerHTML = `
     <div class="card" style="text-align:center;padding:2.5rem 1.5rem;">
-      <div style="font-size:15px;font-weight:700;margin-bottom:6px;">${t('paperTradingIntroTitle')}</div>
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px;">${t('paperTradingIntroTitle')} — 🎯 ${t(strategyInfo.titleKey)}</div>
       <div style="font-size:13px;color:var(--text-muted);max-width:560px;margin:0 auto 20px;line-height:1.6;">
         ${t('paperTradingIntroBody')}
       </div>
       <div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:16px;">
-        <label for="pt-start-seed" style="font-size:13px;color:var(--text-secondary);">${t('capital')}</label>
-        <input type="number" id="pt-start-seed" value="10000000" step="1000000" min="1" style="width:160px;" />
+        <label for="pt-start-seed-${strategyInfo.key}" style="font-size:13px;color:var(--text-secondary);">${t('capital')}</label>
+        <input type="number" id="pt-start-seed-${strategyInfo.key}" value="10000000" step="1000000" min="1" style="width:160px;" />
       </div>
-      <button class="bt-preset-btn selected" style="padding:12px 22px;font-size:14px;" onclick="startPaperTrading()">
-        🎯 ${t('stratMinerviniV2Title')}
+      <button class="bt-preset-btn selected" style="padding:12px 22px;font-size:14px;" onclick="startPaperTrading('${strategyInfo.key}')">
+        🎯 ${t(strategyInfo.titleKey)}
       </button>
       <div style="font-size:11.5px;color:var(--text-muted);margin-top:14px;">${t('paperTradingStartNote')}</div>
     </div>`;
 }
 
-async function startPaperTrading() {
-  const seed = parseFloat(document.getElementById('pt-start-seed').value);
+async function startPaperTrading(strategyKey) {
+  const seed = parseFloat(document.getElementById(`pt-start-seed-${strategyKey}`).value);
   if (!seed || seed <= 0) { alert(t('checkCapital') || '시드를 확인하세요'); return; }
   try {
-    await api('POST', '/api/paper-trading/start', { strategy: 'minervini_v2', seed });
+    await api('POST', '/api/paper-trading/start', { strategy: strategyKey, seed });
     await loadPaperTrading();
   } catch (e) {
     alert(e.message);
   }
 }
 
-function renderPaperTradingDashboard(el, d) {
+function renderPaperTradingDashboard(el, d, strategyInfo) {
   const pnlCls = d.returnPct >= 0 ? 'positive' : 'negative';
   const fmt = v => `₩${Math.round(v).toLocaleString('en-US')}`;
   el.innerHTML = `
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
-        <div style="font-size:14px;font-weight:700;">🎯 ${t('stratMinerviniV2Title')}</div>
+        <div style="font-size:14px;font-weight:700;">🎯 ${t(strategyInfo.titleKey)}</div>
         <div style="font-size:11.5px;color:var(--text-muted);">
           ${t('startedOn')} ${escapeHtml(d.startedOn || '-')} · ${t('lastProcessedDate')} ${escapeHtml(d.lastProcessedDate || '-')}
         </div>

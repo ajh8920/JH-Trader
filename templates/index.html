@@ -516,6 +516,9 @@
             <button type="button" id="sbt-preset-minervini_v2" class="bt-preset-btn" onclick="setScreeningBacktestPreset('minervini_v2')">
               <span data-i18n="btPresetMinerviniV2">🎯 미너비니 v2</span>
             </button>
+            <button type="button" id="sbt-preset-minervini_v21" class="bt-preset-btn" onclick="setScreeningBacktestPreset('minervini_v21')">
+              <span data-i18n="btPresetMinerviniV21">🎯 미너비니 v2.1</span>
+            </button>
           </div>
           <div class="bt-form-grid">
             <div class="bt-field" id="sbt-field-market">
@@ -576,8 +579,18 @@
             시장은 국내(KR), 최대 보유는 10종목으로 고정됩니다.
             </span>
           </div>
+          <div class="info-box" id="sbt-info-minervini_v21" style="display:none;margin-top:12px;">
+            <i class="ti ti-info-circle" aria-hidden="true"></i>
+            <span>
+            v2와 진입 조건은 동일하고 청산 규칙만 다릅니다 - 손절은 진입가-2.5×ATR, +1R 도달 시 본전이 아니라
+            진입가+1R(그 시점 최고가) 자체로 손절선을 올려 승률을 높이고, +2R부터 트레일링, 7거래일 무진전 시
+            시간손절, 코스피가 200일선 아래일 땐 신규매수를 쉬는 시장 레짐필터가 추가로 걸립니다. 승률 30~40%대를
+            유지하면서 손익비를 우선한 조합입니다(모의투자 "미너비니 v2.1"과 동일 규칙).
+            </span>
+          </div>
         </div>
         <div id="sbt-reference-minervini_v2" style="display:none;"></div>
+        <div id="sbt-reference-minervini_v21" style="display:none;"></div>
         <div id="screenbt-result"></div>
       </section>
 

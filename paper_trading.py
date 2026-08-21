@@ -1,11 +1,10 @@
-"""모의투자 탭 - "미너비니 v2" 전략을 실제 돈 없이 매일 자동으로 그대로
+"""모의투자 탭 - "미너비니 v2"/"v2.1" 전략을 실제 돈 없이 매일 자동으로 그대로
 따라가며 시뮬레이션한다. screening_backtest.py의 run_risk_managed_backtest와
-정확히 같은 매매 규칙(진입: 트렌드템플릿 8/8 + 유동성, 청산: 2×ATR 손절 →
-+1R 본전이동 → +2R 트레일링 → 무진전 시간손절, 계좌 낙폭 10%↑ 시 신규매수
-중단)을 쓰지만, 저건 "과거 구간을 워크포워드로 재생"하는 배치 계산이고
-이 모듈은 "오늘 실제로 확정된 가격을 하루치씩 실시간으로 누적 반영"한다는
-점이 다르다 - 그래서 별도 모듈로 분리했다(백테스트 코드와 결과가 갈라지지
-않도록 파라미터는 MINERVINI_V2_PARAMS 하나만 공유한다).
+정확히 같은 매매 규칙을 쓰지만, 저건 "과거 구간을 워크포워드로 재생"하는
+배치 계산이고 이 모듈은 "오늘 실제로 확정된 가격을 하루치씩 실시간으로
+누적 반영"한다는 점이 다르다 - 그래서 별도 모듈로 분리했다(백테스트 코드와
+결과가 갈라지지 않도록 파라미터는 STRATEGY_PRESETS를 통해 screening_backtest.py의
+MINERVINI_V2_PARAMS/MINERVINI_V21_PARAMS를 그대로 공유한다).
 
 ## 하루 처리 흐름 (run_daily_step)
 1. 보유 포지션 + 신규 진입 후보(트렌드템플릿 통과 + 유동성, 이미 계산되어
@@ -29,7 +28,7 @@ import screening_backtest as sb
 from kr_quant import _load_market_map, _yf_ticker
 from models import PaperPosition, PaperStrategyAccount, PaperTrade, TrendScreenCache, db
 
-STRATEGY_PRESETS = {"minervini_v2": sb.MINERVINI_V2_PARAMS}
+STRATEGY_PRESETS = {"minervini_v2": sb.MINERVINI_V2_PARAMS, "minervini_v21": sb.MINERVINI_V21_PARAMS}
 RESCAN_INTERVAL_DAYS = 7
 FETCH_LOOKBACK_DAYS = 40  # last_processed_date 이후 밀린 날짜 + ATR(14) 계산에 충분한 여유
 
@@ -109,10 +108,40 @@ def _process_position_day(pos, bar, preset):
         if new_stop > pos.stop_price:
             pos.stop_price = new_stop
             pos.stop_state = "trailingStop"
-    elif r_reached >= preset["breakeven_r"] and pos.entry_price > pos.stop_price:
-        pos.stop_price = pos.entry_price
-        pos.stop_state = "breakevenStop"
+    elif r_reached >= preset["breakeven_r"]:
+        locked_stop = pos.entry_price + preset.get("breakeven_lock_r", 0.0) * pos.risk_per_share
+        if locked_stop > pos.stop_price:
+            pos.stop_price = locked_stop
+            pos.stop_state = "breakevenStop"
     return None
+
+
+def _regime_ok(preset):
+    """market_regime_filter가 꺼진 프리셋(v2 등)은 항상 True. 켜진 프리셋(v2.1)은
+    지수(코스피)가 자기 200일선 위에 있을 때만 신규 매수를 허용한다 -
+    screening_backtest.py의 레짐필터와 같은 조건. 지수 데이터를 못 받으면
+    보수적으로 매수를 쉰다(신규 매수를 잘못 여는 것보다 안전한 쪽)."""
+    if not preset.get("market_regime_filter"):
+        return True
+    ticker = "^KS11" if preset["market"] == "KR" else "^GSPC"
+    end = datetime.today()
+    start = end - timedelta(days=320)  # 200일선 계산에 필요한 여유
+    try:
+        df = yf.download(
+            ticker, start=start.strftime("%Y-%m-%d"), end=(end + timedelta(days=1)).strftime("%Y-%m-%d"),
+            progress=False, timeout=20,
+        )
+    except Exception:
+        return False
+    if df is None or df.empty:
+        return False
+    if hasattr(df.columns, "get_level_values") and df.columns.nlevels > 1:
+        df.columns = df.columns.get_level_values(0)
+    closes = df["Close"].dropna()
+    if len(closes) < 200:
+        return False
+    ma200 = float(closes.iloc[-200:].mean())
+    return float(closes.iloc[-1]) >= ma200
 
 
 def run_daily_step(account):
@@ -194,7 +223,7 @@ def run_daily_step(account):
     should_rescan = account.last_rescan_date is None or (
         datetime.fromisoformat(latest_date) - datetime.fromisoformat(account.last_rescan_date)
     ).days >= RESCAN_INTERVAL_DAYS
-    if should_rescan and not dd_halt:
+    if should_rescan and not dd_halt and _regime_ok(preset):
         open_slots = preset["max_positions"] - len(remaining)
         if open_slots > 0:
             max_position_value = account.seed / preset["max_positions"]
