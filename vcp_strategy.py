@@ -118,6 +118,15 @@ RELAXED_VCP_PARAMS = {
 # 평균수익/평균손실은 상당히 근접했다). 슬롯을 10개보다 늘리면 거래수 목표(1,000건+)
 # 달성이 훨씬 쉬워지지만, 사용자가 슬롯 10개 고정을 명시적으로 요구해 그 제약 안에서
 # 나온 최선의 조합이다.
+#
+# 이후 "종목마다 동일한 금액을 매매하고, 시가총액/유동성 필터를 제거하라"는 요청으로
+# position_sizing_mode="equal_weight"(변동성과 무관하게 슬롯당 총자산/max_positions을
+# 동일 배분 - 기존 리스크 기반 ATR 사이징은 변동성 큰 종목을 작게 사서 자본을 충분히
+# 못 굴렸다)와 min_market_cap=0/min_avg_trade_value=0을 추가했다. 실측 결과 시가총액/
+# 유동성 필터 제거는 거래수에 거의 영향이 없었다(551->570건 - 그 필터가 병목이
+# 아니었다는 뜻, "10슬롯×거래일/평균보유일수" 산수 상한이 진짜 병목임을 재확인).
+# 반면 동일금액 배분은 CAGR(27.43%->35.71%)과 누적수익률(934%->1,798%)을 크게
+# 끌어올렸다(손익비 8.2->7.9, MDD -31.24%->-33.83%로 소폭 트레이드오프).
 ANONYMOUS_PARAMS = {
     "market": "KR", "entry_mode": "donchian", "donchian_period": 15, "max_positions": 10,
     "initial_stop_atr_mult": 1.5, "max_initial_risk_pct": 6.0, "risk_cap_mode": "shrink",
@@ -125,6 +134,7 @@ ANONYMOUS_PARAMS = {
     "chandelier_atr_mult": 8.0, "ma_break_period": 250, "ma_break_consec_days": 6,
     "pyramid_max_count": 5, "time_stop_days": 20, "time_stop_progress_r": 0.2,
     "rescan_interval_days": 3, "cash_equitize": True, "equitize_max_pct": 70.0,
+    "position_sizing_mode": "equal_weight", "min_market_cap": 0, "min_avg_trade_value": 0,
 }
 
 
@@ -403,7 +413,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       partial_profit_fraction=PARTIAL_PROFIT_FRACTION, chandelier_atr_mult=CHANDELIER_ATR_MULT,
                       trail_activate_r=TRAIL_ACTIVATE_R, pyramid_max_count=PYRAMID_MAX_COUNT,
                       time_stop_days=TIME_STOP_DAYS, time_stop_progress_r=TIME_STOP_PROGRESS_R,
-                      entry_mode="vcp", donchian_period=20, initial_stop_atr_mult=INITIAL_STOP_ATR_MULT):
+                      entry_mode="vcp", donchian_period=20, initial_stop_atr_mult=INITIAL_STOP_ATR_MULT,
+                      position_sizing_mode="risk"):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -436,6 +447,11 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     크게 늘어 거래빈도가 올라가지만, VCP+ADX가 사실상 유일한 최종 필터가 되어
     승률/손익비가 낮아질 수 있다.
 
+    position_sizing_mode="risk"(기본값)는 리스크 기반 사이징(계좌의 RISK_PCT_PER_TRADE%를
+    손절폭으로 나눠 수량 산정, 종목마다 변동성에 따라 배분이 달라짐). "equal_weight"는
+    모든 신규 포지션에 그 시점 총자산/max_positions을 동일하게 배분한다(변동성과
+    무관하게 슬롯당 같은 금액) - 손절폭(ATR 기반)은 손절가 산정에는 여전히 쓰이지만
+    수량 결정에는 관여하지 않는다.
     ma_break_period/ma_break_consec_days/breakeven_r/partial_profit_r/
     partial_profit_fraction/chandelier_atr_mult/trail_activate_r/pyramid_max_count는
     전부 청산 로직 파라미터다(기본값은 명세서 원안과 동일). "승리 트레이드를 일찍
@@ -745,9 +761,16 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             continue
                     if risk_per_share <= 0:
                         continue
-                    risk_amount = equity_now * RISK_PCT_PER_TRADE / 100
-                    shares = int(risk_amount // risk_per_share)
-                    max_pos_value = seed * MAX_POSITION_WEIGHT_PCT / 100
+                    if position_sizing_mode == "equal_weight":
+                        # 슬롯당 동일 금액 배분 - 변동성과 무관하게 그 시점 총자산을
+                        # max_positions으로 나눈 만큼만 산다(리스크 기반 사이징 대신).
+                        target_value = equity_now / max_positions
+                        shares = int(target_value // fill_price)
+                        max_pos_value = target_value
+                    else:
+                        risk_amount = equity_now * RISK_PCT_PER_TRADE / 100
+                        shares = int(risk_amount // risk_per_share)
+                        max_pos_value = seed * MAX_POSITION_WEIGHT_PCT / 100
                     # cash_equitize: 지수에 태워둔 유휴자금까지 매수여력에 포함시킨다(필요한
                     # 만큼만 아래에서 실제로 청산) - 안 그러면 현금이 대부분 지수에 가 있어
                     # cap_shares가 0으로 계산돼 버린다.

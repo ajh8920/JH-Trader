@@ -384,18 +384,21 @@ def run_anonymous_daily_step(account):
 
     candidate_rows = []
     if len(held_codes) < params["max_positions"]:
-        candidate_rows = (
+        query = (
             TrendScreenCache.query.filter_by(market=params["market"])
             .filter(TrendScreenCache.donchian_high_15.isnot(None))
             .filter(TrendScreenCache.price > TrendScreenCache.donchian_high_15)
-            .filter(TrendScreenCache.avg_trade_value.isnot(None))
-            .filter(TrendScreenCache.avg_trade_value >= vcp.MIN_AVG_TRADE_VALUE)
-            .filter(TrendScreenCache.market_cap.isnot(None))
-            .filter(TrendScreenCache.market_cap >= vcp.MIN_MARKET_CAP)
-            .order_by(TrendScreenCache.rs_rating.desc())
-            .limit(params["max_positions"] * 5)
-            .all()
         )
+        min_avg_trade_value = params.get("min_avg_trade_value", vcp.MIN_AVG_TRADE_VALUE)
+        if min_avg_trade_value:
+            query = query.filter(TrendScreenCache.avg_trade_value.isnot(None)) \
+                .filter(TrendScreenCache.avg_trade_value >= min_avg_trade_value)
+        min_market_cap = params.get("min_market_cap", vcp.MIN_MARKET_CAP)
+        if min_market_cap:
+            query = query.filter(TrendScreenCache.market_cap.isnot(None)) \
+                .filter(TrendScreenCache.market_cap >= min_market_cap)
+        candidate_rows = query.order_by(TrendScreenCache.rs_rating.desc()) \
+            .limit(params["max_positions"] * 5).all()
     candidate_rows = [r for r in candidate_rows if not vcp.is_preferred_stock(r.name)]
     candidate_codes = [r.code for r in candidate_rows if r.code not in held_codes]
 
@@ -525,9 +528,15 @@ def run_anonymous_daily_step(account):
                 if risk_per_share <= 0:
                     continue
                 entry_fill = price * (1 + vcp.SLIPPAGE_ENTRY_PCT / 100)
-                risk_amount = equity_now * vcp.RISK_PCT_PER_TRADE / 100
-                shares = int(risk_amount // risk_per_share)
-                max_pos_value = account.seed * vcp.MAX_POSITION_WEIGHT_PCT / 100
+                if params.get("position_sizing_mode") == "equal_weight":
+                    # 슬롯당 동일 금액 배분 - vcp_strategy.run_vcp_backtest와 동일한 방식
+                    target_value = equity_now / params["max_positions"]
+                    shares = int(target_value // entry_fill)
+                    max_pos_value = target_value
+                else:
+                    risk_amount = equity_now * vcp.RISK_PCT_PER_TRADE / 100
+                    shares = int(risk_amount // risk_per_share)
+                    max_pos_value = account.seed * vcp.MAX_POSITION_WEIGHT_PCT / 100
                 cap_shares = int(min(account.cash, max_pos_value) // entry_fill)
                 shares = min(shares, cap_shares)
                 if shares <= 0:

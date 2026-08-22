@@ -3749,16 +3749,19 @@ async function loadRelaxedVcpReferenceTrades() {
 // CAGR+50.76%·누적+5,049%·MDD-44.45%)에 최대한 근접시킨 결과다. 슬롯을 10개로
 // 고정한 상태에서는 "10슬롯×9.6년 거래일/평균보유일수"가 산수적 상한이라(평균
 // 보유 25일 기준 최대 940건) 재평가 주기를 주간→3일→매일로 단축해도 거래수가
-// 1,000건을 못 넘었고(3일: 551건, 매일 근사: ~624건), 오히려 매일 재평가는
-// 손익비만 깎아먹었다(8.2→6.81). 손익비/평균수익/평균손실은 목표에 상당히
-// 근접했지만(8.2/51.25%/-6.25% vs 목표 9.30/52.38%/-5.63%) 거래수·CAGR·누적
-// 수익률은 못 미친다.
+// 1,000건을 못 넘었다. 이후 "종목마다 동일금액 매매+시가총액/유동성 필터 제거"
+// 요청으로 position_sizing_mode="equal_weight"(변동성과 무관하게 슬롯당 총자산/
+// max_positions 균등 배분)를 추가했다 - 필터 제거는 거래수에 거의 영향이 없었지만
+// (551→570건, 시총/유동성 병목이 아니었음을 재확인) 동일금액 배분은 CAGR을
+// 27.43%→35.71%로, 누적수익률을 934%→1,798%로 크게 끌어올렸다(손익비 8.2→7.9,
+// MDD -31.24%→-33.83%로 소폭 트레이드오프). 거래수·승률은 여전히 10슬롯 산수
+// 상한에 막혀 목표에 못 미친다.
 const ANONYMOUS_REFERENCE = {
-  start: '2017-01-01', end: '2026-08-22', seed: 10000000, finalValue: 103434209.88,
-  returnPct: 934.34, cagrPct: 27.43, mddPct: 31.24, tradeCount: 551, winCount: 123, winRatePct: 22.3,
-  avgHoldDays: 26.1, profitLossRatio: 8.2, alphaPct: 735.52,
-  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 198.82,
-  exitReasonCounts: { initialStop: 407, trailingStop: 129, maBreak: 5, periodEnd: 10 },
+  start: '2017-01-01', end: '2026-08-23', seed: 10000000, finalValue: 189799341.01,
+  returnPct: 1797.99, cagrPct: 35.71, mddPct: 33.83, tradeCount: 570, winCount: 133, winRatePct: 23.3,
+  avgHoldDays: 23.4, profitLossRatio: 7.9, alphaPct: 1599.96,
+  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 198.03,
+  exitReasonCounts: { initialStop: 425, trailingStop: 133, maBreak: 2, periodEnd: 10 },
 };
 
 function renderAnonymousReference(el) {

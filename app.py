@@ -1319,6 +1319,9 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
                     pyramid_max_count=p.get("pyramid_max_count", vcp.PYRAMID_MAX_COUNT),
                     time_stop_days=p.get("time_stop_days", vcp.TIME_STOP_DAYS),
                     time_stop_progress_r=p.get("time_stop_progress_r", vcp.TIME_STOP_PROGRESS_R),
+                    min_market_cap=p.get("min_market_cap", vcp.MIN_MARKET_CAP),
+                    min_avg_trade_value=p.get("min_avg_trade_value", vcp.MIN_AVG_TRADE_VALUE),
+                    position_sizing_mode=p.get("position_sizing_mode", "risk"),
                 )
                 job = db.session.get(ScreeningBacktestJob, job_id)
                 if "error" in result:
