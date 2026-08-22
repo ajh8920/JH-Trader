@@ -522,6 +522,9 @@
             <button type="button" id="sbt-preset-relaxed_vcp" class="bt-preset-btn" onclick="setScreeningBacktestPreset('relaxed_vcp')">
               <span data-i18n="btPresetRelaxedVcp">🎯 완화 VCP 전략</span>
             </button>
+            <button type="button" id="sbt-preset-anonymous" class="bt-preset-btn" onclick="setScreeningBacktestPreset('anonymous')">
+              <span data-i18n="btPresetAnonymous">🐢 어나니머스</span>
+            </button>
           </div>
           <div class="bt-form-grid">
             <div class="bt-field" id="sbt-field-market">
@@ -611,10 +614,30 @@
             못했습니다.
             </span>
           </div>
+          <div class="info-box" id="sbt-info-anonymous" style="display:none;margin-top:12px;">
+            <i class="ti ti-info-circle" aria-hidden="true"></i>
+            <span>
+            VCP 패턴 요건 없이 국내 전체 유니버스에서 <b>돈치안 채널 브레이크아웃</b>(직전 15거래일
+            고가 돌파, 거래량 확인)만으로 진입합니다(터틀 트레이딩 방식) — 트렌드템플릿 통과 여부도
+            요구하지 않고 RS 랭킹으로 후보 순위만 매깁니다. 손절은 타이트하게(진입가-1.5×ATR20, 최대
+            6%), 청산은 넓게(챈들리어 트레일링 고가-8×ATR, 250일선 6일 연속 이탈, 20거래일간 +0.2R
+            미달 시 시간손절) — "손실은 짧게, 수익은 최대한 오래"라는 추세추종 철학대로 본전이동과
+            분할익절은 두지 않고 승리 포지션은 피라미딩(최대 5회)으로 더 키웁니다. 유휴 현금은 국면이
+            양호할 때 최대 70%까지 지수(코스피)에 태워둡니다(현금 유휴화 방지). 최대 보유는 <b>10종목
+            고정</b>입니다 — 사용자가 아는 실제 매매방법론(9년 1,476건·승률 31.57%·손익비 9.30·평균수익
+            +52.38%·평균손실 -5.63%·CAGR +50.76%)에 최대한 근접시키려 한 결과이며, 슬롯 10개 제약 안에서
+            "재평가 주기(주간/3일/매일)"까지 스윕해 CAGR·손익비·평균수익/손실을 종합적으로 가장 잘
+            근접시킨 조합입니다(3일 재평가 채택 — 매일 재평가는 오히려 손익비를 깎아먹었습니다). 다만
+            거래수(9.6년 551건)와 CAGR(27.43%)은 목표에 못 미칩니다 — 10슬롯 구조에서는 산수적으로
+            1,000건 이상이 거의 불가능했습니다(상세 근거는 참고 결과 카드 참고). 관리종목·감사의견·
+            정리매매·회계위반이력·생존편향 제거는 데이터가 없어 반영하지 못했습니다.
+            </span>
+          </div>
         </div>
         <div id="sbt-reference-minervini_v2" style="display:none;"></div>
         <div id="sbt-reference-minervini_v21" style="display:none;"></div>
         <div id="sbt-reference-relaxed_vcp" style="display:none;"></div>
+        <div id="sbt-reference-anonymous" style="display:none;"></div>
         <div id="screenbt-result"></div>
       </section>
 

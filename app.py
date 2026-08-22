@@ -1291,18 +1291,34 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
         job.status = "running"
         db.session.commit()
         try:
-            if preset == "relaxed_vcp":
-                p = vcp.RELAXED_VCP_PARAMS
+            vcp_preset_params = {"relaxed_vcp": vcp.RELAXED_VCP_PARAMS, "anonymous": vcp.ANONYMOUS_PARAMS}.get(preset)
+            if vcp_preset_params:
+                p = vcp_preset_params
                 result = vcp.run_vcp_backtest(
                     p["market"], start_date, end_date, seed=seed, max_positions=max_positions,
                     fetch_fn=_screening_backtest_fetch_fn(p["market"]),
                     shares_map=_vcp_shares_map(), shareholder_rows_by_code=_vcp_shareholder_rows(),
-                    adx_threshold=p["adx_threshold"], final_contraction_ratio=p["final_contraction_ratio"],
-                    min_final_duration=p["min_final_duration"], max_days_since_low=p["max_days_since_low"],
-                    require_volume_decrease=p["require_volume_decrease"],
-                    rescan_interval_days=p["rescan_interval_days"], risk_cap_mode=p["risk_cap_mode"],
+                    adx_threshold=p.get("adx_threshold", vcp.ADX_THRESHOLD),
+                    final_contraction_ratio=p.get("final_contraction_ratio", 0.5),
+                    min_final_duration=p.get("min_final_duration", 5),
+                    max_days_since_low=p.get("max_days_since_low", 15),
+                    require_volume_decrease=p.get("require_volume_decrease", True),
+                    rescan_interval_days=p.get("rescan_interval_days", vcp.RESCAN_INTERVAL_DAYS),
+                    risk_cap_mode=p.get("risk_cap_mode", "skip"),
                     cash_equitize=p.get("cash_equitize", False), equitize_max_pct=p.get("equitize_max_pct", 100.0),
                     min_trend_pass_count=p.get("min_trend_pass_count"),
+                    entry_mode=p.get("entry_mode", "vcp"), donchian_period=p.get("donchian_period", 20),
+                    initial_stop_atr_mult=p.get("initial_stop_atr_mult", vcp.INITIAL_STOP_ATR_MULT),
+                    ma_break_period=p.get("ma_break_period", 50),
+                    ma_break_consec_days=p.get("ma_break_consec_days", vcp.MA_BREAK_CONSEC_DAYS),
+                    breakeven_r=p.get("breakeven_r", vcp.BREAKEVEN_R),
+                    partial_profit_r=p.get("partial_profit_r", vcp.PARTIAL_PROFIT_R),
+                    partial_profit_fraction=p.get("partial_profit_fraction", vcp.PARTIAL_PROFIT_FRACTION),
+                    chandelier_atr_mult=p.get("chandelier_atr_mult", vcp.CHANDELIER_ATR_MULT),
+                    trail_activate_r=p.get("trail_activate_r", vcp.TRAIL_ACTIVATE_R),
+                    pyramid_max_count=p.get("pyramid_max_count", vcp.PYRAMID_MAX_COUNT),
+                    time_stop_days=p.get("time_stop_days", vcp.TIME_STOP_DAYS),
+                    time_stop_progress_r=p.get("time_stop_progress_r", vcp.TIME_STOP_PROGRESS_R),
                 )
                 job = db.session.get(ScreeningBacktestJob, job_id)
                 if "error" in result:
@@ -1360,13 +1376,14 @@ def create_screening_backtest():
     body = request.json or {}
     preset = body.get("preset")
     preset = str(preset) if preset else None
-    if preset not in (None, "minervini_v2", "minervini_v21", "relaxed_vcp"):
+    if preset not in (None, "minervini_v2", "minervini_v21", "relaxed_vcp", "anonymous"):
         return jsonify({"error": "알 수 없는 전략 프리셋입니다"}), 400
 
-    if preset == "relaxed_vcp":
+    if preset in ("relaxed_vcp", "anonymous"):
         import vcp_strategy as vcp
-        market, strategy = vcp.RELAXED_VCP_PARAMS["market"], "trendTemplate"
-        stop_loss_pct, max_positions = None, vcp.RELAXED_VCP_PARAMS.get("max_positions", 10)
+        p = vcp.RELAXED_VCP_PARAMS if preset == "relaxed_vcp" else vcp.ANONYMOUS_PARAMS
+        market, strategy = p["market"], "trendTemplate"
+        stop_loss_pct, max_positions = None, p.get("max_positions", 10)
     elif preset:
         import screening_backtest as sb
         p = sb.MINERVINI_V2_PARAMS if preset == "minervini_v2" else sb.MINERVINI_V21_PARAMS

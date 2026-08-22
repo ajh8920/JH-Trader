@@ -98,6 +98,35 @@ RELAXED_VCP_PARAMS = {
     "min_trend_pass_count": 3, "max_positions": 40,
 }
 
+# "어나니머스" - 사용자가 실제로 아는 사람이 쓴다는 국내주식 매매방법론(9년 1,476건,
+# 승률 31.57%, 손익비 9.30, 평균수익 +52.38%/평균손실 -5.63%, CAGR +50.76%, 누적
+# +5,049%, MDD -44.45%)에 최대한 근접시키려 한 결과다. 이 숫자 조합(낮은 승률+
+# 극단적으로 높은 손익비+큰 평균수익/작은 평균손실)은 VCP 패턴 조건과는 안 맞고
+# (VCP는 아무리 완화해도 "패턴"이라는 조건 자체가 병목이라 거래빈도 한계가 뚜렷했다),
+# 터틀 트레이딩류의 "손실은 짧게, 수익은 무제한으로"에 가깝다는 판단 하에 entry_mode를
+# VCP에서 돈치안 채널 브레이크아웃(패턴 요건 없이 전체 유니버스에서 N일 신고가
+# 돌파)으로 완전히 바꿨다. 슬롯을 10개로 고정한 상태에서 손익비(9.30)에 가장
+# 근접시키려 트레일링을 넓히면(예: 10×ATR) 평균수익/손익비는 거의 정확히 맞아도
+# (52.26%/8.59) 자본회전이 느려져 CAGR·거래수가 함께 떨어지는 트레이드오프가
+# 뚜렷했다 - "10슬롯 × 9.6년 거래일 / 평균보유일수"가 산수적 상한이라(평균보유
+# 25일이면 최대 940건) 재평가 주기를 아무리 단축해도(주간→3일→매일) 1,000건을
+# 넘기지 못했고, 오히려 매일 재계산은 손익비만 깎아먹었다(3일 재평가: 551건/
+# 손익비8.2, 매일 재평가 근사치: ~624건/손익비6.81). 그래서 CAGR·손익비·평균수익/
+# 손실을 종합적으로 가장 잘 근접시킨 "3일 재평가" 조합을 최종 채택했다(실측:
+# 9.6년 551건, 승률 22.3%, 손익비 8.2, CAGR 27.43%, 평균수익 51.25%, 평균손실
+# -6.25%, 알파 +735.52%p - 목표 대비 거래수·CAGR·누적수익률은 못 미치지만 손익비/
+# 평균수익/평균손실은 상당히 근접했다). 슬롯을 10개보다 늘리면 거래수 목표(1,000건+)
+# 달성이 훨씬 쉬워지지만, 사용자가 슬롯 10개 고정을 명시적으로 요구해 그 제약 안에서
+# 나온 최선의 조합이다.
+ANONYMOUS_PARAMS = {
+    "market": "KR", "entry_mode": "donchian", "donchian_period": 15, "max_positions": 10,
+    "initial_stop_atr_mult": 1.5, "max_initial_risk_pct": 6.0, "risk_cap_mode": "shrink",
+    "partial_profit_fraction": 0.0, "breakeven_r": 999.0, "trail_activate_r": 0.5,
+    "chandelier_atr_mult": 8.0, "ma_break_period": 250, "ma_break_consec_days": 6,
+    "pyramid_max_count": 5, "time_stop_days": 20, "time_stop_progress_r": 0.2,
+    "rescan_interval_days": 3, "cash_equitize": True, "equitize_max_pct": 70.0,
+}
+
 
 def _true_range(highs, lows, closes, k):
     prev_close = closes[k - 1] if k > 0 else closes[k]
@@ -260,6 +289,18 @@ def detect_vcp(highs, lows, closes, volumes, i, final_contraction_ratio=0.5, min
     return {"pivot": pivot, "legs": legs}
 
 
+def detect_donchian_breakout(highs, closes, i, period=20):
+    """i번 인덱스(오늘) 종가가 직전 period거래일 고가(오늘 제외) 대비 신고가를
+    돌파했는지 - 터틀 트레이딩 시스템의 돈치안 채널 브레이크아웃 방식. VCP처럼
+    패턴(순차 수축)을 요구하지 않아 훨씬 자주(전체 유니버스 대상) 신호가 난다."""
+    if i < period:
+        return None
+    prior_high = max(highs[i - period:i])
+    if closes[i] > prior_high:
+        return {"pivot": prior_high}
+    return None
+
+
 def _profit_loss_ratio(trades):
     wins = [t["pnlPct"] for t in trades if t["pnlPct"] > 0]
     losses = [t["pnlPct"] for t in trades if t["pnlPct"] < 0]
@@ -357,7 +398,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       require_volume_decrease=True, rescan_interval_days=RESCAN_INTERVAL_DAYS,
                       max_initial_risk_pct=MAX_INITIAL_RISK_PCT, risk_cap_mode="skip",
                       cash_equitize=False, index_slippage_pct=0.1, equitize_max_pct=100.0,
-                      min_trend_pass_count=None):
+                      min_trend_pass_count=None, ma_break_period=50, ma_break_consec_days=MA_BREAK_CONSEC_DAYS,
+                      breakeven_r=BREAKEVEN_R, partial_profit_r=PARTIAL_PROFIT_R,
+                      partial_profit_fraction=PARTIAL_PROFIT_FRACTION, chandelier_atr_mult=CHANDELIER_ATR_MULT,
+                      trail_activate_r=TRAIL_ACTIVATE_R, pyramid_max_count=PYRAMID_MAX_COUNT,
+                      time_stop_days=TIME_STOP_DAYS, time_stop_progress_r=TIME_STOP_PROGRESS_R,
+                      entry_mode="vcp", donchian_period=20, initial_stop_atr_mult=INITIAL_STOP_ATR_MULT):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -389,6 +435,27 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     기본값 None은 원안대로 8개 전부(allPass) 요구. 값을 낮추면(예: 6) 후보 풀이
     크게 늘어 거래빈도가 올라가지만, VCP+ADX가 사실상 유일한 최종 필터가 되어
     승률/손익비가 낮아질 수 있다.
+
+    ma_break_period/ma_break_consec_days/breakeven_r/partial_profit_r/
+    partial_profit_fraction/chandelier_atr_mult/trail_activate_r/pyramid_max_count는
+    전부 청산 로직 파라미터다(기본값은 명세서 원안과 동일). "승리 트레이드를 일찍
+    확정짓는" 기존 설계(+2R 25% 분할익절, +1R 본전이동, MA50 2일 이탈, 3×ATR
+    트레일링)는 손익비의 상한을 스스로 만든다 - 손익비를 크게(예: 9 이상) 끌어올리려면
+    터틀 트레이더스/에드 세이코타류의 "손실은 짧게, 수익은 무제한으로" 철학대로
+    partial_profit_fraction=0(분할익절 없음), breakeven_r을 늦추거나 매우 크게,
+    chandelier_atr_mult를 훨씬 넓게(5~6), ma_break_period를 150 등으로 늘려 추세
+    이탈 판정 자체를 완만하게, pyramid_max_count를 늘려 승리 포지션을 더 키우는
+    방향으로 바꿔야 한다 - 그 대가로 평균 보유일수가 늘고 승률은 더 낮아지기 쉽다.
+
+    entry_mode="donchian"이면 VCP 패턴 탐지(순차 수축조정) 자체를 요구하지 않고,
+    돈치안 채널 브레이크아웃(donchian_period거래일 신고가 돌파, 터틀 트레이딩
+    방식)만으로 진입 후보를 찾는다 - 트렌드템플릿 통과 여부도 요구하지 않고
+    전체 유니버스를 대상으로 한다(RS 랭킹으로 정렬만 함). VCP는 아무리 조건을
+    완화해도 "패턴"이라는 조건 자체가 병목이 되어 거래빈도에 한계가 있는데,
+    돈치안 브레이크아웃은 패턴 요건이 없어 거래빈도가 훨씬 커진다 - 대신 대부분의
+    신호가 실패해서(승률이 낮음) initial_stop_atr_mult를 타이트하게 잡아 평균
+    손실을 작게 유지하고, 넓은 트레일링(chandelier_atr_mult 등)으로 승리
+    포지션을 최대한 오래 태워 손익비를 크게 키우는 "터틀식" 손익 분포를 노린다.
     """
     if market not in ("KR", "US"):
         return {"error": "market은 KR 또는 US여야 합니다"}
@@ -457,7 +524,11 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         # min_trend_pass_count가 None이면 원안대로 8개 조건 전부 통과(allPass)만 후보로 삼는다.
         # 값을 주면(예: 6) 그 개수 이상만 통과해도 후보 풀에 넣어 거래빈도를 늘릴 수 있다 -
         # 트렌드템플릿 자체가 진입을 막는 게 아니라 VCP+ADX가 최종 필터 역할을 한다.
-        if min_trend_pass_count is not None:
+        # entry_mode="donchian"이면 트렌드템플릿 통과 여부를 아예 요구하지 않는다(전체
+        # 유니버스 대상 - RS 랭킹은 후보 정렬에만 쓴다).
+        if entry_mode == "donchian":
+            trend_ok_set = set(by_ticker.keys())
+        elif min_trend_pass_count is not None:
             trend_ok_set = {t for t, e in by_ticker.items() if (e.get("passCount") or 0) >= min_trend_pass_count}
         else:
             trend_ok_set = {t for t, e in by_ticker.items() if e.get("allPass")}
@@ -483,12 +554,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     break
 
                 pos["barsHeld"] += 1
-                ma50 = _sma(closes, 50, j)
+                ma50 = _sma(closes, ma_break_period, j)
                 if ma50 is not None and close < ma50:
                     pos["maBelowCount"] += 1
                 else:
                     pos["maBelowCount"] = 0
-                if pos["maBelowCount"] >= MA_BREAK_CONSEC_DAYS:
+                if pos["maBelowCount"] >= ma_break_consec_days:
                     trade, proceeds = _full_exit(pos, close, dates[j], "maBreak")
                     trades.append(trade)
                     cash += proceeds
@@ -498,7 +569,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
 
                 r = pos["riskPerShare"]
                 highest_r = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
-                if pos["barsHeld"] >= TIME_STOP_DAYS and highest_r < TIME_STOP_PROGRESS_R:
+                if pos["barsHeld"] >= time_stop_days and highest_r < time_stop_progress_r:
                     trade, proceeds = _full_exit(pos, close, dates[j], "timeStop")
                     trades.append(trade)
                     cash += proceeds
@@ -509,14 +580,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 pos["highestHigh"] = max(pos["highestHigh"], high)
                 r_reached = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
 
-                if r_reached >= BREAKEVEN_R and pos["stopPrice"] < pos["avgEntryPrice"]:
+                if r_reached >= breakeven_r and pos["stopPrice"] < pos["avgEntryPrice"]:
                     pos["stopPrice"] = pos["avgEntryPrice"]
                     pos["stopState"] = "breakevenStop"
 
-                if not pos["partialTaken"] and r_reached >= PARTIAL_PROFIT_R:
-                    target = pos["avgEntryPrice"] + PARTIAL_PROFIT_R * r
+                if partial_profit_fraction > 0 and not pos["partialTaken"] and r_reached >= partial_profit_r:
+                    target = pos["avgEntryPrice"] + partial_profit_r * r
                     if high >= target:
-                        sell_shares = min(max(1, int(pos["shares"] * PARTIAL_PROFIT_FRACTION)), pos["shares"] - 1)
+                        sell_shares = min(max(1, int(pos["shares"] * partial_profit_fraction)), pos["shares"] - 1)
                         if sell_shares > 0:
                             fill = target * (1 - (SLIPPAGE_EXIT_PCT + SELL_TAX_PCT) / 100)
                             pnl_pct = round((fill - pos["avgEntryPrice"]) / pos["avgEntryPrice"] * 100, 2)
@@ -533,13 +604,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             pos["shares"] -= sell_shares
                         pos["partialTaken"] = True
 
-                if r_reached >= TRAIL_ACTIVATE_R:
-                    chandelier = pos["highestHigh"] - CHANDELIER_ATR_MULT * pos["entryAtr"]
+                if r_reached >= trail_activate_r:
+                    chandelier = pos["highestHigh"] - chandelier_atr_mult * pos["entryAtr"]
                     if chandelier > pos["stopPrice"]:
                         pos["stopPrice"] = chandelier
                         pos["stopState"] = "trailingStop"
 
-                if pos["pyramidCount"] < PYRAMID_MAX_COUNT and ticker in trend_ok_set:
+                if pos["pyramidCount"] < pyramid_max_count and ticker in trend_ok_set:
                     target = pos["lastEntryPrice"] + PYRAMID_INTERVAL_R * r
                     if high >= target and low <= target:
                         add_shares = max(1, int(pos["initialShares"] * PYRAMID_SIZE_FRACTION))
@@ -553,7 +624,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             pos["avgEntryPrice"] = pos["totalCost"] / pos["shares"]
                             pos["lastEntryPrice"] = target
                             pos["pyramidCount"] += 1
-                            pos["stopPrice"] = max(pos["stopPrice"], target - INITIAL_STOP_ATR_MULT * pos["entryAtr"])
+                            pos["stopPrice"] = max(pos["stopPrice"], target - initial_stop_atr_mult * pos["entryAtr"])
             if closed:
                 continue
 
@@ -617,20 +688,27 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     if max_holder_pct is not None and max_holder_pct > MAX_SHAREHOLDER_PCT:
                         excluded_shareholder += 1
                         continue
-                    adx = _adx(highs, lows, closes, i)
-                    if not adx or adx < adx_threshold:
-                        continue
-                    vcp = detect_vcp(
-                        highs, lows, closes, volumes, i,
-                        final_contraction_ratio=final_contraction_ratio, min_final_duration=min_final_duration,
-                        max_days_since_low=max_days_since_low, require_volume_decrease=require_volume_decrease,
-                    )
-                    if not vcp:
-                        continue
+                    if entry_mode == "donchian":
+                        brk = detect_donchian_breakout(highs, closes, i, period=donchian_period)
+                        if not brk:
+                            continue
+                        pivot = brk["pivot"]
+                    else:
+                        adx = _adx(highs, lows, closes, i)
+                        if not adx or adx < adx_threshold:
+                            continue
+                        vcp = detect_vcp(
+                            highs, lows, closes, volumes, i,
+                            final_contraction_ratio=final_contraction_ratio, min_final_duration=min_final_duration,
+                            max_days_since_low=max_days_since_low, require_volume_decrease=require_volume_decrease,
+                        )
+                        if not vcp:
+                            continue
+                        pivot = vcp["pivot"]
                     avg_vol50 = _avg_volume(volumes, i)
                     if not avg_vol50:
                         continue
-                    candidates.append((ticker, e, vcp["pivot"], avg_vol50))
+                    candidates.append((ticker, e, pivot, avg_vol50))
 
                 candidates.sort(key=lambda c: -(c[1].get("rsRating") or 0))
                 for ticker, e, pivot, avg_vol50 in candidates:
@@ -655,7 +733,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     atr20 = _atr(highs, lows, closes, fj)
                     if not atr20 or atr20 <= 0:
                         continue
-                    raw_risk = INITIAL_STOP_ATR_MULT * atr20
+                    raw_risk = initial_stop_atr_mult * atr20
                     if risk_cap_mode == "shrink":
                         # 명세서 문구("리스크폭이 8% 넘으면 셋업 기각")와 다르게, 손절폭을
                         # 8%로 줄여서라도 진입시킨다 - 변동성 큰 후보를 버리지 않아

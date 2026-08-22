@@ -512,6 +512,7 @@ const I18N = {
   btPresetMinerviniV2: { en: '🎯 Minervini v2', ko: '🎯 미너비니 v2' },
   btPresetMinerviniV21: { en: '🎯 Minervini v2.1', ko: '🎯 미너비니 v2.1' },
   btPresetRelaxedVcp: { en: '🎯 Relaxed VCP Strategy', ko: '🎯 완화 VCP 전략' },
+  btPresetAnonymous: { en: '🐢 Anonymous', ko: '🐢 어나니머스' },
   stratMinerviniV21Title: { en: 'Minervini v2.1', ko: '미너비니 v2.1' },
   exitInitialStop: { en: 'Stop-loss (2×ATR)', ko: '초기 손절(2×ATR)' },
   exitBreakevenStop: { en: 'Breakeven stop', ko: '본전 손절' },
@@ -3434,14 +3435,15 @@ function initScreeningBacktestTab() {
   }
 }
 
-const SBT_PRESET_KEYS = ['minervini_v2', 'minervini_v21', 'relaxed_vcp'];
+const SBT_PRESET_KEYS = ['minervini_v2', 'minervini_v21', 'relaxed_vcp', 'anonymous'];
 const SBT_PRESET_RENDERERS = {
   minervini_v2: () => renderMinerviniV2Reference,
   minervini_v21: () => renderMinerviniV21Reference,
   relaxed_vcp: () => renderRelaxedVcpReference,
+  anonymous: () => renderAnonymousReference,
 };
 const SBT_PRESET_DEFAULT_START = {
-  minervini_v2: '2020-01-01', minervini_v21: '2020-01-01', relaxed_vcp: '2017-01-01',
+  minervini_v2: '2020-01-01', minervini_v21: '2020-01-01', relaxed_vcp: '2017-01-01', anonymous: '2017-01-01',
 };
 
 function setScreeningBacktestPreset(preset) {
@@ -3704,6 +3706,100 @@ async function loadRelaxedVcpReferenceTrades() {
   if (!body) return;
   try {
     const res = await fetch('/static/relaxed_vcp_reference.json');
+    if (!res.ok) throw new Error('fetch failed');
+    const data = await res.json();
+    const exitReasonLabel = r => ({
+      stopLoss: t('stopLoss'), conditionExit: t('conditionExit'), periodEnd: t('periodEnd'),
+      initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
+      trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'),
+      partialProfit: t('exitPartialProfit'), maBreak: t('exitMaBreak'),
+    }[r] || r);
+    const fmtPrice = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+    body.innerHTML = `
+      <div class="pf-table-wrap pf-table-wrap-scroll">
+        <table class="pf-table">
+          <thead><tr>
+            <th>${t('name')}</th><th>${t('code')}</th>
+            <th style="text-align:right;">${t('buyDate')}</th><th style="text-align:right;">${t('buyPrice')}</th>
+            <th style="text-align:right;">${t('sellDate')}</th><th style="text-align:right;">${t('sellPrice')}</th>
+            <th style="text-align:right;">${t('returnPct')}</th><th>${t('exitReason')}</th>
+          </tr></thead>
+          <tbody>
+            ${data.trades.map(tr => `
+              <tr>
+                <td>${escapeHtml(tr.name)}</td><td>${escapeHtml(tr.code)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.entryDate)}</td><td style="text-align:right;">${fmtPrice(tr.entryPrice)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.exitDate)}</td><td style="text-align:right;">${fmtPrice(tr.exitPrice)}</td>
+                <td style="text-align:right;" class="${tr.pnlPct >= 0 ? 'positive' : 'negative'}">${tr.pnlPct>=0?'+':''}${tr.pnlPct.toFixed(1)}%</td>
+                <td>${exitReasonLabel(tr.exitReason)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${t('referenceTradesLoadError')}</span></div>`;
+  }
+}
+
+// 어나니머스 참고 결과 - vcp_strategy.ANONYMOUS_PARAMS(돈치안15일 브레이크아웃,
+// 초기손절1.5×ATR/최대6%, 챈들리어8×ATR, 250일선6일이탈, 시간손절20일/0.2R,
+// 피라미딩 최대5회, 슬롯10개 고정, 재평가3일)로 계산. 사용자가 아는 실제 매매
+// 방법론(9년 1,476건·승률31.57%·손익비9.30·평균수익+52.38%·평균손실-5.63%·
+// CAGR+50.76%·누적+5,049%·MDD-44.45%)에 최대한 근접시킨 결과다. 슬롯을 10개로
+// 고정한 상태에서는 "10슬롯×9.6년 거래일/평균보유일수"가 산수적 상한이라(평균
+// 보유 25일 기준 최대 940건) 재평가 주기를 주간→3일→매일로 단축해도 거래수가
+// 1,000건을 못 넘었고(3일: 551건, 매일 근사: ~624건), 오히려 매일 재평가는
+// 손익비만 깎아먹었다(8.2→6.81). 손익비/평균수익/평균손실은 목표에 상당히
+// 근접했지만(8.2/51.25%/-6.25% vs 목표 9.30/52.38%/-5.63%) 거래수·CAGR·누적
+// 수익률은 못 미친다.
+const ANONYMOUS_REFERENCE = {
+  start: '2017-01-01', end: '2026-08-22', seed: 10000000, finalValue: 103434209.88,
+  returnPct: 934.34, cagrPct: 27.43, mddPct: 31.24, tradeCount: 551, winCount: 123, winRatePct: 22.3,
+  avgHoldDays: 26.1, profitLossRatio: 8.2, alphaPct: 735.52,
+  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 198.82,
+  exitReasonCounts: { initialStop: 407, trailingStop: 129, maBreak: 5, periodEnd: 10 },
+};
+
+function renderAnonymousReference(el) {
+  const d = ANONYMOUS_REFERENCE;
+  const fmt = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+  const reasons = Object.entries(d.exitReasonCounts)
+    .map(([k, v]) => `${PAPER_TRADING_EXIT_REASON_LABEL(k)} ${v}${t('countUnit') || '건'}`).join(', ');
+  el.innerHTML = `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+        <div style="font-size:13px;font-weight:700;">📌 ${t('referenceResultTitle')}</div>
+        <div style="font-size:11.5px;color:var(--text-muted);">${escapeHtml(d.start)} ~ ${escapeHtml(d.end)}</div>
+      </div>
+      <div class="bt-summary-grid">
+        <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">${fmt(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('finalValue')}</div><div class="meta-value">${fmt(d.finalValue)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('totalReturn')}</div><div class="meta-value positive">+${d.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('annualizedReturn')}</div><div class="meta-value positive">+${d.cagrPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('winRate')}</div><div class="meta-value">${d.winRatePct.toFixed(1)}% (${d.winCount}/${d.tradeCount})</div></div>
+        <div class="meta-item"><div class="meta-label">${t('avgHoldDays')}</div><div class="meta-value">${d.avgHoldDays}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('profitLossRatio')}</div><div class="meta-value">${d.profitLossRatio}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('alphaExcessReturn')}</div><div class="meta-value ${d.alphaPct >= 0 ? 'positive' : 'negative'}">${d.alphaPct >= 0 ? '+' : ''}${d.alphaPct.toFixed(1)}%p</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmarkLabel)}</div><div class="meta-value positive">+${d.benchmarkReturnPct.toFixed(1)}%</div></div>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px;line-height:1.5;">
+        ${t('exitReason')}: ${escapeHtml(reasons)}<br>
+        ${t('referenceResultNote')}
+      </div>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('tradeLog')} (${d.tradeCount})</div>
+      <div id="sbt-refanon-trades-body"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i></div></div>
+    </div>`;
+  loadAnonymousReferenceTrades();
+}
+
+async function loadAnonymousReferenceTrades() {
+  const body = document.getElementById('sbt-refanon-trades-body');
+  if (!body) return;
+  try {
+    const res = await fetch('/static/anonymous_reference.json');
     if (!res.ok) throw new Error('fetch failed');
     const data = await res.json();
     const exitReasonLabel = r => ({
