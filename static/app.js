@@ -514,6 +514,7 @@ const I18N = {
   btPresetRelaxedVcp: { en: '🎯 Relaxed VCP Strategy', ko: '🎯 완화 VCP 전략' },
   btPresetAnonymous: { en: '🐢 Anonymous', ko: '🐢 어나니머스' },
   stratMinerviniV21Title: { en: 'Minervini v2.1', ko: '미너비니 v2.1' },
+  stratAnonymousTitle: { en: 'Anonymous', ko: '어나니머스' },
   exitInitialStop: { en: 'Stop-loss (2×ATR)', ko: '초기 손절(2×ATR)' },
   exitBreakevenStop: { en: 'Breakeven stop', ko: '본전 손절' },
   exitTrailingStop: { en: 'Trailing stop', ko: '트레일링 손절' },
@@ -4022,8 +4023,9 @@ const PAPER_TRADING_EXIT_REASON_LABEL = r => ({
 }[r] || r);
 
 const PAPER_STRATEGY_LIST = [
-  { key: 'minervini_v2', titleKey: 'stratMinerviniV2Title' },
-  { key: 'minervini_v21', titleKey: 'stratMinerviniV21Title' },
+  { key: 'minervini_v2', titleKey: 'stratMinerviniV2Title', emoji: '🎯' },
+  { key: 'minervini_v21', titleKey: 'stratMinerviniV21Title', emoji: '🎯' },
+  { key: 'anonymous', titleKey: 'stratAnonymousTitle', emoji: '🐢' },
 ];
 
 async function loadPaperTrading() {
@@ -4051,7 +4053,7 @@ async function loadPaperTrading() {
 function renderPaperTradingStart(el, strategyInfo) {
   el.innerHTML = `
     <div class="card" style="text-align:center;padding:2.5rem 1.5rem;">
-      <div style="font-size:15px;font-weight:700;margin-bottom:6px;">${t('paperTradingIntroTitle')} — 🎯 ${t(strategyInfo.titleKey)}</div>
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px;">${t('paperTradingIntroTitle')} — ${strategyInfo.emoji} ${t(strategyInfo.titleKey)}</div>
       <div style="font-size:13px;color:var(--text-muted);max-width:560px;margin:0 auto 20px;line-height:1.6;">
         ${t('paperTradingIntroBody')}
       </div>
@@ -4060,7 +4062,7 @@ function renderPaperTradingStart(el, strategyInfo) {
         <input type="number" id="pt-start-seed-${strategyInfo.key}" value="10000000" step="1000000" min="1" style="width:160px;" />
       </div>
       <button class="bt-preset-btn selected" style="padding:12px 22px;font-size:14px;" onclick="startPaperTrading('${strategyInfo.key}')">
-        🎯 ${t(strategyInfo.titleKey)}
+        ${strategyInfo.emoji} ${t(strategyInfo.titleKey)}
       </button>
       <div style="font-size:11.5px;color:var(--text-muted);margin-top:14px;">${t('paperTradingStartNote')}</div>
     </div>`;
@@ -4083,7 +4085,7 @@ function renderPaperTradingDashboard(el, d, strategyInfo) {
   el.innerHTML = `
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
-        <div style="font-size:14px;font-weight:700;">🎯 ${t(strategyInfo.titleKey)}</div>
+        <div style="font-size:14px;font-weight:700;">${strategyInfo.emoji} ${t(strategyInfo.titleKey)}</div>
         <div style="font-size:11.5px;color:var(--text-muted);">
           ${t('startedOn')} ${escapeHtml(d.startedOn || '-')} · ${t('lastProcessedDate')} ${escapeHtml(d.lastProcessedDate || '-')}
         </div>

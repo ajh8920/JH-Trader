@@ -142,6 +142,17 @@ def _sma(closes, period, idx):
     return sum(window) / period
 
 
+def _donchian_prior_high(highs, idx, period):
+    """idx(오늘) 제외 직전 period거래일 고가 - 어나니머스 전략(vcp_strategy.py
+    entry_mode="donchian")의 실시간 모의투자용. 백테스트는 매번 원본 OHLC로
+    직접 계산하지만, 모의투자는 전체 유니버스를 매일 다시 받기엔 비용이 커서
+    trend_screen_refresher가 이미 받아둔 bars로 계산해 TrendScreenCache에
+    같이 저장해두고 재사용한다."""
+    if idx < period:
+        return None
+    return max(highs[idx - period:idx])
+
+
 def _weighted_return_score(closes):
     n = len(closes)
     if n < 252:
@@ -244,6 +255,8 @@ def evaluate_trend_template(code, name, bars, industry=None, sector=None):
     weighted_return = _weighted_return_score(closes)
     volume, rel_volume = _volume_stats(bars)
     avg_trade_value = _avg_trade_value_20d(bars)
+    # 15 = vcp_strategy.ANONYMOUS_PARAMS["donchian_period"]와 맞춤(모의투자용, 위 함수 docstring 참고)
+    donchian_high_15 = _donchian_prior_high(highs, idx, 15)
 
     conditions = {
         "priceAboveMa150And200": price > ma150 and price > ma200,
@@ -266,6 +279,7 @@ def evaluate_trend_template(code, name, bars, industry=None, sector=None):
         "conditions": conditions,
         "stage": stage,
         "weightedReturn": weighted_return,
+        "donchianHigh15": round(donchian_high_15, 2) if donchian_high_15 is not None else None,
         "volume": volume,
         "relVolume": rel_volume,
         "avgTradeValue": avg_trade_value,

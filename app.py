@@ -1483,7 +1483,7 @@ def paper_trading_start():
 
     body = request.json or {}
     strategy = str(body.get("strategy", "minervini_v2"))
-    if strategy not in pt.STRATEGY_PRESETS:
+    if strategy != "anonymous" and strategy not in pt.STRATEGY_PRESETS:
         return jsonify({"error": "알 수 없는 전략입니다"}), 400
     try:
         seed = float(body.get("seed", 10_000_000))
@@ -1492,7 +1492,11 @@ def paper_trading_start():
     if seed <= 0:
         return jsonify({"error": "시드는 0보다 커야 합니다"}), 400
 
-    preset = pt.STRATEGY_PRESETS[strategy]
+    if strategy == "anonymous":
+        import vcp_strategy as vcp
+        preset = vcp.ANONYMOUS_PARAMS
+    else:
+        preset = pt.STRATEGY_PRESETS[strategy]
     account = PaperStrategyAccount.query.filter_by(user_id=current_user.id, strategy=strategy).first()
     if account:
         if not account.is_active:
@@ -1989,6 +1993,7 @@ def trend_screen_refresher():
                         row.volume = r.get("volume")
                         row.rel_volume = r.get("relVolume")
                         row.avg_trade_value = r.get("avgTradeValue")
+                        row.donchian_high_15 = r.get("donchianHigh15")
                         if market == "KR":
                             row.market_cap = r.get("marketCap")
                             row.pe_ratio = r.get("peRatio")
@@ -2251,6 +2256,12 @@ with app.app_context():
     db.create_all()
     _ensure_column("trend_screen_cache", "stage", "INTEGER")
     _ensure_column("trend_screen_cache", "avg_trade_value", "FLOAT")
+    _ensure_column("trend_screen_cache", "donchian_high_15", "FLOAT")
+    _ensure_column("paper_strategy_accounts", "index_units", "FLOAT DEFAULT 0")
+    _ensure_column("paper_positions", "pyramid_count", "INTEGER DEFAULT 0")
+    _ensure_column("paper_positions", "last_entry_price", "FLOAT")
+    _ensure_column("paper_positions", "total_cost", "FLOAT")
+    _ensure_column("paper_positions", "initial_shares", "INTEGER")
     _backfill_stage_column()
 
 threading.Thread(target=alert_checker, daemon=True).start()

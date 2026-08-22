@@ -258,6 +258,7 @@ class TrendScreenCache(db.Model):
     volume = db.Column(db.Float)  # 최근 거래일 거래량
     rel_volume = db.Column(db.Float)  # 최근 거래량 / 직전 20거래일 평균거래량
     avg_trade_value = db.Column(db.Float)  # 최근 20거래일 평균 거래대금(원) - 유동성 팩터(미너비니 v2)용
+    donchian_high_15 = db.Column(db.Float)  # 직전 15거래일 고가(오늘 제외) - "어나니머스" 모의투자 돈치안 브레이크아웃 판정용
     market_cap = db.Column(db.Float)  # 국내: 원, 미국: 백만 달러(Finnhub 기준)
     pe_ratio = db.Column(db.Float)
     eps_growth = db.Column(db.Float)  # YoY %. 국내는 순이익 증가율로 근사
@@ -321,6 +322,10 @@ class PaperStrategyAccount(db.Model):
     # 여러 번 깨어나도 중복 처리하지 않는다.
     last_processed_date = db.Column(db.String(10))
     last_rescan_date = db.Column(db.String(10))  # 마지막으로 신규 진입 후보를 스캔한 날(주 단위)
+    # cash_equitize(현금 유휴화 방지)를 쓰는 전략("어나니머스" 등)의 지수 프록시 보유
+    # 수량 - vcp_strategy.run_vcp_backtest의 index_units와 같은 개념(주식이 아니라
+    # 벤치마크 시리즈 기준 가상 수량).
+    index_units = db.Column(db.Float, nullable=False, default=0.0)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -355,6 +360,15 @@ class PaperPosition(db.Model):
     stop_state = db.Column(db.String(20), nullable=False, default="initialStop")
     highest_high = db.Column(db.Float, nullable=False)
     bars_held = db.Column(db.Integer, nullable=False, default=0)  # 시간손절용 - 일별 처리 통과 횟수
+    # 피라미딩(분할매수)을 쓰는 전략("어나니머스" 등)용 - entry_price/shares는 피라미딩
+    # 이후엔 "평균단가/총보유수량"이 되고, last_entry_price는 다음 피라미딩 트리거
+    # 판정에 쓰는 "가장 최근 매수가"(vcp_strategy의 pos["lastEntryPrice"]와 동일 개념),
+    # total_cost는 평균단가 재계산 시 부동소수점 오차 누적을 피하려고 원가 총액을
+    # 별도로 들고 있는 것(vcp_strategy의 pos["totalCost"]와 동일).
+    pyramid_count = db.Column(db.Integer, nullable=False, default=0)
+    last_entry_price = db.Column(db.Float)
+    total_cost = db.Column(db.Float)
+    initial_shares = db.Column(db.Integer)  # 최초 진입 수량(피라미딩 추가매수 규모 산정 기준, 피라미딩해도 안 바뀜)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
