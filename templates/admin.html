@@ -132,7 +132,10 @@
                   <td><input type="email" id="sw-alert-email-${a.accountId}" value="${escapeHtml(a.alertEmail || '')}" placeholder="you@example.com" style="width:220px;" /></td>
                   <td>${escapeHtml(a.lastProcessedDate || '-')}</td>
                   <td>${escapeHtml(a.lastAlertSentDate || '-')}</td>
-                  <td><button class="btn-primary" onclick="saveSweeperAlertEmail(${a.accountId})" style="font-size:12.5px;padding:6px 12px;">저장</button></td>
+                  <td style="white-space:nowrap;">
+                    <button class="btn-primary" onclick="saveSweeperAlertEmail(${a.accountId})" style="font-size:12.5px;padding:6px 12px;">저장</button>
+                    <button class="btn-secondary" onclick="testSweeperAlertEmail(${a.accountId})" style="font-size:12.5px;padding:6px 12px;">테스트 발송</button>
+                  </td>
                 </tr>
               `).join('')}
             </tbody>
@@ -146,6 +149,15 @@
         await api('PATCH', `/api/admin/sweeper-alerts/${accountId}`, { email });
         alert(email ? '알림 이메일이 저장되었습니다.' : '알림 이메일을 껐습니다.');
         loadSweeperAlerts();
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    async function testSweeperAlertEmail(accountId) {
+      try {
+        await api('POST', `/api/admin/sweeper-alerts/${accountId}/test`);
+        alert('테스트 메일을 발송했습니다. 받은편지함(및 스팸함)을 확인하세요.');
       } catch (e) {
         alert(e.message);
       }

@@ -1624,6 +1624,29 @@ def admin_set_sweeper_alert_email(account_id):
     return jsonify({"ok": True, "alertEmail": account.alert_email})
 
 
+@app.route("/api/admin/sweeper-alerts/<int:account_id>/test", methods=["POST"])
+@admin_required
+@limiter.limit("5 per minute")
+def admin_test_sweeper_alert_email(account_id):
+    """SMTP 설정이 실제로 동작하는지 그 자리에서 바로 확인하기 위한 테스트 발송 -
+    14:30까지 기다리지 않고도 Render 환경변수 등록이 맞게 됐는지 검증할 수 있다."""
+    from models import PaperStrategyAccount
+    import email_utils
+
+    account = PaperStrategyAccount.query.filter_by(id=account_id, strategy="sweeper").first()
+    if not account:
+        return jsonify({"error": "스위퍼 계좌를 찾을 수 없습니다"}), 404
+    if not account.alert_email:
+        return jsonify({"error": "먼저 알림 이메일을 저장하세요"}), 400
+    ok, message = email_utils.send_email_verbose(
+        account.alert_email, "[JH-Trader] 스위퍼 알림 테스트 메일",
+        "이 메일은 스위퍼 매매 알림 설정이 정상적으로 동작하는지 확인하기 위한 테스트 메일입니다.",
+    )
+    if not ok:
+        return jsonify({"error": f"발송 실패: {message}"}), 502
+    return jsonify({"ok": True})
+
+
 # ─── 무한매수법 실전 현황 API ─────────────────────────────────────────────────
 
 @app.route("/api/infinite/positions", methods=["GET"])
@@ -1828,7 +1851,7 @@ for _view in (
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
-    admin_set_sweeper_alert_email,
+    admin_set_sweeper_alert_email, admin_test_sweeper_alert_email,
 ):
     csrf.exempt(_view)
 
