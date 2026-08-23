@@ -19,6 +19,9 @@ DATA_ROOT = Path(os.environ.get(
 PRICE_DIR = DATA_ROOT / "prices"
 PRICE_KR_DIR = PRICE_DIR / "kr"
 PRICE_US_DIR = PRICE_DIR / "us"
+# 상장폐지 종목(생존편향 제거용) - 살아있는 종목과 출처(FDR vs yfinance)가 달라 섞이지
+# 않도록 별도 폴더에 저장한다. 컬럼 스키마는 fetch_prices.py와 동일하게 맞춘다.
+PRICE_KR_DELISTED_DIR = PRICE_DIR / "kr_delisted"
 FUND_DIR = DATA_ROOT / "fundamentals"
 FUND_KR_DIR = FUND_DIR / "kr"  # DART(전자공시) 출처
 FUND_US_DIR = FUND_DIR / "us"  # Finnhub 등 향후 수집 예정, 폴더만 미리 만들어둠
@@ -26,7 +29,7 @@ SHAREHOLDER_KR_DIR = DATA_ROOT / "shareholders" / "kr"  # DART 대량보유상�
 
 
 def ensure_dirs():
-    for d in (PRICE_KR_DIR, PRICE_US_DIR, FUND_KR_DIR, FUND_US_DIR, SHAREHOLDER_KR_DIR):
+    for d in (PRICE_KR_DIR, PRICE_US_DIR, PRICE_KR_DELISTED_DIR, FUND_KR_DIR, FUND_US_DIR, SHAREHOLDER_KR_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 

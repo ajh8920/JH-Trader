@@ -38,8 +38,15 @@ MIN_BARS = 260  # 200일선 + 최소 1개월 추세 확인에 필요한 최소 �
 DEFAULT_RS_THRESHOLD = 70
 
 
-def load_universe(market):
-    """반환: [(code, name, yf_ticker, industry, sector), ...]"""
+def load_universe(market, include_delisted=False):
+    """반환: [(code, name, yf_ticker, industry, sector), ...]
+
+    include_delisted=True면(백테스트 전용 - 생존편향 제거, 실시간 스크리닝에는 절대
+    쓰면 안 됨 - 살 수 없는 종목이 후보로 뜨게 된다) kr_delisted_stocks.json의
+    상장폐지 종목도 함께 포함한다. 상장폐지 종목은 야후파이낸스에 데이터가 없어
+    ".DL" 접미사를 붙여 실제 야후 조회 대상(.KS/.KQ)과 구분한다 - 가격 조회는
+    fetch_fn 쪽(local_price_cache.py)에서 이 접미사를 보고 별도 경로(FDR로 미리
+    받아둔 로컬 캐시)로 분기한다."""
     filename = "kr_stocks.json" if market == "KR" else "us_stocks.json"
     with open(BASE_DIR / filename, "r", encoding="utf-8") as f:
         stocks = json.load(f)
@@ -49,6 +56,12 @@ def load_universe(market):
              s.get("industry"), s.get("sector"))
             for s in stocks
         ]
+        if include_delisted:
+            delisted_path = BASE_DIR / "kr_delisted_stocks.json"
+            if delisted_path.exists():
+                with open(delisted_path, "r", encoding="utf-8") as f:
+                    delisted = json.load(f)
+                tickers += [(d["code"], d["name"], f"{d['code']}.DL", None, None) for d in delisted]
     else:
         tickers = [(s["code"], s["name"], s["code"], s.get("industry"), s.get("sector")) for s in stocks]
     return tickers

@@ -180,6 +180,23 @@ ANONYMOUS_PARAMS = {
 # CAGR·승률 모두 이 조합보다 낮았다 - CAGR 39.73%/승률 24.5%). 국면게이팅을
 # 다시 켜면 MDD가 32.1%→30.3%로 개선되지만 CAGR이 51.1%→42.5%로 크게 낮아지는
 # 트레이드오프가 뚜렷해 해제 상태를 최종 채택했다.
+#
+# 이후 백테스트 신뢰도 강화 작업(사용자 요청)의 1단계로 생존편향(survivorship
+# bias)을 검증했다 - kr_stocks.json은 "현재 상장된" 종목 스냅샷이라 2017년 이후
+# 상장폐지된 종목이 유니버스에 아예 없어 결과가 낙관적으로 치우쳐 있을 가능성이
+# 있었다. FinanceDataReader(야후파이낸스는 상장폐지 종목을 지원하지 않음)로
+# 2015년 이후 상장폐지된 보통주 568종목의 상장~상장폐지 전체 시세를 받아
+# (data_pipeline.fetch_delisted_kr/import_delisted_to_db, KrDelistedPrice 테이블)
+# 유니버스에 포함시켜(include_delisted=True) 재검증한 결과: CAGR 51.26%→53.12%,
+# 알파 +5,110%p→+5,746%p로 오히려 개선됐고(거래 4,180→5,116건), 승률(58.7%→
+# 57.4%)·손익비(5.43→5.16)·MDD(-32.0%→-32.37%)는 거의 그대로였다. 전체 5,116건
+# 중 실제로 상장폐지 시점까지 들고 있다가 청산된 거래는 9건(0.18%)뿐 - 타이트한
+# 초기손절(진입가 대비 최대 6% 리스크) 덕분에 부실기업이 실제 상장폐지되기 훨씬
+# 전에 이미 일반 손절로 빠져나가는 구조라, 이 전략은 애초에 생존편향에 크게
+# 의존하지 않았다는 뜻이다. 이 정식 결과(상장폐지 포함)를 채택해 include_delisted
+# 를 기본값으로 켰다 - 사유(합병/감사의견거절 등) 기준으로 종목을 골라내지 않고
+# "주식"(신주인수권 등 파생상품 제외) 전부를 포함했다: 임의로 골라내면 오히려
+# 새 편향이 생기므로, 실제 매매 규칙이 알아서 걸러내도록 두는 편이 더 안전하다.
 SWEEPER_PARAMS = {
     "market": "KR", "entry_mode": "donchian", "donchian_period": 15, "max_positions": 10,
     "initial_stop_atr_mult": 1.5, "max_initial_risk_pct": 6.0, "risk_cap_mode": "shrink",
@@ -187,7 +204,7 @@ SWEEPER_PARAMS = {
     "chandelier_atr_mult": 3.0,
     "rescan_interval_days": 3, "cash_equitize": True, "equitize_max_pct": 70.0,
     "position_sizing_mode": "risk", "min_market_cap": 0, "min_avg_trade_value": 100_000_000,
-    "gate_entries_on_regime": False, "default_seed": 10_000_000,
+    "gate_entries_on_regime": False, "default_seed": 10_000_000, "include_delisted": True,
 }
 
 
@@ -468,7 +485,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       time_stop_days=TIME_STOP_DAYS, time_stop_progress_r=TIME_STOP_PROGRESS_R,
                       entry_mode="vcp", donchian_period=20, initial_stop_atr_mult=INITIAL_STOP_ATR_MULT,
                       position_sizing_mode="risk", max_hold_days=None, gate_entries_on_regime=True,
-                      max_pct_of_avg_trade_value=None, max_position_value_abs=None):
+                      max_pct_of_avg_trade_value=None, max_position_value_abs=None, include_delisted=False):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -552,7 +569,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     if shares_map is None:
         shares_map = {}
 
-    universe = ts.load_universe(market)
+    universe = ts.load_universe(market, include_delisted=include_delisted)
     tickers = [t for _, _, t, _, _ in universe]
     info_by_ticker = {t: (code, name, industry, sector) for code, name, t, industry, sector in universe}
 
@@ -612,12 +629,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         # min_trend_pass_count가 None이면 원안대로 8개 조건 전부 통과(allPass)만 후보로 삼는다.
         # 값을 주면(예: 6) 그 개수 이상만 통과해도 후보 풀에 넣어 거래빈도를 늘릴 수 있다 -
         # 트렌드템플릿 자체가 진입을 막는 게 아니라 VCP+ADX가 최종 필터 역할을 한다.
-        # entry_mode="donchian"이면 트렌드템플릿 통과 여부를 아예 요구하지 않는다(전체
-        # 유니버스 대상 - RS 랭킹은 후보 정렬에만 쓴다).
-        if entry_mode == "donchian":
-            trend_ok_set = set(by_ticker.keys())
-        elif min_trend_pass_count is not None:
+        # entry_mode="donchian"은 기본적으로 트렌드템플릿 통과 여부를 요구하지 않지만
+        # (전체 유니버스 대상 - RS 랭킹은 후보 정렬에만 쓴다), min_trend_pass_count를
+        # 명시적으로 주면 donchian 모드에서도 그 기준을 그대로 적용한다(예: 8을 주면
+        # "8개 조건 모두 만족"까지 요구하는 셈).
+        if min_trend_pass_count is not None:
             trend_ok_set = {t for t, e in by_ticker.items() if (e.get("passCount") or 0) >= min_trend_pass_count}
+        elif entry_mode == "donchian":
+            trend_ok_set = set(by_ticker.keys())
         else:
             trend_ok_set = {t for t, e in by_ticker.items() if e.get("allPass")}
 
@@ -727,6 +746,18 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             pos["stopPrice"] = max(pos["stopPrice"], target - initial_stop_atr_mult * pos["entryAtr"])
             if closed:
                 continue
+            # 상장폐지 종목(.DL)의 마지막 거래일에 도달했는데 손절/이탈 조건에 걸리지
+            # 않고 "살아남은" 경우(급락 없이 합병·자회사화 등으로 조용히 상장폐지된
+            # 경우 등) - series[ticker]에 더 이상 데이터가 없으므로 실제로는 더 이상
+            # 보유를 지속할 수 없다. 그대로 두면 이후 재평가일마다 idx_at_rd가 계속
+            # 마지막 인덱스에 멈춰 있어(위쪽 인덱스 계산 참고) 포지션이 청산되지
+            # 않은 채 남은 백테스트 기간 내내 슬롯만 차지하는 "유령 포지션"이 된다 -
+            # 그 시점 마지막 가격으로 즉시 강제 청산한다.
+            if ticker.endswith(".DL") and i == len(dates) - 1:
+                trade, proceeds = _full_exit(pos, closes[i], dates[i], "delisted")
+                trades.append(trade)
+                cash += proceeds
+                del positions[ticker]
 
         # 2) 이 시점 평가액/낙폭 (완전 청산 상태면 고점 리셋 - screening_backtest.py와 같은 이유)
         index_price = None

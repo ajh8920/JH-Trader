@@ -224,6 +224,35 @@ class KrPriceCache(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class KrDelistedPrice(db.Model):
+    """상장폐지 종목의 과거 일별 시세(백테스트 생존편향 제거용). 상장일부터
+    상장폐지일까지 전체 이력을 한 번만 채우면 다시 바뀌지 않는 정적 데이터라
+    (더 이상 거래되지 않으므로) KrPriceCache와 달리 주기적 갱신이 필요 없다.
+    yfinance는 상장폐지 종목 데이터를 제공하지 않아 FinanceDataReader(FDR)로
+    data_pipeline.fetch_delisted_kr가 로컬에서 한 번 받고, data_pipeline.
+    import_delisted_to_db가 이 테이블에 채워 넣는다.
+
+    vcp_strategy.run_vcp_backtest(include_delisted=True)만 이 테이블을 읽어
+    백테스트 유니버스에 상장폐지 종목을 포함시킨다 - 실시간 스크리닝/모의투자는
+    절대 이 테이블을 쓰지 않는다(오늘 살 수 없는 종목이 후보로 뜨면 안 되므로).
+    종목명/시장/상장폐지일/사유 같은 메타데이터는 자주 안 바뀌는 정적 목록이라
+    DB가 아니라 kr_stocks.json과 같은 방식으로 kr_delisted_stocks.json에 둔다.
+    """
+
+    __tablename__ = "kr_delisted_prices"
+    __table_args__ = (
+        db.UniqueConstraint("stock_code", "date", name="uq_kr_delisted_price_code_date"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    stock_code = db.Column(db.String(10), nullable=False, index=True)
+    date = db.Column(db.String(10), nullable=False)
+    close = db.Column(db.Float, nullable=False)
+    high = db.Column(db.Float, nullable=False)
+    low = db.Column(db.Float, nullable=False)
+    volume = db.Column(db.Float)
+
+
 class TrendScreenCache(db.Model):
     """트렌드 템플릿(미너비니 스타일) 스크리닝 결과 캐시. 유니버스 전체(국내
     ~2,700종목 또는 미국 ~600종목)의 가격 히스토리를 받아 계산하는 데 시간이

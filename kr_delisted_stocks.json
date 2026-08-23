@@ -1,0 +1,5682 @@
+[
+  {
+    "code": "053870",
+    "name": "GT&T",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-10-15",
+    "reason": "'14사업연도 자본잠식률 50%이상 사유로 관리종목 지정 후 '15사업연도 반기 감사의견 거절",
+    "rows": 2966,
+    "startDate": "2003-09-15",
+    "endDate": "2015-10-14"
+  },
+  {
+    "code": "082220",
+    "name": "프렉코",
+    "market": "KONEX",
+    "delistingDate": "2015-09-25",
+    "reason": "지정자문인 선임계약의 해지한 날의 다음날부터 30일이내(2015.09.11限) 지정자문인 선임계약 미체결",
+    "rows": 276,
+    "startDate": "2014-06-23",
+    "endDate": "2015-09-24"
+  },
+  {
+    "code": "068060",
+    "name": "KCW",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-09-18",
+    "reason": "기업의 계속성, 경영의 투명성 또는 그 밖에 코스닥시장의 건전성 등을 종합적으로 고려하여 상장폐지 기준에 해당한다고 결정",
+    "rows": 2928,
+    "startDate": "2003-08-19",
+    "endDate": "2015-09-17"
+  },
+  {
+    "code": "000830",
+    "name": "삼성물산",
+    "market": "KOSPI",
+    "delistingDate": "2015-09-15",
+    "reason": "해산 사유 발생",
+    "rows": 2987,
+    "startDate": "2003-08-13",
+    "endDate": "2015-08-26"
+  },
+  {
+    "code": "003600",
+    "name": "SK",
+    "market": "KOSPI",
+    "delistingDate": "2015-08-17",
+    "reason": "해산 사유 발생",
+    "rows": 2989,
+    "startDate": "2003-07-14",
+    "endDate": "2015-07-29"
+  },
+  {
+    "code": "074130",
+    "name": "디아이디",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-07-23",
+    "reason": "기업의 계속성, 경영의 투명성 또는 그 밖에 코스닥시장의 건전성 등을 종합적으로 고려하여 상장폐지 기준에 해당한다고 결정",
+    "rows": 2417,
+    "startDate": "2005-07-27",
+    "endDate": "2015-07-22"
+  },
+  {
+    "code": "013450",
+    "name": "동성하이켐",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-07-20",
+    "reason": "피흡수합병",
+    "rows": 2965,
+    "startDate": "2003-06-17",
+    "endDate": "2015-06-26"
+  },
+  {
+    "code": "040670",
+    "name": "와이즈파워",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-07-16",
+    "reason": "자본전액잠식 등",
+    "rows": 2838,
+    "startDate": "2003-06-13",
+    "endDate": "2015-07-15"
+  },
+  {
+    "code": "010520",
+    "name": "현대하이스코",
+    "market": "KOSPI",
+    "delistingDate": "2015-07-15",
+    "reason": "해산 사유 발생",
+    "rows": 2970,
+    "startDate": "2003-06-12",
+    "endDate": "2015-06-26"
+  },
+  {
+    "code": "071930",
+    "name": "에이스하이텍",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-07-10",
+    "reason": "감사의견거절(감사범위 제한)",
+    "rows": 2736,
+    "startDate": "2004-01-16",
+    "endDate": "2015-07-09"
+  },
+  {
+    "code": "033630",
+    "name": "SK브로드밴드",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-07-01",
+    "reason": "상장폐지신청('15.6.11)",
+    "rows": 2981,
+    "startDate": "2003-05-28",
+    "endDate": "2015-06-04"
+  },
+  {
+    "code": "192520",
+    "name": "경남은행",
+    "market": "KOSPI",
+    "delistingDate": "2015-06-23",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 251,
+    "startDate": "2014-05-22",
+    "endDate": "2015-06-01"
+  },
+  {
+    "code": "066350",
+    "name": "티에스엠텍",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-05-20",
+    "reason": "발행한 어음 또는 수표가 주거래은행에 의하여 최종부도로 결정되거나 거래은행에 의한 거래정지",
+    "rows": 2997,
+    "startDate": "2003-04-14",
+    "endDate": "2015-05-19"
+  },
+  {
+    "code": "039530",
+    "name": "씨앤케이인터",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-05-19",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2797,
+    "startDate": "2003-04-11",
+    "endDate": "2015-05-18"
+  },
+  {
+    "code": "039850",
+    "name": "태창파로스",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-05-19",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2779,
+    "startDate": "2003-04-11",
+    "endDate": "2015-05-18"
+  },
+  {
+    "code": "090120",
+    "name": "잘만테크",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-05-13",
+    "reason": "감사의견 거절(계속기업 존속능력에 대한 불확실성 및 감사범위 제한)",
+    "rows": 1853,
+    "startDate": "2007-05-22",
+    "endDate": "2015-05-12"
+  },
+  {
+    "code": "065180",
+    "name": "해피드림",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-05-04",
+    "reason": "감사범위제한으로 인한 한정의견",
+    "rows": 2680,
+    "startDate": "2003-03-27",
+    "endDate": "2015-04-30"
+  },
+  {
+    "code": "179280",
+    "name": "스탠다드펌",
+    "market": "KONEX",
+    "delistingDate": "2015-04-30",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 275,
+    "startDate": "2013-07-01",
+    "endDate": "2015-04-29"
+  },
+  {
+    "code": "160350",
+    "name": "웹솔루스",
+    "market": "KONEX",
+    "delistingDate": "2015-04-30",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 402,
+    "startDate": "2013-07-01",
+    "endDate": "2015-04-29"
+  },
+  {
+    "code": "053330",
+    "name": "영진코퍼레이션",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-04-23",
+    "reason": "자본전액잠식",
+    "rows": 2924,
+    "startDate": "2003-03-20",
+    "endDate": "2015-04-22"
+  },
+  {
+    "code": "000800",
+    "name": "경남기업",
+    "market": "KOSPI",
+    "delistingDate": "2015-04-15",
+    "reason": "자본전액잠식",
+    "rows": 2982,
+    "startDate": "2003-03-12",
+    "endDate": "2015-04-14"
+  },
+  {
+    "code": "000360",
+    "name": "삼환기업",
+    "market": "KOSPI",
+    "delistingDate": "2015-04-15",
+    "reason": "자본전액잠식",
+    "rows": 2929,
+    "startDate": "2003-03-12",
+    "endDate": "2015-04-14"
+  },
+  {
+    "code": "014350",
+    "name": "신일건업",
+    "market": "KOSPI",
+    "delistingDate": "2015-04-15",
+    "reason": "자본전액잠식",
+    "rows": 2474,
+    "startDate": "2003-03-12",
+    "endDate": "2015-04-14"
+  },
+  {
+    "code": "181980",
+    "name": "힘스인터내셔널",
+    "market": "KONEX",
+    "delistingDate": "2015-04-15",
+    "reason": "상장폐지 신청('15.03.23)",
+    "rows": 202,
+    "startDate": "2013-08-14",
+    "endDate": "2015-03-23"
+  },
+  {
+    "code": "004320",
+    "name": "울트라건설",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-04-13",
+    "reason": "자본전액잠식",
+    "rows": 2977,
+    "startDate": "2003-03-10",
+    "endDate": "2015-04-10"
+  },
+  {
+    "code": "000420",
+    "name": "로케트전기",
+    "market": "KOSPI",
+    "delistingDate": "2015-02-24",
+    "reason": "감사의견 의견거절",
+    "rows": 2767,
+    "startDate": "2003-01-20",
+    "endDate": "2015-02-23"
+  },
+  {
+    "code": "053740",
+    "name": "국제엘렉트릭",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-02-10",
+    "reason": "상장폐지 신청('15.01.15)",
+    "rows": 2940,
+    "startDate": "2003-03-21",
+    "endDate": "2015-02-09"
+  },
+  {
+    "code": "032420",
+    "name": "터보테크",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-01-27",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2887,
+    "startDate": "2002-12-23",
+    "endDate": "2015-01-26"
+  },
+  {
+    "code": "091690",
+    "name": "디지텍시스템",
+    "market": "KOSDAQ",
+    "delistingDate": "2015-01-21",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 1648,
+    "startDate": "2007-07-04",
+    "endDate": "2015-01-20"
+  },
+  {
+    "code": "016420",
+    "name": "NH농협증권",
+    "market": "KOSPI",
+    "delistingDate": "2015-01-20",
+    "reason": "해산 사유 발생",
+    "rows": 2982,
+    "startDate": "2002-12-13",
+    "endDate": "2014-12-19"
+  },
+  {
+    "code": "003640",
+    "name": "유니온스틸",
+    "market": "KOSPI",
+    "delistingDate": "2015-01-16",
+    "reason": "해산 사유 발생",
+    "rows": 2987,
+    "startDate": "2002-12-11",
+    "endDate": "2014-12-24"
+  },
+  {
+    "code": "233190",
+    "name": "미래자원엠엘",
+    "market": "KONEX",
+    "delistingDate": "2017-12-28",
+    "reason": "피흡수합병",
+    "rows": 419,
+    "startDate": "2015-12-24",
+    "endDate": "2017-12-05"
+  },
+  {
+    "code": "215580",
+    "name": "대우스팩3호",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-12-26",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 598,
+    "startDate": "2015-05-19",
+    "endDate": "2017-12-22"
+  },
+  {
+    "code": "232290",
+    "name": "SGA시스템즈",
+    "market": "KONEX",
+    "delistingDate": "2017-12-22",
+    "reason": "피흡수합병",
+    "rows": 379,
+    "startDate": "2016-03-30",
+    "endDate": "2017-12-05"
+  },
+  {
+    "code": "023430",
+    "name": "아이이",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-12-20",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2828,
+    "startDate": "2005-11-10",
+    "endDate": "2017-12-19"
+  },
+  {
+    "code": "260490",
+    "name": "캐로스",
+    "market": "KONEX",
+    "delistingDate": "2017-11-29",
+    "reason": "지정자문인 선임계약 해지 후 30일이내 미체결(2017.11.15限)",
+    "rows": 194,
+    "startDate": "2016-12-23",
+    "endDate": "2017-11-28"
+  },
+  {
+    "code": "207930",
+    "name": "SK1호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-11-06",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 639,
+    "startDate": "2015-03-31",
+    "endDate": "2017-11-03"
+  },
+  {
+    "code": "206660",
+    "name": "골든브릿지제2호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-10-20",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 642,
+    "startDate": "2015-02-05",
+    "endDate": "2017-10-19"
+  },
+  {
+    "code": "207720",
+    "name": "엔에이치SL스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-10-16",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 646,
+    "startDate": "2014-12-17",
+    "endDate": "2017-10-13"
+  },
+  {
+    "code": "061460",
+    "name": "한진피앤씨",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-09-29",
+    "reason": "피흡수합병",
+    "rows": 2885,
+    "startDate": "2005-08-26",
+    "endDate": "2017-08-29"
+  },
+  {
+    "code": "085980",
+    "name": "세화피앤씨",
+    "market": "KONEX",
+    "delistingDate": "2017-09-19",
+    "reason": "피흡수합병",
+    "rows": 801,
+    "startDate": "2013-09-25",
+    "endDate": "2017-08-31"
+  },
+  {
+    "code": "095300",
+    "name": "엔에스브이",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-09-12",
+    "reason": "감사의견 거절(내부회계관리제도상의 취약점, 계속기업가정의 불확실성 및 재고자산 관련 감사범위 제한)",
+    "rows": 1861,
+    "startDate": "2009-04-17",
+    "endDate": "2017-09-11"
+  },
+  {
+    "code": "189700",
+    "name": "디피앤케이",
+    "market": "KONEX",
+    "delistingDate": "2017-08-31",
+    "reason": "지정자문인 선임계약 해지 후 30일이내 미체결(2017.08.17限)",
+    "rows": 752,
+    "startDate": "2014-06-23",
+    "endDate": "2017-08-30"
+  },
+  {
+    "code": "005620",
+    "name": "대성합동지주",
+    "market": "KOSPI",
+    "delistingDate": "2017-08-25",
+    "reason": "해산 사유 발생",
+    "rows": 2955,
+    "startDate": "2005-07-21",
+    "endDate": "2017-07-27"
+  },
+  {
+    "code": "204690",
+    "name": "다린",
+    "market": "KONEX",
+    "delistingDate": "2017-08-02",
+    "reason": "상장폐지 신청('17.07.28)",
+    "rows": 707,
+    "startDate": "2014-09-18",
+    "endDate": "2017-07-28"
+  },
+  {
+    "code": "208870",
+    "name": "하나머스트3호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-07-31",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 578,
+    "startDate": "2014-12-24",
+    "endDate": "2017-07-28"
+  },
+  {
+    "code": "232360",
+    "name": "아스팩오일",
+    "market": "KONEX",
+    "delistingDate": "2017-07-25",
+    "reason": "지정자문인 선임계약 해지 후 30일이내 미체결(2017.07.11限)",
+    "rows": 351,
+    "startDate": "2015-12-22",
+    "endDate": "2017-07-24"
+  },
+  {
+    "code": "002550",
+    "name": "KB손해보험",
+    "market": "KOSPI",
+    "delistingDate": "2017-07-21",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2988,
+    "startDate": "2005-06-17",
+    "endDate": "2017-07-04"
+  },
+  {
+    "code": "021960",
+    "name": "KB캐피탈",
+    "market": "KOSPI",
+    "delistingDate": "2017-07-21",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2988,
+    "startDate": "2005-06-17",
+    "endDate": "2017-07-04"
+  },
+  {
+    "code": "156170",
+    "name": "비앤에스미디어",
+    "market": "KONEX",
+    "delistingDate": "2017-07-13",
+    "reason": "지정자문인 선임계약 해지 후 30일이내 미체결(2017.6.29限)",
+    "rows": 730,
+    "startDate": "2013-07-01",
+    "endDate": "2017-07-12"
+  },
+  {
+    "code": "204650",
+    "name": "케이티비스팩1호",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-07-07",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 618,
+    "startDate": "2014-11-24",
+    "endDate": "2017-07-06"
+  },
+  {
+    "code": "004740",
+    "name": "보루네오",
+    "market": "KOSPI",
+    "delistingDate": "2017-07-05",
+    "reason": "기업의 계속성, 경영의 투명성 및 기타 공익과 투자자 보호 등을 종합적으로 고려하여 상장폐지 기준에 해당한다고 결정",
+    "rows": 2573,
+    "startDate": "2005-05-31",
+    "endDate": "2017-07-04"
+  },
+  {
+    "code": "204760",
+    "name": "현대에이블스팩1호",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-06-15",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 639,
+    "startDate": "2014-11-10",
+    "endDate": "2017-06-14"
+  },
+  {
+    "code": "165270",
+    "name": "금오하이텍",
+    "market": "KONEX",
+    "delistingDate": "2017-06-07",
+    "reason": "최종부도 발생",
+    "rows": 749,
+    "startDate": "2013-12-10",
+    "endDate": "2017-06-05"
+  },
+  {
+    "code": "204440",
+    "name": "대우스팩2호",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-05-29",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 573,
+    "startDate": "2014-10-22",
+    "endDate": "2017-05-26"
+  },
+  {
+    "code": "036500",
+    "name": "에스에스컴텍",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-05-11",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 2914,
+    "startDate": "2005-04-06",
+    "endDate": "2017-05-10"
+  },
+  {
+    "code": "058370",
+    "name": "비엔씨컴퍼니",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-05-08",
+    "reason": "감사범위제한으로 인한 한정의견",
+    "rows": 2685,
+    "startDate": "2005-04-01",
+    "endDate": "2017-05-04"
+  },
+  {
+    "code": "086830",
+    "name": "신양오라컴",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-05-08",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 2530,
+    "startDate": "2006-12-27",
+    "endDate": "2017-05-04"
+  },
+  {
+    "code": "110570",
+    "name": "넥솔론",
+    "market": "KOSPI",
+    "delistingDate": "2017-04-17",
+    "reason": "자본전액잠식",
+    "rows": 1285,
+    "startDate": "2011-10-14",
+    "endDate": "2017-04-14"
+  },
+  {
+    "code": "052270",
+    "name": "우전",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-04-13",
+    "reason": "자본전액잠식 등",
+    "rows": 2844,
+    "startDate": "2005-03-14",
+    "endDate": "2017-04-12"
+  },
+  {
+    "code": "194860",
+    "name": "SY이노베이션",
+    "market": "KONEX",
+    "delistingDate": "2017-04-12",
+    "reason": "감사의견 거절(감사범위제한)",
+    "rows": 683,
+    "startDate": "2014-06-23",
+    "endDate": "2017-04-11"
+  },
+  {
+    "code": "007190",
+    "name": "한솔아트원제지",
+    "market": "KOSPI",
+    "delistingDate": "2017-03-15",
+    "reason": "해산 사유 발생",
+    "rows": 2944,
+    "startDate": "2005-02-07",
+    "endDate": "2017-02-24"
+  },
+  {
+    "code": "068150",
+    "name": "케이엔씨글로벌",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-03-07",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2442,
+    "startDate": "2005-01-28",
+    "endDate": "2017-03-06"
+  },
+  {
+    "code": "117930",
+    "name": "한진해운",
+    "market": "KOSPI",
+    "delistingDate": "2017-03-07",
+    "reason": "해산 사유 발생",
+    "rows": 1759,
+    "startDate": "2009-12-29",
+    "endDate": "2017-03-06"
+  },
+  {
+    "code": "066270",
+    "name": "SK컴즈",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-02-27",
+    "reason": "상장폐지신청('17.02.07)",
+    "rows": 2984,
+    "startDate": "2005-01-21",
+    "endDate": "2017-02-02"
+  },
+  {
+    "code": "060910",
+    "name": "프리젠",
+    "market": "KOSDAQ",
+    "delistingDate": "2017-02-24",
+    "reason": "최근 5사업연도 연속 영업손실 발생",
+    "rows": 1804,
+    "startDate": "2005-01-19",
+    "endDate": "2017-02-23"
+  },
+  {
+    "code": "037620",
+    "name": "미래에셋증권",
+    "market": "KOSPI",
+    "delistingDate": "2017-01-20",
+    "reason": "해산 사유 발생",
+    "rows": 2689,
+    "startDate": "2006-02-15",
+    "endDate": "2016-12-20"
+  },
+  {
+    "code": "144630",
+    "name": "씨아이에스",
+    "market": "KONEX",
+    "delistingDate": "2017-01-20",
+    "reason": "피흡수합병",
+    "rows": 589,
+    "startDate": "2014-06-23",
+    "endDate": "2017-01-04"
+  },
+  {
+    "code": "068870",
+    "name": "LG생명과학",
+    "market": "KOSPI",
+    "delistingDate": "2017-01-17",
+    "reason": "해산 사유 발생",
+    "rows": 2987,
+    "startDate": "2004-12-14",
+    "endDate": "2016-12-27"
+  },
+  {
+    "code": "104120",
+    "name": "신성에프에이",
+    "market": "KOSPI",
+    "delistingDate": "2017-01-02",
+    "reason": "해산 사유 발생",
+    "rows": 2058,
+    "startDate": "2008-09-01",
+    "endDate": "2016-12-13"
+  },
+  {
+    "code": "104110",
+    "name": "신성이엔지",
+    "market": "KOSPI",
+    "delistingDate": "2017-01-02",
+    "reason": "해산 사유 발생",
+    "rows": 2057,
+    "startDate": "2008-09-01",
+    "endDate": "2016-12-13"
+  },
+  {
+    "code": "192240",
+    "name": "나이코",
+    "market": "KONEX",
+    "delistingDate": "2016-12-23",
+    "reason": "상장폐지 신청('16.12.9)",
+    "rows": 619,
+    "startDate": "2014-02-28",
+    "endDate": "2016-12-09"
+  },
+  {
+    "code": "222520",
+    "name": "솔트웍스",
+    "market": "KONEX",
+    "delistingDate": "2016-12-05",
+    "reason": "피흡수합병",
+    "rows": 278,
+    "startDate": "2015-07-08",
+    "endDate": "2016-11-10"
+  },
+  {
+    "code": "185280",
+    "name": "이푸른",
+    "market": "KONEX",
+    "delistingDate": "2016-12-05",
+    "reason": "지정자문인 선임계약 해지 후 30일이내 미체결(2016.11.21限)",
+    "rows": 583,
+    "startDate": "2013-11-12",
+    "endDate": "2016-12-02"
+  },
+  {
+    "code": "011720",
+    "name": "현대페인트",
+    "market": "KOSPI",
+    "delistingDate": "2016-11-21",
+    "reason": "감사의견 의견거절",
+    "rows": 2638,
+    "startDate": "2004-10-19",
+    "endDate": "2016-11-18"
+  },
+  {
+    "code": "003450",
+    "name": "현대증권",
+    "market": "KOSPI",
+    "delistingDate": "2016-11-01",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2989,
+    "startDate": "2004-09-24",
+    "endDate": "2016-10-14"
+  },
+  {
+    "code": "053810",
+    "name": "아이팩토리",
+    "market": "KOSDAQ",
+    "delistingDate": "2016-09-19",
+    "reason": "감사의견 거절(감사범위 제한 및 기업회계기준 위배)",
+    "rows": 2617,
+    "startDate": "2004-08-13",
+    "endDate": "2016-09-13"
+  },
+  {
+    "code": "037340",
+    "name": "씨엘인터내셔널",
+    "market": "KOSDAQ",
+    "delistingDate": "2016-09-08",
+    "reason": "2반기 연속 자본잠식률 50% 이상",
+    "rows": 2972,
+    "startDate": "2004-08-09",
+    "endDate": "2016-09-07"
+  },
+  {
+    "code": "074150",
+    "name": "엠제이비",
+    "market": "KOSDAQ",
+    "delistingDate": "2016-09-05",
+    "reason": "감사의견거절(감사범위 제한)",
+    "rows": 2663,
+    "startDate": "2005-07-08",
+    "endDate": "2016-09-02"
+  },
+  {
+    "code": "025270",
+    "name": "부산방직",
+    "market": "KOSDAQ",
+    "delistingDate": "2016-08-18",
+    "reason": "피흡수합병",
+    "rows": 2975,
+    "startDate": "2004-07-19",
+    "endDate": "2016-07-27"
+  },
+  {
+    "code": "019300",
+    "name": "태림페이퍼",
+    "market": "KOSPI",
+    "delistingDate": "2016-08-11",
+    "reason": "신청에 의한 상장폐지",
+    "rows": 2985,
+    "startDate": "2004-07-13",
+    "endDate": "2016-08-10"
+  },
+  {
+    "code": "207230",
+    "name": "디와이엘엔제이",
+    "market": "KONEX",
+    "delistingDate": "2016-07-26",
+    "reason": "지정자문인 선임계약의 해지한 날의 다음날부터 30일이내(2016.07.12限) 지정자문인 선임계약 미체결",
+    "rows": 178,
+    "startDate": "2015-09-14",
+    "endDate": "2016-07-25"
+  },
+  {
+    "code": "082390",
+    "name": "피엘에이",
+    "market": "KOSDAQ",
+    "delistingDate": "2016-07-25",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2529,
+    "startDate": "2005-07-26",
+    "endDate": "2016-07-22"
+  },
+  {
+    "code": "103650",
+    "name": "에이치앤아이",
+    "market": "KONEX",
+    "delistingDate": "2016-07-14",
+    "reason": "최종부도 발생",
+    "rows": 566,
+    "startDate": "2013-12-26",
+    "endDate": "2016-07-13"
+  },
+  {
+    "code": "179440",
+    "name": "피엠에스",
+    "market": "KONEX",
+    "delistingDate": "2016-07-07",
+    "reason": "상장폐지 신청('16.6.14)",
+    "rows": 500,
+    "startDate": "2014-02-28",
+    "endDate": "2016-06-14"
+  },
+  {
+    "code": "224090",
+    "name": "정다운",
+    "market": "KONEX",
+    "delistingDate": "2016-06-29",
+    "reason": "피흡수합병",
+    "rows": 174,
+    "startDate": "2015-07-31",
+    "endDate": "2016-06-14"
+  },
+  {
+    "code": "008020",
+    "name": "경남에너지",
+    "market": "KOSPI",
+    "delistingDate": "2016-05-19",
+    "reason": "신청에 의한 상장폐지",
+    "rows": 2985,
+    "startDate": "2004-04-19",
+    "endDate": "2016-05-18"
+  },
+  {
+    "code": "008900",
+    "name": "티이씨앤코",
+    "market": "KOSPI",
+    "delistingDate": "2016-05-17",
+    "reason": "해산 사유 발생",
+    "rows": 2948,
+    "startDate": "2004-04-14",
+    "endDate": "2016-04-27"
+  },
+  {
+    "code": "086200",
+    "name": "제이앤유글로벌",
+    "market": "KOSDAQ",
+    "delistingDate": "2016-05-09",
+    "reason": "감사의견거절(감사범위 제한)",
+    "rows": 2434,
+    "startDate": "2006-06-07",
+    "endDate": "2016-05-04"
+  },
+  {
+    "code": "078780",
+    "name": "아이디에스",
+    "market": "KOSDAQ",
+    "delistingDate": "2016-04-28",
+    "reason": "'14사업연도 자본잠식률 50%이상 사유로 관리종목 지정 후 '15사업연도 반기 감사의견 거절",
+    "rows": 2398,
+    "startDate": "2005-11-29",
+    "endDate": "2016-04-27"
+  },
+  {
+    "code": "158380",
+    "name": "삼목강업",
+    "market": "KOSDAQ",
+    "delistingDate": "2016-04-21",
+    "reason": "피흡수합병",
+    "rows": 697,
+    "startDate": "2013-04-30",
+    "endDate": "2016-03-02"
+  },
+  {
+    "code": "051310",
+    "name": "포스코플랜텍",
+    "market": "KOSPI",
+    "delistingDate": "2016-04-15",
+    "reason": "자본전액잠식",
+    "rows": 2034,
+    "startDate": "2007-11-29",
+    "endDate": "2016-04-14"
+  },
+  {
+    "code": "063840",
+    "name": "닉스테크",
+    "market": "KONEX",
+    "delistingDate": "2016-04-12",
+    "reason": "피흡수합병",
+    "rows": 487,
+    "startDate": "2013-11-12",
+    "endDate": "2016-03-24"
+  },
+  {
+    "code": "065270",
+    "name": "플렉스컴",
+    "market": "KOSDAQ",
+    "delistingDate": "2016-04-12",
+    "reason": "자본전액잠식",
+    "rows": 2990,
+    "startDate": "2004-03-12",
+    "endDate": "2016-04-11"
+  },
+  {
+    "code": "025850",
+    "name": "한화화인케미칼",
+    "market": "KOSPI",
+    "delistingDate": "2016-03-15",
+    "reason": "해산 사유 발생",
+    "rows": 2988,
+    "startDate": "2004-02-12",
+    "endDate": "2016-02-24"
+  },
+  {
+    "code": "151750",
+    "name": "테라텍",
+    "market": "KONEX",
+    "delistingDate": "2016-02-23",
+    "reason": "상장폐지 신청('16.02.01)",
+    "rows": 430,
+    "startDate": "2013-07-01",
+    "endDate": "2016-02-01"
+  },
+  {
+    "code": "111610",
+    "name": "승화프리텍",
+    "market": "KOSDAQ",
+    "delistingDate": "2016-01-25",
+    "reason": "기업의 계속성, 경영의 투명성 또는 그 밖에 코스닥시장의 건전성 등을 종합적으로 고려하여 상장폐지 기준에 해당한다고 결정",
+    "rows": 1192,
+    "startDate": "2010-01-06",
+    "endDate": "2016-01-22"
+  },
+  {
+    "code": "003940",
+    "name": "삼양제넥스",
+    "market": "KOSPI",
+    "delistingDate": "2016-01-21",
+    "reason": "해산 사유 발생",
+    "rows": 2967,
+    "startDate": "2003-12-18",
+    "endDate": "2015-12-28"
+  },
+  {
+    "code": "210610",
+    "name": "소프트캠프",
+    "market": "KONEX",
+    "delistingDate": "2019-12-30",
+    "reason": "피흡수합병",
+    "rows": 1193,
+    "startDate": "2014-12-18",
+    "endDate": "2019-12-12"
+  },
+  {
+    "code": "122050",
+    "name": "아이엘사이언스",
+    "market": "KONEX",
+    "delistingDate": "2019-12-27",
+    "reason": "피흡수합병",
+    "rows": 222,
+    "startDate": "2018-11-16",
+    "endDate": "2019-12-11"
+  },
+  {
+    "code": "035480",
+    "name": "제이테크놀로지",
+    "market": "KOSDAQ",
+    "delistingDate": "2019-12-12",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2498,
+    "startDate": "2007-10-25",
+    "endDate": "2019-12-11"
+  },
+  {
+    "code": "247300",
+    "name": "인프라웨어테크놀러지",
+    "market": "KONEX",
+    "delistingDate": "2019-12-06",
+    "reason": "피흡수합병",
+    "rows": 823,
+    "startDate": "2016-07-08",
+    "endDate": "2019-12-03"
+  },
+  {
+    "code": "264290",
+    "name": "한화에이스스팩3호",
+    "market": "KOSDAQ",
+    "delistingDate": "2019-12-06",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 634,
+    "startDate": "2017-05-02",
+    "endDate": "2019-12-05"
+  },
+  {
+    "code": "226610",
+    "name": "한국비엔씨",
+    "market": "KONEX",
+    "delistingDate": "2019-12-03",
+    "reason": "피흡수합병",
+    "rows": 900,
+    "startDate": "2015-12-18",
+    "endDate": "2019-11-12"
+  },
+  {
+    "code": "017680",
+    "name": "데코앤이",
+    "market": "KOSDAQ",
+    "delistingDate": "2019-11-20",
+    "reason": "발행한 어음 또는 수표가 주거래은행에 의하여 최종부도로 결정되거나 거래은행에 의한 거래정지",
+    "rows": 2827,
+    "startDate": "2007-10-02",
+    "endDate": "2019-11-19"
+  },
+  {
+    "code": "230400",
+    "name": "자비스",
+    "market": "KONEX",
+    "delistingDate": "2019-11-15",
+    "reason": "피흡수합병",
+    "rows": 923,
+    "startDate": "2015-11-17",
+    "endDate": "2019-10-28"
+  },
+  {
+    "code": "262830",
+    "name": "대신밸런스제4호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2019-10-10",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 518,
+    "startDate": "2017-03-03",
+    "endDate": "2019-10-08"
+  },
+  {
+    "code": "135270",
+    "name": "세종머티리얼즈",
+    "market": "KONEX",
+    "delistingDate": "2019-10-02",
+    "reason": "파산선고에 따른 해산사유 발생",
+    "rows": 1134,
+    "startDate": "2014-12-17",
+    "endDate": "2019-10-01"
+  },
+  {
+    "code": "257730",
+    "name": "신한제3호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2019-10-01",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 634,
+    "startDate": "2017-02-23",
+    "endDate": "2019-09-30"
+  },
+  {
+    "code": "271400",
+    "name": "알로이스",
+    "market": "KONEX",
+    "delistingDate": "2019-10-01",
+    "reason": "피흡수합병",
+    "rows": 488,
+    "startDate": "2017-07-07",
+    "endDate": "2019-09-06"
+  },
+  {
+    "code": "225650",
+    "name": "쿠첸",
+    "market": "KOSDAQ",
+    "delistingDate": "2019-09-16",
+    "reason": "타법인의 완전자회사로 편입",
+    "rows": 972,
+    "startDate": "2015-09-04",
+    "endDate": "2019-08-22"
+  },
+  {
+    "code": "232330",
+    "name": "SK3호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2019-08-30",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 592,
+    "startDate": "2016-11-16",
+    "endDate": "2019-08-29"
+  },
+  {
+    "code": "026180",
+    "name": "현대정보기술",
+    "market": "KOSDAQ",
+    "delistingDate": "2019-07-17",
+    "reason": "피흡수합병",
+    "rows": 2986,
+    "startDate": "2007-05-28",
+    "endDate": "2019-06-26"
+  },
+  {
+    "code": "221670",
+    "name": "주노콜렉션",
+    "market": "KONEX",
+    "delistingDate": "2019-07-16",
+    "reason": " 지정자문인 선임계약 해지 후 30일 이내 미체결(2019.7.2 限) ",
+    "rows": 441,
+    "startDate": "2017-06-27",
+    "endDate": "2019-07-15"
+  },
+  {
+    "code": "176560",
+    "name": "포인트엔지니어링",
+    "market": "KONEX",
+    "delistingDate": "2019-07-16",
+    "reason": "피흡수합병",
+    "rows": 424,
+    "startDate": "2017-08-14",
+    "endDate": "2019-06-26"
+  },
+  {
+    "code": "262760",
+    "name": "엔케이맥스",
+    "market": "KONEX",
+    "delistingDate": "2019-07-04",
+    "reason": "피흡수합병",
+    "rows": 203,
+    "startDate": "2018-08-09",
+    "endDate": "2019-06-11"
+  },
+  {
+    "code": "079660",
+    "name": "사조해표",
+    "market": "KOSPI",
+    "delistingDate": "2019-06-26",
+    "reason": "해산 사유 발생",
+    "rows": 2982,
+    "startDate": "2007-05-04",
+    "endDate": "2019-05-29"
+  },
+  {
+    "code": "229480",
+    "name": "줌인터넷",
+    "market": "KONEX",
+    "delistingDate": "2019-06-10",
+    "reason": "피흡수합병",
+    "rows": 582,
+    "startDate": "2016-06-10",
+    "endDate": "2019-05-17"
+  },
+  {
+    "code": "242850",
+    "name": "영현무역",
+    "market": "KONEX",
+    "delistingDate": "2019-05-22",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결(2019.5.8 限)",
+    "rows": 700,
+    "startDate": "2016-05-20",
+    "endDate": "2019-05-21"
+  },
+  {
+    "code": "002250",
+    "name": "알보젠코리아",
+    "market": "KOSPI",
+    "delistingDate": "2019-05-20",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2955,
+    "startDate": "2007-03-28",
+    "endDate": "2019-03-15"
+  },
+  {
+    "code": "065160",
+    "name": "에프티이앤이",
+    "market": "KOSDAQ",
+    "delistingDate": "2019-05-03",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 2733,
+    "startDate": "2007-03-14",
+    "endDate": "2019-05-02"
+  },
+  {
+    "code": "250300",
+    "name": "제이에스피브이",
+    "market": "KONEX",
+    "delistingDate": "2019-03-04",
+    "reason": "지정자문인 선임계약 해지 후 30일이내 미체결(2019.2.1 限)",
+    "rows": 580,
+    "startDate": "2016-08-10",
+    "endDate": "2019-02-28"
+  },
+  {
+    "code": "245030",
+    "name": "스페이스솔루션",
+    "market": "KONEX",
+    "delistingDate": "2019-02-27",
+    "reason": "상장폐지 신청('19.1.25)",
+    "rows": 656,
+    "startDate": "2016-06-03",
+    "endDate": "2019-02-26"
+  },
+  {
+    "code": "123100",
+    "name": "원익테라세미콘",
+    "market": "KOSDAQ",
+    "delistingDate": "2019-02-20",
+    "reason": "피흡수합병",
+    "rows": 1784,
+    "startDate": "2011-11-01",
+    "endDate": "2019-01-29"
+  },
+  {
+    "code": "000030",
+    "name": "우리은행",
+    "market": "KOSPI",
+    "delistingDate": "2019-02-13",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 1015,
+    "startDate": "2014-11-19",
+    "endDate": "2019-01-08"
+  },
+  {
+    "code": "240540",
+    "name": "한국4호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2019-01-29",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 583,
+    "startDate": "2016-06-22",
+    "endDate": "2019-01-28"
+  },
+  {
+    "code": "004130",
+    "name": "대덕GDS",
+    "market": "KOSPI",
+    "delistingDate": "2018-12-19",
+    "reason": "해산 사유 발생",
+    "rows": 2986,
+    "startDate": "2006-11-02",
+    "endDate": "2018-11-28"
+  },
+  {
+    "code": "002000",
+    "name": "한국유리",
+    "market": "KOSPI",
+    "delistingDate": "2018-12-13",
+    "reason": "신청에 의한 상장폐지",
+    "rows": 2968,
+    "startDate": "2006-10-27",
+    "endDate": "2018-12-12"
+  },
+  {
+    "code": "167380",
+    "name": "나무기술",
+    "market": "KONEX",
+    "delistingDate": "2018-12-11",
+    "reason": "피흡수합병",
+    "rows": 394,
+    "startDate": "2016-11-28",
+    "endDate": "2018-11-22"
+  },
+  {
+    "code": "272420",
+    "name": "극동자동화",
+    "market": "KONEX",
+    "delistingDate": "2018-11-15",
+    "reason": "상장폐지 신청('18.11.5)",
+    "rows": 330,
+    "startDate": "2017-06-28",
+    "endDate": "2018-11-05"
+  },
+  {
+    "code": "242420",
+    "name": "본느",
+    "market": "KONEX",
+    "delistingDate": "2018-10-29",
+    "reason": "피흡수합병",
+    "rows": 547,
+    "startDate": "2016-05-16",
+    "endDate": "2018-10-11"
+  },
+  {
+    "code": "192530",
+    "name": "광주은행",
+    "market": "KOSPI",
+    "delistingDate": "2018-10-26",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 1072,
+    "startDate": "2014-05-22",
+    "endDate": "2018-10-04"
+  },
+  {
+    "code": "194610",
+    "name": "우성아이비",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-10-12",
+    "reason": "감사의견거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 899,
+    "startDate": "2014-06-10",
+    "endDate": "2018-10-11"
+  },
+  {
+    "code": "155960",
+    "name": "지디",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-10-12",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 1257,
+    "startDate": "2013-02-13",
+    "endDate": "2018-10-11"
+  },
+  {
+    "code": "232270",
+    "name": "케이비제9호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-10-12",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 640,
+    "startDate": "2016-02-29",
+    "endDate": "2018-10-11"
+  },
+  {
+    "code": "235010",
+    "name": "하이에이아이1호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-10-12",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 601,
+    "startDate": "2016-03-04",
+    "endDate": "2018-10-11"
+  },
+  {
+    "code": "032040",
+    "name": "C&S자산관리",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-10-11",
+    "reason": "감사의견거절(범위제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 2718,
+    "startDate": "2006-08-22",
+    "endDate": "2018-10-10"
+  },
+  {
+    "code": "081970",
+    "name": "넥스지",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-10-11",
+    "reason": "감사의견거절(감사범위제한)",
+    "rows": 2627,
+    "startDate": "2007-08-20",
+    "endDate": "2018-10-10"
+  },
+  {
+    "code": "047440",
+    "name": "레이젠",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-10-11",
+    "reason": "감사의견거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 2815,
+    "startDate": "2006-08-22",
+    "endDate": "2018-10-10"
+  },
+  {
+    "code": "110660",
+    "name": "세신버팔로",
+    "market": "KONEX",
+    "delistingDate": "2018-10-11",
+    "reason": "지정자문인 선임계약 해지 후 30일이내 미체결(2018.9.20限)",
+    "rows": 867,
+    "startDate": "2014-12-08",
+    "endDate": "2018-10-10"
+  },
+  {
+    "code": "026260",
+    "name": "위너지스",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-10-11",
+    "reason": "감사의견거절(감사범위 제한)",
+    "rows": 2616,
+    "startDate": "2006-08-22",
+    "endDate": "2018-10-10"
+  },
+  {
+    "code": "052290",
+    "name": "트레이스",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-10-11",
+    "reason": "감사의견거절(감사범위 제한)",
+    "rows": 2687,
+    "startDate": "2006-08-22",
+    "endDate": "2018-10-10"
+  },
+  {
+    "code": "005980",
+    "name": "성지건설",
+    "market": "KOSPI",
+    "delistingDate": "2018-10-04",
+    "reason": "감사의견 의견거절",
+    "rows": 2792,
+    "startDate": "2006-08-16",
+    "endDate": "2018-10-02"
+  },
+  {
+    "code": "237720",
+    "name": "케이엠제약",
+    "market": "KONEX",
+    "delistingDate": "2018-09-28",
+    "reason": "피흡수합병",
+    "rows": 554,
+    "startDate": "2016-02-24",
+    "endDate": "2018-09-06"
+  },
+  {
+    "code": "016170",
+    "name": "카카오M",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-09-18",
+    "reason": "피흡수합병",
+    "rows": 2987,
+    "startDate": "2006-08-03",
+    "endDate": "2018-08-29"
+  },
+  {
+    "code": "062580",
+    "name": "인산가",
+    "market": "KONEX",
+    "delistingDate": "2018-09-11",
+    "reason": "피흡수합병",
+    "rows": 613,
+    "startDate": "2015-12-21",
+    "endDate": "2018-08-23"
+  },
+  {
+    "code": "251540",
+    "name": "에스와이제이",
+    "market": "KONEX",
+    "delistingDate": "2018-09-07",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 223,
+    "startDate": "2017-05-02",
+    "endDate": "2018-09-06"
+  },
+  {
+    "code": "138290",
+    "name": "지성이씨에스",
+    "market": "KONEX",
+    "delistingDate": "2018-08-22",
+    "reason": "상장폐지 신청('18.7.19)",
+    "rows": 653,
+    "startDate": "2015-11-30",
+    "endDate": "2018-08-21"
+  },
+  {
+    "code": "043580",
+    "name": "에임하이",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-08-10",
+    "reason": "감사의견거절(감사범위 제한)",
+    "rows": 2744,
+    "startDate": "2006-06-27",
+    "endDate": "2018-08-09"
+  },
+  {
+    "code": "144740",
+    "name": "피엠디아카데미",
+    "market": "KONEX",
+    "delistingDate": "2018-08-07",
+    "reason": "지정자문인 선임계약 해지 후 30일이내 미체결(2018.07.24限)",
+    "rows": 1049,
+    "startDate": "2013-07-01",
+    "endDate": "2018-08-06"
+  },
+  {
+    "code": "230490",
+    "name": "동부제4호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-07-26",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 591,
+    "startDate": "2015-12-18",
+    "endDate": "2018-07-25"
+  },
+  {
+    "code": "130960",
+    "name": "CJ E&M",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-07-18",
+    "reason": "피흡수합병",
+    "rows": 1896,
+    "startDate": "2010-10-15",
+    "endDate": "2018-06-27"
+  },
+  {
+    "code": "090730",
+    "name": "SIMPAC Metal",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-07-17",
+    "reason": "피흡수합병",
+    "rows": 2400,
+    "startDate": "2008-10-17",
+    "endDate": "2018-06-27"
+  },
+  {
+    "code": "024660",
+    "name": "하림홀딩스",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-07-16",
+    "reason": "피흡수합병",
+    "rows": 2965,
+    "startDate": "2006-05-29",
+    "endDate": "2018-06-27"
+  },
+  {
+    "code": "099660",
+    "name": "신텍",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-07-09",
+    "reason": "발행한 어음 또는 수표가 주거래은행에 의하여 최종부도로 결정되거나 거래은행에 의한 거래정지",
+    "rows": 2061,
+    "startDate": "2009-04-30",
+    "endDate": "2018-07-06"
+  },
+  {
+    "code": "226850",
+    "name": "키움스팩4호",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-06-05",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 636,
+    "startDate": "2015-10-29",
+    "endDate": "2018-06-04"
+  },
+  {
+    "code": "225440",
+    "name": "이베스트스팩3호",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-05-28",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 638,
+    "startDate": "2015-10-19",
+    "endDate": "2018-05-25"
+  },
+  {
+    "code": "246830",
+    "name": "시냅스엠",
+    "market": "KONEX",
+    "delistingDate": "2018-05-14",
+    "reason": "감사의견 거절(계속기업 존속능력에 대한 불확실성)",
+    "rows": 420,
+    "startDate": "2016-07-13",
+    "endDate": "2018-05-11"
+  },
+  {
+    "code": "235090",
+    "name": "태경피엔에스",
+    "market": "KONEX",
+    "delistingDate": "2018-05-09",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 503,
+    "startDate": "2016-03-16",
+    "endDate": "2018-05-08"
+  },
+  {
+    "code": "087220",
+    "name": "스틸플라워",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-05-08",
+    "reason": "감사의견거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 1939,
+    "startDate": "2009-10-27",
+    "endDate": "2018-05-04"
+  },
+  {
+    "code": "099830",
+    "name": "씨그널엔터테인먼트그룹",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-05-04",
+    "reason": "감사의견거절(감사범위 제한)",
+    "rows": 1757,
+    "startDate": "2011-01-24",
+    "endDate": "2018-05-03"
+  },
+  {
+    "code": "252940",
+    "name": "에스엠로보틱스",
+    "market": "KONEX",
+    "delistingDate": "2018-04-25",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 374,
+    "startDate": "2016-09-30",
+    "endDate": "2018-04-24"
+  },
+  {
+    "code": "091270",
+    "name": "유디피",
+    "market": "KONEX",
+    "delistingDate": "2018-04-18",
+    "reason": "지정자문인 선임계약 해지 후 30일이내 미체결(2018.04.04限)",
+    "rows": 781,
+    "startDate": "2014-12-12",
+    "endDate": "2018-04-17"
+  },
+  {
+    "code": "221200",
+    "name": "유진스팩3호",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-04-17",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 637,
+    "startDate": "2015-09-09",
+    "endDate": "2018-04-16"
+  },
+  {
+    "code": "223040",
+    "name": "교보5호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-03-30",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 580,
+    "startDate": "2015-08-27",
+    "endDate": "2018-03-29"
+  },
+  {
+    "code": "221950",
+    "name": "케이비드림3호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-03-30",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 638,
+    "startDate": "2015-08-21",
+    "endDate": "2018-03-29"
+  },
+  {
+    "code": "199870",
+    "name": "세기리텍",
+    "market": "KONEX",
+    "delistingDate": "2018-03-28",
+    "reason": "지정자문인 선임계약 해지후 30일이내 미체결(18.3.14限)",
+    "rows": 517,
+    "startDate": "2015-12-24",
+    "endDate": "2018-03-27"
+  },
+  {
+    "code": "008000",
+    "name": "도레이케미칼",
+    "market": "KOSPI",
+    "delistingDate": "2018-03-20",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2955,
+    "startDate": "2006-02-02",
+    "endDate": "2018-02-21"
+  },
+  {
+    "code": "051170",
+    "name": "썬코어",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-03-15",
+    "reason": "'16사업연도 감사의견거절(계속기업 존속능력에 대한 불확실성) 및 '17사업연도 반기 감사의견거절(계속기업 존속능력에 대한 불확실성)",
+    "rows": 2771,
+    "startDate": "2006-01-27",
+    "endDate": "2018-03-14"
+  },
+  {
+    "code": "222390",
+    "name": "케이비제8호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-03-13",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 636,
+    "startDate": "2015-08-05",
+    "endDate": "2018-03-12"
+  },
+  {
+    "code": "039790",
+    "name": "위노바",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-03-09",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2751,
+    "startDate": "2006-01-23",
+    "endDate": "2018-03-08"
+  },
+  {
+    "code": "219860",
+    "name": "한화에이스스팩2호",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-03-02",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 641,
+    "startDate": "2015-07-20",
+    "endDate": "2018-02-28"
+  },
+  {
+    "code": "219960",
+    "name": "유안타제2호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-02-23",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 638,
+    "startDate": "2015-07-17",
+    "endDate": "2018-02-22"
+  },
+  {
+    "code": "218710",
+    "name": "키움스팩3호",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-02-14",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 642,
+    "startDate": "2015-07-06",
+    "endDate": "2018-02-13"
+  },
+  {
+    "code": "256090",
+    "name": "패션플랫폼",
+    "market": "KONEX",
+    "delistingDate": "2018-02-13",
+    "reason": "피흡수합병",
+    "rows": 228,
+    "startDate": "2016-12-20",
+    "endDate": "2018-01-18"
+  },
+  {
+    "code": "219580",
+    "name": "골든브릿지제3호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-02-07",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 600,
+    "startDate": "2015-06-30",
+    "endDate": "2018-02-06"
+  },
+  {
+    "code": "217810",
+    "name": "엔에이치스팩7호",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-01-19",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 640,
+    "startDate": "2015-06-12",
+    "endDate": "2018-01-18"
+  },
+  {
+    "code": "215750",
+    "name": "미래에셋제3호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2018-01-04",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 577,
+    "startDate": "2015-05-22",
+    "endDate": "2018-01-03"
+  },
+  {
+    "code": "036490",
+    "name": "SK머티리얼즈",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-12-27",
+    "reason": "피흡수합병",
+    "rows": 2980,
+    "startDate": "2009-11-02",
+    "endDate": "2021-11-26"
+  },
+  {
+    "code": "045890",
+    "name": "GV",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-12-20",
+    "reason": "해산사유 발생(파산선고)",
+    "rows": 2812,
+    "startDate": "2009-10-26",
+    "endDate": "2021-12-17"
+  },
+  {
+    "code": "158300",
+    "name": "에스에이티이엔지",
+    "market": "KONEX",
+    "delistingDate": "2021-12-09",
+    "reason": "피흡수합병",
+    "rows": 1825,
+    "startDate": "2013-07-01",
+    "endDate": "2021-11-19"
+  },
+  {
+    "code": "313750",
+    "name": "유안타제4호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-12-07",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 621,
+    "startDate": "2019-03-21",
+    "endDate": "2021-12-06"
+  },
+  {
+    "code": "317320",
+    "name": "한화에스비아이스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-12-07",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 641,
+    "startDate": "2019-05-03",
+    "endDate": "2021-12-06"
+  },
+  {
+    "code": "086080",
+    "name": "다이노나",
+    "market": "KONEX",
+    "delistingDate": "2021-11-22",
+    "reason": "피흡수합병",
+    "rows": 855,
+    "startDate": "2018-05-08",
+    "endDate": "2021-10-27"
+  },
+  {
+    "code": "031390",
+    "name": "녹십자셀",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-11-17",
+    "reason": "피흡수합병",
+    "rows": 2941,
+    "startDate": "2009-09-22",
+    "endDate": "2021-10-27"
+  },
+  {
+    "code": "144620",
+    "name": "코오롱머티리얼",
+    "market": "KOSPI",
+    "delistingDate": "2021-11-05",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2284,
+    "startDate": "2012-04-05",
+    "endDate": "2021-08-02"
+  },
+  {
+    "code": "317030",
+    "name": "케이비17호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-11-04",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 644,
+    "startDate": "2019-03-27",
+    "endDate": "2021-11-03"
+  },
+  {
+    "code": "087730",
+    "name": "이엠네트웍스",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-10-08",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2651,
+    "startDate": "2009-08-14",
+    "endDate": "2021-10-07"
+  },
+  {
+    "code": "033110",
+    "name": "코너스톤네트웍스",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-10-08",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 2622,
+    "startDate": "2009-08-14",
+    "endDate": "2021-10-07"
+  },
+  {
+    "code": "039230",
+    "name": "에이아이비트",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-10-06",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 2624,
+    "startDate": "2009-08-12",
+    "endDate": "2021-10-05"
+  },
+  {
+    "code": "213090",
+    "name": "미래테크놀로지",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-10-05",
+    "reason": "피흡수합병",
+    "rows": 1422,
+    "startDate": "2015-12-01",
+    "endDate": "2021-09-10"
+  },
+  {
+    "code": "111820",
+    "name": "지유온",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-09-30",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2033,
+    "startDate": "2010-06-18",
+    "endDate": "2021-09-29"
+  },
+  {
+    "code": "310840",
+    "name": "엔에이치스팩13호",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-09-23",
+    "reason": "상장예비심사청구서 미제출",
+    "rows": 571,
+    "startDate": "2018-12-24",
+    "endDate": "2021-09-17"
+  },
+  {
+    "code": "141070",
+    "name": "맥스로텍",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-09-16",
+    "reason": "발행한 어음 또는 수표가 주거래은행에 의하여 최종부도로 결정되거나 거래은행에 의한 거래정지",
+    "rows": 2056,
+    "startDate": "2012-11-16",
+    "endDate": "2021-09-15"
+  },
+  {
+    "code": "080440",
+    "name": "에스제이케이",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-09-13",
+    "reason": "해산사유 발생(파산선고)",
+    "rows": 2328,
+    "startDate": "2009-07-24",
+    "endDate": "2021-09-10"
+  },
+  {
+    "code": "033430",
+    "name": "디에스티",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-09-02",
+    "reason": "감사의견 한정(감사범위 제한)",
+    "rows": 2251,
+    "startDate": "2009-07-15",
+    "endDate": "2021-09-01"
+  },
+  {
+    "code": "354230",
+    "name": "폭스소프트",
+    "market": "KONEX",
+    "delistingDate": "2021-09-01",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결(2021.8.18 限)",
+    "rows": 263,
+    "startDate": "2020-06-25",
+    "endDate": "2021-08-31"
+  },
+  {
+    "code": "086250",
+    "name": "이노와이즈",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-08-31",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 2676,
+    "startDate": "2009-07-13",
+    "endDate": "2021-08-30"
+  },
+  {
+    "code": "033660",
+    "name": "우리금융캐피탈",
+    "market": "KOSPI",
+    "delistingDate": "2021-08-27",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2986,
+    "startDate": "2009-07-09",
+    "endDate": "2021-08-05"
+  },
+  {
+    "code": "038160",
+    "name": "팍스넷",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-08-23",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 900,
+    "startDate": "2016-08-01",
+    "endDate": "2021-08-20"
+  },
+  {
+    "code": "033600",
+    "name": "럭슬",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-08-11",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 2631,
+    "startDate": "2009-06-24",
+    "endDate": "2021-08-10"
+  },
+  {
+    "code": "065620",
+    "name": "제낙스",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-08-09",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 2667,
+    "startDate": "2009-06-22",
+    "endDate": "2021-08-06"
+  },
+  {
+    "code": "311270",
+    "name": "키움제5호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-08-02",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 641,
+    "startDate": "2018-12-26",
+    "endDate": "2021-07-30"
+  },
+  {
+    "code": "284420",
+    "name": "휴럼",
+    "market": "KONEX",
+    "delistingDate": "2021-07-27",
+    "reason": "피흡수합병",
+    "rows": 830,
+    "startDate": "2017-12-12",
+    "endDate": "2021-07-08"
+  },
+  {
+    "code": "043290",
+    "name": "케이맥",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-07-20",
+    "reason": "피흡수합병",
+    "rows": 2381,
+    "startDate": "2011-10-25",
+    "endDate": "2021-06-28"
+  },
+  {
+    "code": "028150",
+    "name": "GS홈쇼핑",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-07-16",
+    "reason": "피흡수합병",
+    "rows": 2987,
+    "startDate": "2009-05-29",
+    "endDate": "2021-06-28"
+  },
+  {
+    "code": "307070",
+    "name": "SK4호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-07-13",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 528,
+    "startDate": "2018-12-07",
+    "endDate": "2021-07-12"
+  },
+  {
+    "code": "307160",
+    "name": "하나머스트제6호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-07-08",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 641,
+    "startDate": "2018-11-30",
+    "endDate": "2021-07-07"
+  },
+  {
+    "code": "226350",
+    "name": "아이엠텍",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-06-11",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 1027,
+    "startDate": "2016-02-03",
+    "endDate": "2021-06-10"
+  },
+  {
+    "code": "195440",
+    "name": "퓨전",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-06-10",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 796,
+    "startDate": "2016-12-21",
+    "endDate": "2021-06-09"
+  },
+  {
+    "code": "008800",
+    "name": "행남사",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-06-07",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2469,
+    "startDate": "2009-04-16",
+    "endDate": "2021-06-04"
+  },
+  {
+    "code": "073070",
+    "name": "에이팸",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-06-04",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당",
+    "rows": 2791,
+    "startDate": "2009-04-15",
+    "endDate": "2021-06-03"
+  },
+  {
+    "code": "224880",
+    "name": "SGA클라우드서비스",
+    "market": "KONEX",
+    "delistingDate": "2021-05-06",
+    "reason": "분산요건 미달",
+    "rows": 912,
+    "startDate": "2017-05-23",
+    "endDate": "2021-05-04"
+  },
+  {
+    "code": "120780",
+    "name": "전우정밀",
+    "market": "KONEX",
+    "delistingDate": "2021-05-06",
+    "reason": "분산요건 미달",
+    "rows": 1009,
+    "startDate": "2016-12-23",
+    "endDate": "2021-05-04"
+  },
+  {
+    "code": "102210",
+    "name": "에이치디",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-04-19",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2350,
+    "startDate": "2009-05-21",
+    "endDate": "2021-04-16"
+  },
+  {
+    "code": "023890",
+    "name": "한국아트라스비엑스",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-04-19",
+    "reason": "피흡수합병",
+    "rows": 2986,
+    "startDate": "2009-03-02",
+    "endDate": "2021-03-29"
+  },
+  {
+    "code": "005190",
+    "name": "동성화학",
+    "market": "KOSPI",
+    "delistingDate": "2021-04-16",
+    "reason": "해산 사유 발생",
+    "rows": 2976,
+    "startDate": "2009-02-27",
+    "endDate": "2021-03-29"
+  },
+  {
+    "code": "329050",
+    "name": "구스앤홈",
+    "market": "KONEX",
+    "delistingDate": "2021-04-13",
+    "reason": "사업보고서 법정제출기한('21.3.31限)내 미제출",
+    "rows": 171,
+    "startDate": "2019-07-12",
+    "endDate": "2021-04-12"
+  },
+  {
+    "code": "028040",
+    "name": "미래SCI",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-04-13",
+    "reason": "최근 2년간 3회 이상 공시규정 제19조제1항의 규정에 의한 사업보고서, 반기보고서 또는 분기보고서 법정제출기한 내 미제출",
+    "rows": 2674,
+    "startDate": "2009-02-23",
+    "endDate": "2021-04-12"
+  },
+  {
+    "code": "036260",
+    "name": "이매진아시아",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-02-15",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당",
+    "rows": 2512,
+    "startDate": "2008-12-23",
+    "endDate": "2021-02-10"
+  },
+  {
+    "code": "278380",
+    "name": "원바이오젠",
+    "market": "KONEX",
+    "delistingDate": "2021-02-09",
+    "reason": "피흡수합병",
+    "rows": 360,
+    "startDate": "2019-06-03",
+    "endDate": "2021-01-19"
+  },
+  {
+    "code": "241510",
+    "name": "이에스산업",
+    "market": "KONEX",
+    "delistingDate": "2021-01-26",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결(2021.1.13 限)",
+    "rows": 1137,
+    "startDate": "2016-04-26",
+    "endDate": "2021-01-25"
+  },
+  {
+    "code": "291210",
+    "name": "한국제7호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2021-01-15",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 615,
+    "startDate": "2018-05-11",
+    "endDate": "2021-01-14"
+  },
+  {
+    "code": "284610",
+    "name": "TS트릴리온",
+    "market": "KONEX",
+    "delistingDate": "2020-12-30",
+    "reason": "피흡수합병",
+    "rows": 667,
+    "startDate": "2017-12-22",
+    "endDate": "2020-12-10"
+  },
+  {
+    "code": "251960",
+    "name": "엠에프엠코리아",
+    "market": "KONEX",
+    "delistingDate": "2020-12-30",
+    "reason": "피흡수합병",
+    "rows": 981,
+    "startDate": "2016-09-08",
+    "endDate": "2020-12-10"
+  },
+  {
+    "code": "057500",
+    "name": "SKC 솔믹스",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-12-23",
+    "reason": "타법인의 완전자회사로 편입",
+    "rows": 2986,
+    "startDate": "2008-11-06",
+    "endDate": "2020-12-03"
+  },
+  {
+    "code": "152330",
+    "name": "코리아오토글라스",
+    "market": "KOSPI",
+    "delistingDate": "2020-12-18",
+    "reason": "해산 사유 발생",
+    "rows": 1206,
+    "startDate": "2015-12-29",
+    "endDate": "2020-11-26"
+  },
+  {
+    "code": "271780",
+    "name": "비엔에프코퍼레이션",
+    "market": "KONEX",
+    "delistingDate": "2020-11-05",
+    "reason": "상장폐지 신청('20.10.13)",
+    "rows": 458,
+    "startDate": "2018-11-30",
+    "endDate": "2020-10-13"
+  },
+  {
+    "code": "194510",
+    "name": "파티게임즈",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-09-09",
+    "reason": "감사의견거절(감사범위 제한)",
+    "rows": 825,
+    "startDate": "2014-11-21",
+    "endDate": "2020-09-08"
+  },
+  {
+    "code": "277480",
+    "name": "신한제4호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-08-20",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 658,
+    "startDate": "2017-10-20",
+    "endDate": "2020-08-19"
+  },
+  {
+    "code": "204990",
+    "name": "코썬바이오",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-08-11",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1177,
+    "startDate": "2015-04-03",
+    "endDate": "2020-08-10"
+  },
+  {
+    "code": "228180",
+    "name": "티씨엠생명과학",
+    "market": "KONEX",
+    "delistingDate": "2020-08-07",
+    "reason": "포괄적 주식교환에 따른 상장폐지 신청('20.7.17)",
+    "rows": 1152,
+    "startDate": "2015-10-22",
+    "endDate": "2020-07-14"
+  },
+  {
+    "code": "065940",
+    "name": "바이오빌",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-07-31",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 2628,
+    "startDate": "2008-06-18",
+    "endDate": "2020-07-30"
+  },
+  {
+    "code": "281410",
+    "name": "한국제6호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-07-27",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 635,
+    "startDate": "2017-12-21",
+    "endDate": "2020-07-24"
+  },
+  {
+    "code": "004200",
+    "name": "고려개발",
+    "market": "KOSPI",
+    "delistingDate": "2020-07-21",
+    "reason": "해산 사유 발생",
+    "rows": 2914,
+    "startDate": "2008-06-05",
+    "endDate": "2020-06-26"
+  },
+  {
+    "code": "108790",
+    "name": "인터파크",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-07-16",
+    "reason": "피흡수합병",
+    "rows": 1570,
+    "startDate": "2014-02-06",
+    "endDate": "2020-06-26"
+  },
+  {
+    "code": "002300",
+    "name": "한국제지",
+    "market": "KOSPI",
+    "delistingDate": "2020-07-13",
+    "reason": "해산 사유 발생",
+    "rows": 2990,
+    "startDate": "2008-05-28",
+    "endDate": "2020-06-26"
+  },
+  {
+    "code": "149940",
+    "name": "모다",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-07-10",
+    "reason": "감사의견거절(감사범위 제한)",
+    "rows": 1354,
+    "startDate": "2012-09-25",
+    "endDate": "2020-07-09"
+  },
+  {
+    "code": "279410",
+    "name": "한화에이스스팩4호",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-07-03",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 637,
+    "startDate": "2017-11-27",
+    "endDate": "2020-07-02"
+  },
+  {
+    "code": "134780",
+    "name": "화진",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-07-02",
+    "reason": "감사의견거절(감사범위제한)",
+    "rows": 1748,
+    "startDate": "2011-08-10",
+    "endDate": "2020-07-01"
+  },
+  {
+    "code": "005450",
+    "name": "신한",
+    "market": "KOSPI",
+    "delistingDate": "2020-06-30",
+    "reason": "감사의견 의견거절 2년 계속",
+    "rows": 2629,
+    "startDate": "2008-05-15",
+    "endDate": "2020-06-29"
+  },
+  {
+    "code": "112240",
+    "name": "에스에프씨",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-06-30",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 1778,
+    "startDate": "2011-11-30",
+    "endDate": "2020-06-29"
+  },
+  {
+    "code": "276920",
+    "name": "IBKS제7호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-06-18",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 601,
+    "startDate": "2017-11-10",
+    "endDate": "2020-06-17"
+  },
+  {
+    "code": "183350",
+    "name": "LPK로보틱스",
+    "market": "KONEX",
+    "delistingDate": "2020-06-17",
+    "reason": "외부감사인의 감사의견 거절(감사범위 제한), 감사의견 한정(감사범위 제한)",
+    "rows": 1210,
+    "startDate": "2013-10-11",
+    "endDate": "2020-06-16"
+  },
+  {
+    "code": "220250",
+    "name": "카이노스메드",
+    "market": "KONEX",
+    "delistingDate": "2020-06-08",
+    "reason": "피흡수합병",
+    "rows": 1095,
+    "startDate": "2015-09-10",
+    "endDate": "2020-05-14"
+  },
+  {
+    "code": "103130",
+    "name": "웅진에너지",
+    "market": "KOSPI",
+    "delistingDate": "2020-06-01",
+    "reason": "감사의견 의견거절 2년 계속",
+    "rows": 2147,
+    "startDate": "2010-06-30",
+    "endDate": "2020-05-29"
+  },
+  {
+    "code": "094190",
+    "name": "이엘케이",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-05-22",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 2719,
+    "startDate": "2008-04-02",
+    "endDate": "2020-05-21"
+  },
+  {
+    "code": "030270",
+    "name": "에스마크",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-05-21",
+    "reason": "감사의견거절(감사범위제한 및 계속기업 존속 불확실)",
+    "rows": 2666,
+    "startDate": "2008-04-01",
+    "endDate": "2020-05-20"
+  },
+  {
+    "code": "054340",
+    "name": "피앤텔",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-05-21",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 2270,
+    "startDate": "2008-04-01",
+    "endDate": "2020-05-20"
+  },
+  {
+    "code": "197210",
+    "name": "리드",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-05-14",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1220,
+    "startDate": "2014-09-26",
+    "endDate": "2020-05-13"
+  },
+  {
+    "code": "205290",
+    "name": "케미메디",
+    "market": "KONEX",
+    "delistingDate": "2020-05-13",
+    "reason": "외부감사인의 감사의견 의견거절(감사범위 제한)",
+    "rows": 537,
+    "startDate": "2017-01-13",
+    "endDate": "2020-05-12"
+  },
+  {
+    "code": "189540",
+    "name": "씨티네트웍스",
+    "market": "KONEX",
+    "delistingDate": "2020-05-12",
+    "reason": "감사의견 거절(계속기업 존속능력에 대한 불확실성)",
+    "rows": 1426,
+    "startDate": "2013-12-24",
+    "endDate": "2020-05-11"
+  },
+  {
+    "code": "027390",
+    "name": "한화갤러리아타임월드",
+    "market": "KOSPI",
+    "delistingDate": "2020-04-16",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2966,
+    "startDate": "2008-02-29",
+    "endDate": "2020-02-27"
+  },
+  {
+    "code": "220110",
+    "name": "드림티엔터테인먼트",
+    "market": "KONEX",
+    "delistingDate": "2020-04-10",
+    "reason": "사업보고서 법정제출기한('20.3.30限)내 미제출",
+    "rows": 889,
+    "startDate": "2015-06-24",
+    "endDate": "2020-04-09"
+  },
+  {
+    "code": "123260",
+    "name": "파인넥스",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-04-10",
+    "reason": "제28조제1항제9호에 따라 관리종목 지정 후 공시규정 제19조제1항에 따른 사업보고서 법정제출기한 내 미제출, 최근 2년간 3회 이상 공시규정 제19조제1항의 규정에 의한 사업보고서, 반기보고서 또는 분기보고서 법정제출기한 내 미제출",
+    "rows": 1802,
+    "startDate": "2011-12-05",
+    "endDate": "2020-04-09"
+  },
+  {
+    "code": "011160",
+    "name": "두산건설",
+    "market": "KOSPI",
+    "delistingDate": "2020-03-24",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2961,
+    "startDate": "2008-02-04",
+    "endDate": "2020-03-05"
+  },
+  {
+    "code": "271740",
+    "name": "한국제5호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-03-03",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 636,
+    "startDate": "2017-07-24",
+    "endDate": "2020-03-02"
+  },
+  {
+    "code": "311840",
+    "name": "대원모방",
+    "market": "KONEX",
+    "delistingDate": "2020-02-27",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결(2020.2.13 限)",
+    "rows": 255,
+    "startDate": "2018-12-27",
+    "endDate": "2020-02-26"
+  },
+  {
+    "code": "252370",
+    "name": "유쎌",
+    "market": "KONEX",
+    "delistingDate": "2020-02-27",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결(2020.2.13 限)",
+    "rows": 803,
+    "startDate": "2016-09-29",
+    "endDate": "2020-02-26"
+  },
+  {
+    "code": "079440",
+    "name": "오렌지라이프",
+    "market": "KOSPI",
+    "delistingDate": "2020-02-14",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 661,
+    "startDate": "2017-05-11",
+    "endDate": "2020-01-21"
+  },
+  {
+    "code": "122800",
+    "name": "썬텍",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-02-12",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1682,
+    "startDate": "2010-11-26",
+    "endDate": "2020-02-11"
+  },
+  {
+    "code": "077280",
+    "name": "한컴지엠디",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-01-16",
+    "reason": "피흡수합병",
+    "rows": 2987,
+    "startDate": "2007-11-26",
+    "endDate": "2019-12-24"
+  },
+  {
+    "code": "265920",
+    "name": "한화수성스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-01-15",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정후 1개월 이내 동사유를 미해소",
+    "rows": 590,
+    "startDate": "2017-06-08",
+    "endDate": "2020-01-14"
+  },
+  {
+    "code": "265480",
+    "name": "미래에셋대우스팩1호",
+    "market": "KOSDAQ",
+    "delistingDate": "2020-01-03",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 636,
+    "startDate": "2017-05-26",
+    "endDate": "2020-01-02"
+  },
+  {
+    "code": "377630",
+    "name": "삼성스팩4호",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-12-27",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 641,
+    "startDate": "2021-05-21",
+    "endDate": "2023-12-26"
+  },
+  {
+    "code": "450410",
+    "name": "엔에이치스팩28호",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-12-21",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 136,
+    "startDate": "2023-03-09",
+    "endDate": "2023-11-30"
+  },
+  {
+    "code": "046140",
+    "name": "SBS콘텐츠허브",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-12-18",
+    "reason": "타법인의 완전자회사로 편입",
+    "rows": 2988,
+    "startDate": "2011-10-17",
+    "endDate": "2023-11-29"
+  },
+  {
+    "code": "373340",
+    "name": "유진스팩6호",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-12-13",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 545,
+    "startDate": "2021-04-08",
+    "endDate": "2023-12-12"
+  },
+  {
+    "code": "138690",
+    "name": "엘아이에스",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-12-06",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2641,
+    "startDate": "2011-10-05",
+    "endDate": "2023-12-05"
+  },
+  {
+    "code": "367360",
+    "name": "DB금융스팩9호",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-11-24",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 558,
+    "startDate": "2021-03-16",
+    "endDate": "2023-11-03"
+  },
+  {
+    "code": "015540",
+    "name": "에코바이브",
+    "market": "KOSPI",
+    "delistingDate": "2023-11-07",
+    "reason": "감사의견 의견거절 2년 계속",
+    "rows": 2331,
+    "startDate": "2011-09-01",
+    "endDate": "2023-11-06"
+  },
+  {
+    "code": "405350",
+    "name": "IBKS제17호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-11-03",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 280,
+    "startDate": "2022-02-18",
+    "endDate": "2023-10-06"
+  },
+  {
+    "code": "440200",
+    "name": "케이비제23호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-11-03",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 172,
+    "startDate": "2022-11-03",
+    "endDate": "2023-10-13"
+  },
+  {
+    "code": "085370",
+    "name": "루트로닉",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-10-27",
+    "reason": "타법인의 완전자회사로 편입",
+    "rows": 2988,
+    "startDate": "2011-08-23",
+    "endDate": "2023-10-10"
+  },
+  {
+    "code": "069110",
+    "name": "코스온",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-10-20",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 2371,
+    "startDate": "2011-08-16",
+    "endDate": "2023-10-19"
+  },
+  {
+    "code": "353060",
+    "name": "에이치엠씨제5호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-09-22",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 621,
+    "startDate": "2020-12-16",
+    "endDate": "2023-09-21"
+  },
+  {
+    "code": "400560",
+    "name": "하나금융20호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-09-19",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 349,
+    "startDate": "2021-12-27",
+    "endDate": "2023-08-18"
+  },
+  {
+    "code": "366330",
+    "name": "신한제7호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-09-18",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 508,
+    "startDate": "2021-02-04",
+    "endDate": "2023-08-31"
+  },
+  {
+    "code": "242350",
+    "name": "피엔아이컴퍼니",
+    "market": "KONEX",
+    "delistingDate": "2023-09-18",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결(2023.9.4 限)",
+    "rows": 1621,
+    "startDate": "2016-12-22",
+    "endDate": "2023-09-15"
+  },
+  {
+    "code": "367480",
+    "name": "유안타제8호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-09-08",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 479,
+    "startDate": "2021-04-05",
+    "endDate": "2023-08-17"
+  },
+  {
+    "code": "409570",
+    "name": "한국제10호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-08-31",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 271,
+    "startDate": "2022-02-21",
+    "endDate": "2023-08-04"
+  },
+  {
+    "code": "298870",
+    "name": "우리벤처파트너스",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-08-28",
+    "reason": "타법인의 완전자회사로 편입",
+    "rows": 404,
+    "startDate": "2021-12-16",
+    "endDate": "2023-08-03"
+  },
+  {
+    "code": "010050",
+    "name": "우리종금",
+    "market": "KOSPI",
+    "delistingDate": "2023-08-28",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2969,
+    "startDate": "2011-06-28",
+    "endDate": "2023-08-03"
+  },
+  {
+    "code": "048260",
+    "name": "오스템임플란트",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-08-14",
+    "reason": "상장폐지 신청('23.06.28)",
+    "rows": 2870,
+    "startDate": "2011-06-15",
+    "endDate": "2023-08-11"
+  },
+  {
+    "code": "348840",
+    "name": "데이드림엔터",
+    "market": "KONEX",
+    "delistingDate": "2023-08-10",
+    "reason": "상장폐지 신청",
+    "rows": 710,
+    "startDate": "2020-08-18",
+    "endDate": "2023-08-09"
+  },
+  {
+    "code": "078650",
+    "name": "지나인제약",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-07-21",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업가정 불확실성)",
+    "rows": 2649,
+    "startDate": "2011-05-23",
+    "endDate": "2023-07-20"
+  },
+  {
+    "code": "367340",
+    "name": "DB금융스팩8호",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-07-17",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 641,
+    "startDate": "2020-12-09",
+    "endDate": "2023-07-14"
+  },
+  {
+    "code": "096640",
+    "name": "멜파스",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-07-17",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2675,
+    "startDate": "2011-05-17",
+    "endDate": "2023-07-14"
+  },
+  {
+    "code": "285770",
+    "name": "라이프사이언스테크놀로지",
+    "market": "KONEX",
+    "delistingDate": "2023-06-12",
+    "reason": "외부감사인의 감사의견 의견거절",
+    "rows": 1053,
+    "startDate": "2017-12-21",
+    "endDate": "2023-06-09"
+  },
+  {
+    "code": "281310",
+    "name": "바이오시네틱스",
+    "market": "KONEX",
+    "delistingDate": "2023-06-12",
+    "reason": "외부감사인의 감사의견 의견거절",
+    "rows": 1056,
+    "startDate": "2017-12-15",
+    "endDate": "2023-06-09"
+  },
+  {
+    "code": "388220",
+    "name": "하나금융19호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-05-23",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 295,
+    "startDate": "2021-10-07",
+    "endDate": "2023-04-26"
+  },
+  {
+    "code": "353490",
+    "name": "미래에셋대우스팩 5호",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-05-17",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 571,
+    "startDate": "2020-08-28",
+    "endDate": "2023-05-16"
+  },
+  {
+    "code": "050540",
+    "name": "엠피씨플러스",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-05-08",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 2235,
+    "startDate": "2011-03-08",
+    "endDate": "2023-05-04"
+  },
+  {
+    "code": "140290",
+    "name": "청광건설",
+    "market": "KONEX",
+    "delistingDate": "2023-05-08",
+    "reason": "상장폐지 신청",
+    "rows": 2185,
+    "startDate": "2013-12-24",
+    "endDate": "2023-05-04"
+  },
+  {
+    "code": "135160",
+    "name": "무송지오씨",
+    "market": "KONEX",
+    "delistingDate": "2023-05-02",
+    "reason": "발행한 어음 또는 수표가 주거래은행에 의하여 최종부도로 결정되거나 거래은행에 의한 거래정지",
+    "rows": 1800,
+    "startDate": "2015-12-28",
+    "endDate": "2023-04-28"
+  },
+  {
+    "code": "396770",
+    "name": "엔에이치스팩22호",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-04-28",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 234,
+    "startDate": "2021-12-24",
+    "endDate": "2023-04-06"
+  },
+  {
+    "code": "008560",
+    "name": "메리츠증권",
+    "market": "KOSPI",
+    "delistingDate": "2023-04-25",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2984,
+    "startDate": "2011-02-24",
+    "endDate": "2023-03-31"
+  },
+  {
+    "code": "215050",
+    "name": "비엔디생활건강",
+    "market": "KONEX",
+    "delistingDate": "2023-04-21",
+    "reason": "감사의견 의견거절(감사범위제한)",
+    "rows": 1679,
+    "startDate": "2015-03-30",
+    "endDate": "2023-04-20"
+  },
+  {
+    "code": "426670",
+    "name": "대신밸런스제12호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-04-20",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 128,
+    "startDate": "2022-07-14",
+    "endDate": "2023-03-30"
+  },
+  {
+    "code": "267060",
+    "name": "명진홀딩스",
+    "market": "KONEX",
+    "delistingDate": "2023-04-18",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결(2023.4.4 限)",
+    "rows": 1167,
+    "startDate": "2017-08-24",
+    "endDate": "2023-04-17"
+  },
+  {
+    "code": "058420",
+    "name": "제이웨이",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-04-14",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업가정 불확실성)",
+    "rows": 2204,
+    "startDate": "2011-02-15",
+    "endDate": "2023-04-13"
+  },
+  {
+    "code": "271850",
+    "name": "다이오진",
+    "market": "KONEX",
+    "delistingDate": "2023-04-12",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결(2023.3.29 限)",
+    "rows": 1178,
+    "startDate": "2017-06-19",
+    "endDate": "2023-04-11"
+  },
+  {
+    "code": "267810",
+    "name": "앙츠",
+    "market": "KONEX",
+    "delistingDate": "2023-04-04",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결(2023.3.21 限)",
+    "rows": 1409,
+    "startDate": "2017-04-28",
+    "endDate": "2023-04-03"
+  },
+  {
+    "code": "056000",
+    "name": "코원플레이",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-03-30",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업가정 불확실성)",
+    "rows": 2452,
+    "startDate": "2011-01-26",
+    "endDate": "2023-03-29"
+  },
+  {
+    "code": "387310",
+    "name": "대신밸런스제10호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-03-16",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 304,
+    "startDate": "2021-09-17",
+    "endDate": "2023-02-22"
+  },
+  {
+    "code": "353070",
+    "name": "에이치엠씨제4호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-03-10",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 644,
+    "startDate": "2020-07-29",
+    "endDate": "2023-03-09"
+  },
+  {
+    "code": "397500",
+    "name": "대신밸런스제11호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-03-09",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 189,
+    "startDate": "2021-12-02",
+    "endDate": "2023-02-15"
+  },
+  {
+    "code": "343510",
+    "name": "하나금융16호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-03-02",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 642,
+    "startDate": "2020-07-23",
+    "endDate": "2023-02-28"
+  },
+  {
+    "code": "351340",
+    "name": "IBKS제13호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-02-21",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 601,
+    "startDate": "2020-07-15",
+    "endDate": "2023-02-20"
+  },
+  {
+    "code": "000060",
+    "name": "메리츠화재",
+    "market": "KOSPI",
+    "delistingDate": "2023-02-21",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2971,
+    "startDate": "2010-12-20",
+    "endDate": "2023-01-27"
+  },
+  {
+    "code": "344050",
+    "name": "신영스팩6호",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-02-17",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 652,
+    "startDate": "2020-02-12",
+    "endDate": "2023-01-27"
+  },
+  {
+    "code": "064510",
+    "name": "유네코",
+    "market": "KOSDAQ",
+    "delistingDate": "2023-01-17",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력 불확실성)",
+    "rows": 786,
+    "startDate": "2018-03-15",
+    "endDate": "2023-01-16"
+  },
+  {
+    "code": "342550",
+    "name": "케이비제20호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-12-29",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 637,
+    "startDate": "2020-01-30",
+    "endDate": "2022-12-15"
+  },
+  {
+    "code": "329020",
+    "name": "오션스톤",
+    "market": "KONEX",
+    "delistingDate": "2022-12-27",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결(2022.12.13 限)",
+    "rows": 622,
+    "startDate": "2020-05-07",
+    "endDate": "2022-12-26"
+  },
+  {
+    "code": "349720",
+    "name": "이베스트스팩5호",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-12-26",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 644,
+    "startDate": "2020-05-20",
+    "endDate": "2022-12-23"
+  },
+  {
+    "code": "341160",
+    "name": "하나금융15호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-12-23",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 657,
+    "startDate": "2020-01-30",
+    "endDate": "2022-12-01"
+  },
+  {
+    "code": "217600",
+    "name": "켐온",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-12-16",
+    "reason": "피흡수합병",
+    "rows": 1773,
+    "startDate": "2015-06-26",
+    "endDate": "2022-11-28"
+  },
+  {
+    "code": "290510",
+    "name": "코리아센터",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-12-16",
+    "reason": "피흡수합병",
+    "rows": 739,
+    "startDate": "2019-11-29",
+    "endDate": "2022-11-25"
+  },
+  {
+    "code": "367460",
+    "name": "유안타제7호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-12-08",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 410,
+    "startDate": "2020-12-28",
+    "endDate": "2022-11-17"
+  },
+  {
+    "code": "131390",
+    "name": "원익피앤이",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-11-29",
+    "reason": "피흡수합병",
+    "rows": 2736,
+    "startDate": "2011-09-27",
+    "endDate": "2022-11-03"
+  },
+  {
+    "code": "158310",
+    "name": "참존글로벌",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-11-09",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1712,
+    "startDate": "2013-04-03",
+    "endDate": "2022-11-08"
+  },
+  {
+    "code": "060300",
+    "name": "레드로버",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-11-04",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적을 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2186,
+    "startDate": "2010-09-02",
+    "endDate": "2022-11-03"
+  },
+  {
+    "code": "347140",
+    "name": "케이프이에스제4호",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-10-31",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 641,
+    "startDate": "2020-03-24",
+    "endDate": "2022-10-28"
+  },
+  {
+    "code": "126870",
+    "name": "뉴로스",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-10-26",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력 불확실성)",
+    "rows": 2244,
+    "startDate": "2012-02-15",
+    "endDate": "2022-10-25"
+  },
+  {
+    "code": "337450",
+    "name": "SK5호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-10-18",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 638,
+    "startDate": "2019-12-04",
+    "endDate": "2022-09-23"
+  },
+  {
+    "code": "340350",
+    "name": "SK6호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-10-18",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 641,
+    "startDate": "2020-03-11",
+    "endDate": "2022-10-17"
+  },
+  {
+    "code": "090740",
+    "name": "연이비앤티",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-10-17",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2731,
+    "startDate": "2010-08-13",
+    "endDate": "2022-10-14"
+  },
+  {
+    "code": "182690",
+    "name": "테라셈",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-10-17",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 1788,
+    "startDate": "2013-10-11",
+    "endDate": "2022-10-14"
+  },
+  {
+    "code": "046110",
+    "name": "한일네트웍스",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-10-05",
+    "reason": "상장폐지 신청('22.08.31)",
+    "rows": 2986,
+    "startDate": "2010-08-04",
+    "endDate": "2022-10-04"
+  },
+  {
+    "code": "332710",
+    "name": "하나금융14호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-09-26",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 545,
+    "startDate": "2019-11-01",
+    "endDate": "2022-09-23"
+  },
+  {
+    "code": "127160",
+    "name": "매직마이크로",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-09-22",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력 불확실성)",
+    "rows": 1592,
+    "startDate": "2013-12-20",
+    "endDate": "2022-09-21"
+  },
+  {
+    "code": "053110",
+    "name": "소리바다",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-09-07",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 2665,
+    "startDate": "2010-07-12",
+    "endDate": "2022-09-06"
+  },
+  {
+    "code": "340120",
+    "name": "하이제5호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-07-28",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 554,
+    "startDate": "2019-12-23",
+    "endDate": "2022-07-27"
+  },
+  {
+    "code": "002270",
+    "name": "롯데푸드",
+    "market": "KOSPI",
+    "delistingDate": "2022-07-20",
+    "reason": "해산 사유 발생",
+    "rows": 2967,
+    "startDate": "2010-05-24",
+    "endDate": "2022-06-24"
+  },
+  {
+    "code": "216280",
+    "name": "원텍",
+    "market": "KONEX",
+    "delistingDate": "2022-06-30",
+    "reason": "피흡수합병",
+    "rows": 1634,
+    "startDate": "2015-04-29",
+    "endDate": "2022-06-09"
+  },
+  {
+    "code": "176440",
+    "name": "에이치엔티",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-06-27",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적을 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 817,
+    "startDate": "2016-11-28",
+    "endDate": "2022-06-24"
+  },
+  {
+    "code": "309900",
+    "name": "티티씨디펜스",
+    "market": "KONEX",
+    "delistingDate": "2022-06-16",
+    "reason": "외부감사인의 감사의견 의견거절",
+    "rows": 224,
+    "startDate": "2019-06-27",
+    "endDate": "2022-06-15"
+  },
+  {
+    "code": "220630",
+    "name": "맘스터치",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-05-31",
+    "reason": "상장폐지 신청('22.03.30)",
+    "rows": 1537,
+    "startDate": "2015-08-28",
+    "endDate": "2022-05-30"
+  },
+  {
+    "code": "050320",
+    "name": "에스에이치엔엘",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-05-31",
+    "reason": "감사의견 거절",
+    "rows": 1680,
+    "startDate": "2010-04-02",
+    "endDate": "2022-05-30"
+  },
+  {
+    "code": "052190",
+    "name": "세영디앤씨",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-05-27",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 2362,
+    "startDate": "2010-03-31",
+    "endDate": "2022-05-26"
+  },
+  {
+    "code": "240340",
+    "name": "인터코스",
+    "market": "KONEX",
+    "delistingDate": "2022-05-17",
+    "reason": "외부감사인의 감사의견 의견거절",
+    "rows": 1215,
+    "startDate": "2016-04-21",
+    "endDate": "2022-05-16"
+  },
+  {
+    "code": "330990",
+    "name": "케이비제19호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-05-09",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 642,
+    "startDate": "2019-09-30",
+    "endDate": "2022-05-06"
+  },
+  {
+    "code": "225850",
+    "name": "미애부",
+    "market": "KONEX",
+    "delistingDate": "2022-04-27",
+    "reason": "감사의견 의견거절(감사범위제한 및 계속기업 존속불확실성)",
+    "rows": 1304,
+    "startDate": "2015-12-08",
+    "endDate": "2022-04-26"
+  },
+  {
+    "code": "225860",
+    "name": "엠앤씨생명과학",
+    "market": "KONEX",
+    "delistingDate": "2022-04-27",
+    "reason": "감사의견 의견거절(감사범위제한 및 계속기업 존속불확실성)",
+    "rows": 963,
+    "startDate": "2017-04-25",
+    "endDate": "2022-04-26"
+  },
+  {
+    "code": "053660",
+    "name": "현진소재",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-04-26",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 2284,
+    "startDate": "2010-02-26",
+    "endDate": "2022-04-25"
+  },
+  {
+    "code": "039670",
+    "name": "스포츠서울",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-04-20",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2123,
+    "startDate": "2010-02-22",
+    "endDate": "2022-04-19"
+  },
+  {
+    "code": "041140",
+    "name": "넥슨지티",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-04-15",
+    "reason": "피흡수합병",
+    "rows": 2954,
+    "startDate": "2010-02-17",
+    "endDate": "2022-03-28"
+  },
+  {
+    "code": "270020",
+    "name": "이십일스토어",
+    "market": "KONEX",
+    "delistingDate": "2022-04-14",
+    "reason": "사업보고서 법정제출기한('22.3.31限) 내 미제출",
+    "rows": 776,
+    "startDate": "2017-09-08",
+    "endDate": "2022-04-13"
+  },
+  {
+    "code": "066110",
+    "name": "한프",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-04-06",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 2387,
+    "startDate": "2010-02-05",
+    "endDate": "2022-04-05"
+  },
+  {
+    "code": "329560",
+    "name": "상상인이안제2호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-04-04",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 637,
+    "startDate": "2019-08-30",
+    "endDate": "2022-04-01"
+  },
+  {
+    "code": "138250",
+    "name": "엔에스쇼핑",
+    "market": "KOSPI",
+    "delistingDate": "2022-03-22",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 1690,
+    "startDate": "2015-03-27",
+    "endDate": "2022-02-24"
+  },
+  {
+    "code": "225330",
+    "name": "씨엠에스에듀",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-03-17",
+    "reason": "피흡수합병",
+    "rows": 1433,
+    "startDate": "2016-04-07",
+    "endDate": "2022-02-24"
+  },
+  {
+    "code": "327970",
+    "name": "케어룸의료산업",
+    "market": "KONEX",
+    "delistingDate": "2022-03-11",
+    "reason": "상장폐지 신청",
+    "rows": 624,
+    "startDate": "2019-08-05",
+    "endDate": "2022-03-10"
+  },
+  {
+    "code": "114570",
+    "name": "지스마트글로벌",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-02-23",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 2506,
+    "startDate": "2010-02-04",
+    "endDate": "2022-02-22"
+  },
+  {
+    "code": "007630",
+    "name": "폴루스바이오팜",
+    "market": "KOSPI",
+    "delistingDate": "2022-02-22",
+    "reason": "감사의견 의견거절 2년 계속",
+    "rows": 2367,
+    "startDate": "2009-12-23",
+    "endDate": "2022-02-21"
+  },
+  {
+    "code": "323210",
+    "name": "이베스트이안스팩1호",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-02-17",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 640,
+    "startDate": "2019-07-15",
+    "endDate": "2022-02-16"
+  },
+  {
+    "code": "323940",
+    "name": "케이비제18호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-02-04",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 646,
+    "startDate": "2019-06-24",
+    "endDate": "2022-02-03"
+  },
+  {
+    "code": "101060",
+    "name": "SBS미디어홀딩스",
+    "market": "KOSPI",
+    "delistingDate": "2022-01-18",
+    "reason": "해산 사유 발생",
+    "rows": 2982,
+    "startDate": "2009-11-23",
+    "endDate": "2021-12-21"
+  },
+  {
+    "code": "015350",
+    "name": "부산가스",
+    "market": "KOSPI",
+    "delistingDate": "2022-01-18",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2984,
+    "startDate": "2009-11-23",
+    "endDate": "2021-12-23"
+  },
+  {
+    "code": "221610",
+    "name": "자안바이오",
+    "market": "KOSDAQ",
+    "delistingDate": "2022-01-05",
+    "reason": "발행한 어음 또는 수표가 주거래은행에 의하여 최종부도로 결정되거나 거래은행에 의한 거래정지",
+    "rows": 1355,
+    "startDate": "2016-01-27",
+    "endDate": "2022-01-04"
+  },
+  {
+    "code": "054630",
+    "name": "에이디칩스",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-12-30",
+    "reason": "감사의견 거절(계속기업 존속능력 불확실성)",
+    "rows": 2593,
+    "startDate": "2013-10-11",
+    "endDate": "2025-12-29"
+  },
+  {
+    "code": "448760",
+    "name": "IBKS제22호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-12-29",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 654,
+    "startDate": "2023-04-06",
+    "endDate": "2025-12-11"
+  },
+  {
+    "code": "266870",
+    "name": "파워풀엑스",
+    "market": "KONEX",
+    "delistingDate": "2025-12-29",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결('25.12.12限)",
+    "rows": 2093,
+    "startDate": "2017-04-24",
+    "endDate": "2025-12-26"
+  },
+  {
+    "code": "456700",
+    "name": "길교이앤씨",
+    "market": "KONEX",
+    "delistingDate": "2025-12-16",
+    "reason": "피흡수합병",
+    "rows": 578,
+    "startDate": "2023-07-26",
+    "endDate": "2025-12-10"
+  },
+  {
+    "code": "010620",
+    "name": "HD현대미포",
+    "market": "KOSPI",
+    "delistingDate": "2025-12-15",
+    "reason": "해산 사유 발생",
+    "rows": 2988,
+    "startDate": "2013-09-25",
+    "endDate": "2025-11-26"
+  },
+  {
+    "code": "335890",
+    "name": "비올",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-12-10",
+    "reason": "상장폐지 신청('25.11.06)",
+    "rows": 1404,
+    "startDate": "2019-12-03",
+    "endDate": "2025-12-09"
+  },
+  {
+    "code": "102280",
+    "name": "쌍방울",
+    "market": "KOSPI",
+    "delistingDate": "2025-11-28",
+    "reason": "기업의 계속성, 경영의 투명성 및 기타 공익과 투자자 보호 등을 종합적으로 고려하여 상장폐지 기준에 해당한다고 결정",
+    "rows": 2429,
+    "startDate": "2013-09-05",
+    "endDate": "2025-11-27"
+  },
+  {
+    "code": "014200",
+    "name": "광림",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-11-26",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2320,
+    "startDate": "2013-09-03",
+    "endDate": "2025-11-25"
+  },
+  {
+    "code": "151910",
+    "name": "퓨처코어",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-11-26",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2285,
+    "startDate": "2013-09-03",
+    "endDate": "2025-11-25"
+  },
+  {
+    "code": "006390",
+    "name": "한일현대시멘트",
+    "market": "KOSPI",
+    "delistingDate": "2025-11-21",
+    "reason": "해산 사유 발생",
+    "rows": 2792,
+    "startDate": "2013-08-29",
+    "endDate": "2025-10-29"
+  },
+  {
+    "code": "442770",
+    "name": "IBKS제21호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-11-17",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 652,
+    "startDate": "2022-12-16",
+    "endDate": "2025-10-22"
+  },
+  {
+    "code": "448370",
+    "name": "하나27호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-11-13",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 547,
+    "startDate": "2023-04-06",
+    "endDate": "2025-11-12"
+  },
+  {
+    "code": "091090",
+    "name": "세원이앤씨",
+    "market": "KOSPI",
+    "delistingDate": "2025-10-27",
+    "reason": "감사의견 의견거절 2년 계속",
+    "rows": 2393,
+    "startDate": "2013-08-01",
+    "endDate": "2025-10-24"
+  },
+  {
+    "code": "454750",
+    "name": "하나28호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-10-27",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 478,
+    "startDate": "2023-08-10",
+    "endDate": "2025-10-01"
+  },
+  {
+    "code": "442900",
+    "name": "미래에셋드림스팩1호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-10-23",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 633,
+    "startDate": "2023-03-15",
+    "endDate": "2025-10-22"
+  },
+  {
+    "code": "446750",
+    "name": "하나26호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-10-16",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 634,
+    "startDate": "2023-03-07",
+    "endDate": "2025-10-15"
+  },
+  {
+    "code": "448740",
+    "name": "삼성스팩8호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-10-14",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 635,
+    "startDate": "2023-03-02",
+    "endDate": "2025-10-13"
+  },
+  {
+    "code": "449020",
+    "name": "유안타제13호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-10-10",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 634,
+    "startDate": "2023-02-28",
+    "endDate": "2025-10-02"
+  },
+  {
+    "code": "005390",
+    "name": "신성통상",
+    "market": "KOSPI",
+    "delistingDate": "2025-09-30",
+    "reason": "신청에 의한 상장폐지",
+    "rows": 2983,
+    "startDate": "2013-07-12",
+    "endDate": "2025-09-29"
+  },
+  {
+    "code": "010420",
+    "name": "한솔PNS",
+    "market": "KOSPI",
+    "delistingDate": "2025-09-25",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2968,
+    "startDate": "2013-07-09",
+    "endDate": "2025-09-03"
+  },
+  {
+    "code": "093230",
+    "name": "이아이디",
+    "market": "KOSPI",
+    "delistingDate": "2025-09-11",
+    "reason": "기업의 계속성, 경영의 투명성 및 기타 공익과 투자자 보호 등을 종합적으로 고려하여 상장폐지 기준에 해당한다고 결정",
+    "rows": 2426,
+    "startDate": "2013-06-25",
+    "endDate": "2025-09-10"
+  },
+  {
+    "code": "096040",
+    "name": "이트론",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-09-10",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2281,
+    "startDate": "2013-06-24",
+    "endDate": "2025-09-09"
+  },
+  {
+    "code": "024810",
+    "name": "이화전기",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-09-10",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2278,
+    "startDate": "2013-06-24",
+    "endDate": "2025-09-09"
+  },
+  {
+    "code": "446190",
+    "name": "미래에셋비전스팩2호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-09-09",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 520,
+    "startDate": "2023-02-24",
+    "endDate": "2025-08-13"
+  },
+  {
+    "code": "019590",
+    "name": "에스유앤피",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-09-08",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2143,
+    "startDate": "2013-06-20",
+    "endDate": "2025-09-05"
+  },
+  {
+    "code": "430220",
+    "name": "신영스팩8호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-08-22",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 650,
+    "startDate": "2022-08-26",
+    "endDate": "2025-07-31"
+  },
+  {
+    "code": "290380",
+    "name": "대유",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-08-21",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1174,
+    "startDate": "2018-08-10",
+    "endDate": "2025-08-20"
+  },
+  {
+    "code": "044060",
+    "name": "조광ILI",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-08-21",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2449,
+    "startDate": "2013-06-03",
+    "endDate": "2025-08-20"
+  },
+  {
+    "code": "086460",
+    "name": "큐러블",
+    "market": "KONEX",
+    "delistingDate": "2025-08-19",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2737,
+    "startDate": "2013-07-01",
+    "endDate": "2025-08-18"
+  },
+  {
+    "code": "289860",
+    "name": "지슨",
+    "market": "KONEX",
+    "delistingDate": "2025-08-14",
+    "reason": "피흡수합병",
+    "rows": 529,
+    "startDate": "2023-01-26",
+    "endDate": "2025-07-24"
+  },
+  {
+    "code": "445970",
+    "name": "신영스팩9호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-08-01",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 632,
+    "startDate": "2022-12-27",
+    "endDate": "2025-07-31"
+  },
+  {
+    "code": "049770",
+    "name": "동원F&B",
+    "market": "KOSPI",
+    "delistingDate": "2025-07-31",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2981,
+    "startDate": "2013-05-13",
+    "endDate": "2025-07-09"
+  },
+  {
+    "code": "445360",
+    "name": "비엔케이제1호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-07-28",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 631,
+    "startDate": "2022-12-22",
+    "endDate": "2025-07-25"
+  },
+  {
+    "code": "440820",
+    "name": "엔에이치스팩27호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-07-21",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 630,
+    "startDate": "2022-12-16",
+    "endDate": "2025-07-18"
+  },
+  {
+    "code": "023460",
+    "name": "CNH",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-07-14",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2844,
+    "startDate": "2013-04-23",
+    "endDate": "2025-07-11"
+  },
+  {
+    "code": "440790",
+    "name": "교보13호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-07-11",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 613,
+    "startDate": "2022-11-02",
+    "endDate": "2025-07-10"
+  },
+  {
+    "code": "442310",
+    "name": "대신밸런스제14호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-07-11",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 570,
+    "startDate": "2022-12-05",
+    "endDate": "2025-07-10"
+  },
+  {
+    "code": "476470",
+    "name": "KB제28호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-07-09",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 177,
+    "startDate": "2024-05-17",
+    "endDate": "2025-06-19"
+  },
+  {
+    "code": "442130",
+    "name": "유진스팩9호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-07-09",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 633,
+    "startDate": "2022-12-01",
+    "endDate": "2025-07-08"
+  },
+  {
+    "code": "439410",
+    "name": "엔에이치스팩26호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-07-08",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 632,
+    "startDate": "2022-12-01",
+    "endDate": "2025-07-07"
+  },
+  {
+    "code": "323230",
+    "name": "엠에프엠코리아",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-06-19",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1211,
+    "startDate": "2019-06-19",
+    "endDate": "2025-06-18"
+  },
+  {
+    "code": "226440",
+    "name": "한송네오텍",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-06-19",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1516,
+    "startDate": "2015-10-06",
+    "endDate": "2025-06-18"
+  },
+  {
+    "code": "071460",
+    "name": "위니아",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-06-18",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업가정 불확실성)",
+    "rows": 1816,
+    "startDate": "2016-07-14",
+    "endDate": "2025-06-17"
+  },
+  {
+    "code": "072520",
+    "name": "제넨바이오",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-06-18",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 가정 불확실성)",
+    "rows": 2684,
+    "startDate": "2013-03-28",
+    "endDate": "2025-06-17"
+  },
+  {
+    "code": "468510",
+    "name": "삼성스팩9호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-06-17",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 311,
+    "startDate": "2023-12-04",
+    "endDate": "2025-05-23"
+  },
+  {
+    "code": "029960",
+    "name": "코엔텍",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-06-16",
+    "reason": "타법인의 완전자회사로 편입",
+    "rows": 2989,
+    "startDate": "2013-03-26",
+    "endDate": "2025-05-27"
+  },
+  {
+    "code": "438580",
+    "name": "엔에이치스팩25호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-06-11",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 467,
+    "startDate": "2022-11-03",
+    "endDate": "2025-06-10"
+  },
+  {
+    "code": "439730",
+    "name": "IBKS제20호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-06-02",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 565,
+    "startDate": "2022-10-28",
+    "endDate": "2025-05-30"
+  },
+  {
+    "code": "439250",
+    "name": "삼성스팩7호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-06-02",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 634,
+    "startDate": "2022-10-26",
+    "endDate": "2025-05-30"
+  },
+  {
+    "code": "283100",
+    "name": "노보믹스",
+    "market": "KONEX",
+    "delistingDate": "2025-05-28",
+    "reason": "외부감사인의 감사의견 의견거절",
+    "rows": 485,
+    "startDate": "2023-04-19",
+    "endDate": "2025-05-27"
+  },
+  {
+    "code": "012600",
+    "name": "청호ICT",
+    "market": "KOSPI",
+    "delistingDate": "2025-05-27",
+    "reason": "기업의 계속성, 경영의 투명성 및 기타 공익과 투자자 보호 등을 종합적으로 고려하여 상장폐지 기준에 해당한다고 결정",
+    "rows": 1972,
+    "startDate": "2013-03-08",
+    "endDate": "2025-05-26"
+  },
+  {
+    "code": "437780",
+    "name": "엔에이치스팩24호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-05-26",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 532,
+    "startDate": "2022-10-20",
+    "endDate": "2025-05-23"
+  },
+  {
+    "code": "435620",
+    "name": "하나금융25호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-05-26",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 494,
+    "startDate": "2022-10-20",
+    "endDate": "2025-05-23"
+  },
+  {
+    "code": "456440",
+    "name": "DB금융스팩11호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-05-16",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 370,
+    "startDate": "2023-07-12",
+    "endDate": "2025-04-23"
+  },
+  {
+    "code": "435870",
+    "name": "에스케이증권제8호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-05-16",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 434,
+    "startDate": "2022-10-06",
+    "endDate": "2025-05-15"
+  },
+  {
+    "code": "457390",
+    "name": "대신밸런스제15호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-05-15",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 356,
+    "startDate": "2023-08-30",
+    "endDate": "2025-04-23"
+  },
+  {
+    "code": "435380",
+    "name": "유안타제10호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-05-14",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 634,
+    "startDate": "2022-10-06",
+    "endDate": "2025-05-13"
+  },
+  {
+    "code": "258540",
+    "name": "에스엘테라퓨틱스",
+    "market": "KONEX",
+    "delistingDate": "2025-05-07",
+    "reason": "감사의견 의견거절",
+    "rows": 2050,
+    "startDate": "2016-11-29",
+    "endDate": "2025-05-02"
+  },
+  {
+    "code": "477530",
+    "name": "한국제14호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-04-29",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 157,
+    "startDate": "2024-06-19",
+    "endDate": "2025-04-10"
+  },
+  {
+    "code": "418210",
+    "name": "신한제10호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-04-04",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 575,
+    "startDate": "2022-07-29",
+    "endDate": "2025-04-03"
+  },
+  {
+    "code": "214870",
+    "name": "한울BnC",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-03-31",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업가정 불확실성)",
+    "rows": 1822,
+    "startDate": "2015-10-13",
+    "endDate": "2025-03-28"
+  },
+  {
+    "code": "458320",
+    "name": "KB제26호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-03-28",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 272,
+    "startDate": "2023-08-10",
+    "endDate": "2025-03-06"
+  },
+  {
+    "code": "038340",
+    "name": "MIT",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-03-28",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1419,
+    "startDate": "2013-01-10",
+    "endDate": "2025-03-27"
+  },
+  {
+    "code": "430700",
+    "name": "유안타제9호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-03-17",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 637,
+    "startDate": "2022-08-04",
+    "endDate": "2025-03-14"
+  },
+  {
+    "code": "268600",
+    "name": "셀리버리",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-03-07",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 가정 불확실성)",
+    "rows": 1086,
+    "startDate": "2018-11-09",
+    "endDate": "2025-03-06"
+  },
+  {
+    "code": "433530",
+    "name": "키움제7호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-03-07",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 543,
+    "startDate": "2022-09-07",
+    "endDate": "2025-03-05"
+  },
+  {
+    "code": "413600",
+    "name": "키움제6호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-02-28",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 656,
+    "startDate": "2022-04-07",
+    "endDate": "2025-02-05"
+  },
+  {
+    "code": "446600",
+    "name": "카이바이오텍",
+    "market": "KONEX",
+    "delistingDate": "2025-02-25",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결('25.2.11限)",
+    "rows": 496,
+    "startDate": "2022-12-23",
+    "endDate": "2025-02-24"
+  },
+  {
+    "code": "034300",
+    "name": "신세계건설",
+    "market": "KOSPI",
+    "delistingDate": "2025-02-24",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2984,
+    "startDate": "2012-12-04",
+    "endDate": "2025-01-24"
+  },
+  {
+    "code": "376190",
+    "name": "LB루셈",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-02-21",
+    "reason": "피흡수합병",
+    "rows": 890,
+    "startDate": "2021-06-11",
+    "endDate": "2025-01-23"
+  },
+  {
+    "code": "078940",
+    "name": "퀀타피아",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-02-19",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2382,
+    "startDate": "2012-11-29",
+    "endDate": "2025-02-18"
+  },
+  {
+    "code": "299910",
+    "name": "애닉",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-02-14",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 791,
+    "startDate": "2018-12-03",
+    "endDate": "2025-02-13"
+  },
+  {
+    "code": "160600",
+    "name": "이큐셀",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-02-14",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1170,
+    "startDate": "2015-06-26",
+    "endDate": "2025-02-13"
+  },
+  {
+    "code": "425290",
+    "name": "삼성스팩6호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-02-11",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 638,
+    "startDate": "2022-06-30",
+    "endDate": "2025-02-10"
+  },
+  {
+    "code": "422040",
+    "name": "엔에이치스팩23호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-02-10",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 443,
+    "startDate": "2022-06-28",
+    "endDate": "2025-02-07"
+  },
+  {
+    "code": "424140",
+    "name": "케이비제21호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-02-04",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 570,
+    "startDate": "2022-06-23",
+    "endDate": "2025-02-03"
+  },
+  {
+    "code": "412930",
+    "name": "미래에셋비전스팩1호",
+    "market": "KOSDAQ",
+    "delistingDate": "2025-01-21",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 591,
+    "startDate": "2022-04-21",
+    "endDate": "2024-12-27"
+  },
+  {
+    "code": "406760",
+    "name": "하나금융21호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-12-26",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 556,
+    "startDate": "2022-02-25",
+    "endDate": "2024-12-05"
+  },
+  {
+    "code": "214310",
+    "name": "에스엘에너지",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-12-23",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1577,
+    "startDate": "2015-06-25",
+    "endDate": "2024-12-20"
+  },
+  {
+    "code": "080000",
+    "name": "에스엔유",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-12-20",
+    "reason": "피흡수합병",
+    "rows": 2984,
+    "startDate": "2012-10-10",
+    "endDate": "2024-11-27"
+  },
+  {
+    "code": "418170",
+    "name": "하나금융22호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-12-19",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 481,
+    "startDate": "2022-05-26",
+    "endDate": "2024-11-29"
+  },
+  {
+    "code": "430460",
+    "name": "한화플러스제3호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-12-13",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 446,
+    "startDate": "2022-09-29",
+    "endDate": "2024-11-21"
+  },
+  {
+    "code": "419700",
+    "name": "이브이파킹서비스",
+    "market": "KONEX",
+    "delistingDate": "2024-12-12",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결('24.11.28限)",
+    "rows": 224,
+    "startDate": "2023-07-05",
+    "endDate": "2024-12-11"
+  },
+  {
+    "code": "115390",
+    "name": "락앤락",
+    "market": "KOSPI",
+    "delistingDate": "2024-12-09",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2973,
+    "startDate": "2012-09-25",
+    "endDate": "2024-11-19"
+  },
+  {
+    "code": "415580",
+    "name": "상상인제3호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-12-04",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 637,
+    "startDate": "2022-04-29",
+    "endDate": "2024-12-03"
+  },
+  {
+    "code": "138580",
+    "name": "비즈니스온",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-11-22",
+    "reason": "타법인의 완전자회사로 편입",
+    "rows": 1703,
+    "startDate": "2017-11-30",
+    "endDate": "2024-11-05"
+  },
+  {
+    "code": "438220",
+    "name": "대신밸런스제13호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-11-20",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 255,
+    "startDate": "2022-11-28",
+    "endDate": "2024-10-28"
+  },
+  {
+    "code": "421800",
+    "name": "교보12호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-11-19",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 521,
+    "startDate": "2022-06-24",
+    "endDate": "2024-10-24"
+  },
+  {
+    "code": "062860",
+    "name": "티엘아이",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-11-14",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2601,
+    "startDate": "2012-08-31",
+    "endDate": "2024-11-13"
+  },
+  {
+    "code": "287410",
+    "name": "제이시스메디칼",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-11-07",
+    "reason": "타법인의 완전자회사로 편입",
+    "rows": 1523,
+    "startDate": "2018-05-08",
+    "endDate": "2024-10-18"
+  },
+  {
+    "code": "263540",
+    "name": "어스앤에어로스페이스",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-11-06",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 615,
+    "startDate": "2017-09-15",
+    "endDate": "2024-11-05"
+  },
+  {
+    "code": "164060",
+    "name": "이루다",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-10-22",
+    "reason": "피흡수합병",
+    "rows": 1019,
+    "startDate": "2020-08-06",
+    "endDate": "2024-09-26"
+  },
+  {
+    "code": "282690",
+    "name": "동아타이어",
+    "market": "KOSPI",
+    "delistingDate": "2024-10-08",
+    "reason": "해산 사유 발생",
+    "rows": 1666,
+    "startDate": "2017-11-29",
+    "endDate": "2024-09-04"
+  },
+  {
+    "code": "286000",
+    "name": "씨엔티드림",
+    "market": "KONEX",
+    "delistingDate": "2024-10-07",
+    "reason": "외부감사인의 감사의견 의견거절",
+    "rows": 554,
+    "startDate": "2020-12-11",
+    "endDate": "2024-10-04"
+  },
+  {
+    "code": "053590",
+    "name": "한국테크놀로지",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-10-07",
+    "reason": "해산사유 발생(파산선고)",
+    "rows": 2606,
+    "startDate": "2012-07-24",
+    "endDate": "2024-10-04"
+  },
+  {
+    "code": "436610",
+    "name": "한국제11호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-09-27",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 264,
+    "startDate": "2022-10-20",
+    "endDate": "2024-08-29"
+  },
+  {
+    "code": "119860",
+    "name": "커넥트웨이브",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-09-24",
+    "reason": "타법인의 완전자회사로 편입",
+    "rows": 2989,
+    "startDate": "2012-07-13",
+    "endDate": "2024-09-03"
+  },
+  {
+    "code": "089530",
+    "name": "에이티세미콘",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-09-06",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지 기준에 해당한다고 결정",
+    "rows": 2653,
+    "startDate": "2012-07-02",
+    "endDate": "2024-09-05"
+  },
+  {
+    "code": "430230",
+    "name": "하나금융24호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-09-03",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 371,
+    "startDate": "2022-09-29",
+    "endDate": "2024-08-09"
+  },
+  {
+    "code": "258250",
+    "name": "셀젠텍",
+    "market": "KONEX",
+    "delistingDate": "2024-08-30",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결(2024.8.16 限)",
+    "rows": 1856,
+    "startDate": "2016-12-13",
+    "endDate": "2024-08-29"
+  },
+  {
+    "code": "299670",
+    "name": "에스엠비나",
+    "market": "KONEX",
+    "delistingDate": "2024-08-16",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결(2024.8.1 限)",
+    "rows": 1256,
+    "startDate": "2018-06-25",
+    "endDate": "2024-08-14"
+  },
+  {
+    "code": "065560",
+    "name": "녹원씨엔아이",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-07-29",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1899,
+    "startDate": "2012-05-21",
+    "endDate": "2024-07-26"
+  },
+  {
+    "code": "400840",
+    "name": "하이제7호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-07-26",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 639,
+    "startDate": "2021-12-20",
+    "endDate": "2024-07-25"
+  },
+  {
+    "code": "136510",
+    "name": "스마트솔루션즈",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-07-25",
+    "reason": "감사의견 거절",
+    "rows": 2429,
+    "startDate": "2012-05-17",
+    "endDate": "2024-07-24"
+  },
+  {
+    "code": "181340",
+    "name": "이즈미디어",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-07-10",
+    "reason": "감사범위 제한",
+    "rows": 1149,
+    "startDate": "2017-07-26",
+    "endDate": "2024-07-09"
+  },
+  {
+    "code": "003410",
+    "name": "쌍용C&E",
+    "market": "KOSPI",
+    "delistingDate": "2024-07-09",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2956,
+    "startDate": "2012-04-30",
+    "endDate": "2024-06-20"
+  },
+  {
+    "code": "388800",
+    "name": "유진스팩7호",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-07-02",
+    "reason": "상장예비심사청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 515,
+    "startDate": "2021-09-13",
+    "endDate": "2024-07-01"
+  },
+  {
+    "code": "058530",
+    "name": "파나케이아",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-06-25",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2067,
+    "startDate": "2012-04-16",
+    "endDate": "2020-09-07"
+  },
+  {
+    "code": "006580",
+    "name": "대양제지",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-06-21",
+    "reason": "상장폐지 신청('24.05.17)",
+    "rows": 2285,
+    "startDate": "2012-04-12",
+    "endDate": "2024-06-20"
+  },
+  {
+    "code": "163430",
+    "name": "디피코",
+    "market": "KONEX",
+    "delistingDate": "2024-06-18",
+    "reason": "'22사업연도 감사의견 의견거절 및 '23사업연도 사업보고서 미제출",
+    "rows": 1061,
+    "startDate": "2018-05-16",
+    "endDate": "2024-06-17"
+  },
+  {
+    "code": "161570",
+    "name": "THE MIDONG",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-06-17",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2488,
+    "startDate": "2013-11-13",
+    "endDate": "2024-06-14"
+  },
+  {
+    "code": "386580",
+    "name": "한화플러스제2호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-06-17",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 605,
+    "startDate": "2021-08-05",
+    "endDate": "2024-06-14"
+  },
+  {
+    "code": "405640",
+    "name": "신한제9호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-06-11",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 446,
+    "startDate": "2022-04-27",
+    "endDate": "2024-05-22"
+  },
+  {
+    "code": "148140",
+    "name": "비디아이",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-06-07",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1276,
+    "startDate": "2017-01-16",
+    "endDate": "2024-06-05"
+  },
+  {
+    "code": "391060",
+    "name": "엔에이치스팩20호",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-05-14",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 558,
+    "startDate": "2021-10-05",
+    "endDate": "2024-05-13"
+  },
+  {
+    "code": "030790",
+    "name": "비케이탑스",
+    "market": "KOSPI",
+    "delistingDate": "2024-05-13",
+    "reason": "감사의견 의견거절 2년 계속",
+    "rows": 2405,
+    "startDate": "2012-03-05",
+    "endDate": "2024-05-10"
+  },
+  {
+    "code": "058220",
+    "name": "아리온",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-05-03",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력에 대한 불확실성)",
+    "rows": 1941,
+    "startDate": "2012-02-24",
+    "endDate": "2020-03-19"
+  },
+  {
+    "code": "436530",
+    "name": "케이비제22호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-05-03",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 247,
+    "startDate": "2022-09-22",
+    "endDate": "2024-04-15"
+  },
+  {
+    "code": "393360",
+    "name": "신한제8호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-04-30",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 521,
+    "startDate": "2021-09-27",
+    "endDate": "2024-04-29"
+  },
+  {
+    "code": "322190",
+    "name": "베른",
+    "market": "KONEX",
+    "delistingDate": "2024-04-25",
+    "reason": "감사의견 의견거절(감사범위제한)",
+    "rows": 795,
+    "startDate": "2020-12-29",
+    "endDate": "2024-04-24"
+  },
+  {
+    "code": "419270",
+    "name": "신영스팩7호",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-04-25",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 402,
+    "startDate": "2022-04-28",
+    "endDate": "2024-04-04"
+  },
+  {
+    "code": "248020",
+    "name": "젬",
+    "market": "KONEX",
+    "delistingDate": "2024-04-05",
+    "reason": "외부감사인의 감사의견 의견거절",
+    "rows": 409,
+    "startDate": "2021-10-22",
+    "endDate": "2024-04-04"
+  },
+  {
+    "code": "224020",
+    "name": "에스케이씨에스",
+    "market": "KONEX",
+    "delistingDate": "2024-03-29",
+    "reason": "피흡수합병",
+    "rows": 1873,
+    "startDate": "2016-07-25",
+    "endDate": "2024-03-07"
+  },
+  {
+    "code": "397880",
+    "name": "교보11호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-03-25",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 494,
+    "startDate": "2021-12-20",
+    "endDate": "2024-02-29"
+  },
+  {
+    "code": "150440",
+    "name": "피노텍",
+    "market": "KONEX",
+    "delistingDate": "2024-03-21",
+    "reason": "외부감사인의 감사의견 의견거절",
+    "rows": 1805,
+    "startDate": "2014-12-05",
+    "endDate": "2024-03-20"
+  },
+  {
+    "code": "115960",
+    "name": "연우",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-03-06",
+    "reason": "타법인의 완전자회사로 편입",
+    "rows": 2035,
+    "startDate": "2015-11-02",
+    "endDate": "2024-02-07"
+  },
+  {
+    "code": "001880",
+    "name": "DL건설",
+    "market": "KOSPI",
+    "delistingDate": "2024-03-04",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2974,
+    "startDate": "2011-12-23",
+    "endDate": "2024-02-07"
+  },
+  {
+    "code": "183410",
+    "name": "골프존데카",
+    "market": "KONEX",
+    "delistingDate": "2024-02-22",
+    "reason": "타법인의 완전자회사로 편입",
+    "rows": 2395,
+    "startDate": "2013-11-12",
+    "endDate": "2024-01-26"
+  },
+  {
+    "code": "372290",
+    "name": "하나머스트7호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-02-19",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 624,
+    "startDate": "2021-03-05",
+    "endDate": "2024-01-19"
+  },
+  {
+    "code": "426550",
+    "name": "IBKS제19호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-02-15",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 243,
+    "startDate": "2022-08-26",
+    "endDate": "2024-01-18"
+  },
+  {
+    "code": "114120",
+    "name": "크루셜텍",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-02-15",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2509,
+    "startDate": "2011-12-08",
+    "endDate": "2024-02-14"
+  },
+  {
+    "code": "427950",
+    "name": "하나금융23호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-02-01",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 220,
+    "startDate": "2022-09-15",
+    "endDate": "2024-01-11"
+  },
+  {
+    "code": "068400",
+    "name": "SK렌터카",
+    "market": "KOSPI",
+    "delistingDate": "2024-01-31",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2820,
+    "startDate": "2012-07-27",
+    "endDate": "2024-01-11"
+  },
+  {
+    "code": "377400",
+    "name": "하이제6호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-01-25",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 550,
+    "startDate": "2021-05-10",
+    "endDate": "2024-01-04"
+  },
+  {
+    "code": "380320",
+    "name": "삼성머스트스팩5호",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-01-23",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 640,
+    "startDate": "2021-06-17",
+    "endDate": "2024-01-22"
+  },
+  {
+    "code": "091990",
+    "name": "셀트리온헬스케어",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-01-12",
+    "reason": "피흡수합병",
+    "rows": 1571,
+    "startDate": "2017-07-28",
+    "endDate": "2023-12-15"
+  },
+  {
+    "code": "404950",
+    "name": "DB금융스팩10호",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-01-04",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 346,
+    "startDate": "2022-01-20",
+    "endDate": "2023-12-07"
+  },
+  {
+    "code": "141020",
+    "name": "디에스앤엘",
+    "market": "KOSDAQ",
+    "delistingDate": "2024-01-03",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1754,
+    "startDate": "2013-01-29",
+    "endDate": "2024-01-02"
+  },
+  {
+    "code": "380440",
+    "name": "엔에이치스팩19호",
+    "market": "KOSPI",
+    "delistingDate": "2024-01-02",
+    "reason": "SPAC 상장예비심사청구서 미제출 등",
+    "rows": 625,
+    "startDate": "2021-05-21",
+    "endDate": "2023-12-28"
+  },
+  {
+    "code": "299900",
+    "name": "위지윅스튜디오",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-08-18",
+    "reason": "피흡수합병",
+    "rows": 1852,
+    "startDate": "2018-12-20",
+    "endDate": "2026-07-09"
+  },
+  {
+    "code": "031440",
+    "name": "신세계푸드",
+    "market": "KOSPI",
+    "delistingDate": "2026-08-11",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2985,
+    "startDate": "2014-05-20",
+    "endDate": "2026-07-20"
+  },
+  {
+    "code": "043090",
+    "name": "더테크놀로지",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-08-10",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2941,
+    "startDate": "2014-05-19",
+    "endDate": "2026-08-07"
+  },
+  {
+    "code": "469880",
+    "name": "하나30호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-07-31",
+    "reason": "상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날부터 1개월 이내 동 사유 미해소",
+    "rows": 630,
+    "startDate": "2023-12-22",
+    "endDate": "2026-07-30"
+  },
+  {
+    "code": "467930",
+    "name": "IBKS제23호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-07-28",
+    "reason": "상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날부터 1개월 이내 동 사유 미해소",
+    "rows": 627,
+    "startDate": "2023-12-22",
+    "endDate": "2026-07-27"
+  },
+  {
+    "code": "060240",
+    "name": "스타코링크",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-07-24",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2678,
+    "startDate": "2014-04-29",
+    "endDate": "2026-07-23"
+  },
+  {
+    "code": "057050",
+    "name": "현대홈쇼핑",
+    "market": "KOSPI",
+    "delistingDate": "2026-07-20",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2985,
+    "startDate": "2014-04-23",
+    "endDate": "2026-06-25"
+  },
+  {
+    "code": "012510",
+    "name": "더존비즈온",
+    "market": "KOSPI",
+    "delistingDate": "2026-07-15",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2987,
+    "startDate": "2014-04-21",
+    "endDate": "2026-06-25"
+  },
+  {
+    "code": "203690",
+    "name": "아크솔루션스",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-07-08",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2448,
+    "startDate": "2014-09-30",
+    "endDate": "2026-07-07"
+  },
+  {
+    "code": "222160",
+    "name": "NPX",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-07-07",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1964,
+    "startDate": "2016-03-10",
+    "endDate": "2026-07-06"
+  },
+  {
+    "code": "106520",
+    "name": "노블엠앤비",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-07-01",
+    "reason": "감사의견 거절(계속기업 존속능력 불확실성)",
+    "rows": 2175,
+    "startDate": "2014-04-07",
+    "endDate": "2026-06-30"
+  },
+  {
+    "code": "032980",
+    "name": "바이온",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-07-01",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2670,
+    "startDate": "2014-04-07",
+    "endDate": "2026-06-30"
+  },
+  {
+    "code": "101390",
+    "name": "아이엠",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-07-01",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2693,
+    "startDate": "2014-04-07",
+    "endDate": "2026-06-30"
+  },
+  {
+    "code": "227100",
+    "name": "프로브잇",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-07-01",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1515,
+    "startDate": "2018-11-15",
+    "endDate": "2026-06-30"
+  },
+  {
+    "code": "230360",
+    "name": "에코마케팅",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-06-30",
+    "reason": "타법인의 완전자회사로 편입",
+    "rows": 2411,
+    "startDate": "2016-08-08",
+    "endDate": "2026-06-10"
+  },
+  {
+    "code": "008500",
+    "name": "일정실업",
+    "market": "KOSPI",
+    "delistingDate": "2026-06-30",
+    "reason": "시가총액 미달",
+    "rows": 2996,
+    "startDate": "2014-04-04",
+    "endDate": "2026-06-29"
+  },
+  {
+    "code": "464440",
+    "name": "한국제13호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-06-18",
+    "reason": "상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날부터 1개월 이내 동 사유 미해소",
+    "rows": 629,
+    "startDate": "2023-11-13",
+    "endDate": "2026-06-17"
+  },
+  {
+    "code": "451700",
+    "name": "엔에이치스팩29호",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-06-10",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 704,
+    "startDate": "2023-06-23",
+    "endDate": "2026-05-15"
+  },
+  {
+    "code": "464680",
+    "name": "KB제27호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-06-09",
+    "reason": "상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날부터 1개월 이내 동 사유 미해소",
+    "rows": 628,
+    "startDate": "2023-11-03",
+    "endDate": "2026-06-08"
+  },
+  {
+    "code": "230980",
+    "name": "비유테크놀러지",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-06-05",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력 불확실성)",
+    "rows": 1855,
+    "startDate": "2016-03-02",
+    "endDate": "2026-06-04"
+  },
+  {
+    "code": "257990",
+    "name": "나우코스",
+    "market": "KONEX",
+    "delistingDate": "2026-06-01",
+    "reason": "타법인의 완전자회사로 편입",
+    "rows": 1314,
+    "startDate": "2020-12-30",
+    "endDate": "2026-05-13"
+  },
+  {
+    "code": "149300",
+    "name": "아퓨어스",
+    "market": "KONEX",
+    "delistingDate": "2026-05-20",
+    "reason": "감사의견 의견거절",
+    "rows": 1608,
+    "startDate": "2019-09-03",
+    "endDate": "2026-05-19"
+  },
+  {
+    "code": "462020",
+    "name": "에이치엠씨제6호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-05-19",
+    "reason": "상장예비심사 청구서 미제출로 관리종목 지정 후 1개월 이내 동사유 미해소",
+    "rows": 630,
+    "startDate": "2023-10-13",
+    "endDate": "2026-05-18"
+  },
+  {
+    "code": "466910",
+    "name": "엔에이치스팩30호",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-05-19",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 580,
+    "startDate": "2023-12-01",
+    "endDate": "2026-04-22"
+  },
+  {
+    "code": "368030",
+    "name": "창대정밀",
+    "market": "KONEX",
+    "delistingDate": "2026-05-14",
+    "reason": "감사의견 한정(감사범위 제한)",
+    "rows": 303,
+    "startDate": "2024-12-23",
+    "endDate": "2026-05-13"
+  },
+  {
+    "code": "139050",
+    "name": "BF랩스",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-05-08",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 2490,
+    "startDate": "2014-02-14",
+    "endDate": "2026-05-07"
+  },
+  {
+    "code": "217620",
+    "name": "선샤인푸드",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-05-08",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력 불확실성)",
+    "rows": 2151,
+    "startDate": "2015-06-10",
+    "endDate": "2026-05-07"
+  },
+  {
+    "code": "452980",
+    "name": "신한제11호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-05-07",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 628,
+    "startDate": "2023-10-04",
+    "endDate": "2026-05-06"
+  },
+  {
+    "code": "452670",
+    "name": "상상인제4호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-04-21",
+    "reason": "상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날부터 1개월 이내 동 사유 미해소",
+    "rows": 628,
+    "startDate": "2023-09-14",
+    "endDate": "2026-04-20"
+  },
+  {
+    "code": "138490",
+    "name": "코오롱ENP",
+    "market": "KOSPI",
+    "delistingDate": "2026-04-16",
+    "reason": "해산 사유 발생",
+    "rows": 2987,
+    "startDate": "2014-01-23",
+    "endDate": "2026-03-27"
+  },
+  {
+    "code": "457630",
+    "name": "대신밸런스제16호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-04-15",
+    "reason": "상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날부터 1개월 이내 동 사유 미해소",
+    "rows": 632,
+    "startDate": "2023-09-04",
+    "endDate": "2026-04-14"
+  },
+  {
+    "code": "455310",
+    "name": "한화플러스제4호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-04-15",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 553,
+    "startDate": "2023-09-07",
+    "endDate": "2026-04-14"
+  },
+  {
+    "code": "444920",
+    "name": "유안타제11호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-04-06",
+    "reason": "상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날부터 1개월 이내 동 사유 미해소",
+    "rows": 626,
+    "startDate": "2023-09-01",
+    "endDate": "2026-04-03"
+  },
+  {
+    "code": "473370",
+    "name": "비엔케이제2호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-04-03",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 489,
+    "startDate": "2024-03-05",
+    "endDate": "2026-03-11"
+  },
+  {
+    "code": "458610",
+    "name": "한국제12호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-04-03",
+    "reason": "상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날부터 1개월 이내 동 사유 미해소",
+    "rows": 627,
+    "startDate": "2023-08-30",
+    "endDate": "2026-04-02"
+  },
+  {
+    "code": "008110",
+    "name": "대동전자",
+    "market": "KOSPI",
+    "delistingDate": "2026-03-30",
+    "reason": "감사범위제한으로인한 감사의견한정 2년 계속",
+    "rows": 2581,
+    "startDate": "2014-01-06",
+    "endDate": "2026-03-27"
+  },
+  {
+    "code": "238170",
+    "name": "엔에스엠",
+    "market": "KONEX",
+    "delistingDate": "2026-03-26",
+    "reason": "피흡수합병",
+    "rows": 1512,
+    "startDate": "2019-12-26",
+    "endDate": "2026-02-26"
+  },
+  {
+    "code": "204630",
+    "name": "스튜디오산타클로스",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-03-18",
+    "reason": "감사의견 한정(감사범위 제한)",
+    "rows": 2228,
+    "startDate": "2014-12-29",
+    "endDate": "2026-03-17"
+  },
+  {
+    "code": "036180",
+    "name": "지더블유바이텍",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-03-17",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2341,
+    "startDate": "2013-12-19",
+    "endDate": "2026-03-16"
+  },
+  {
+    "code": "222810",
+    "name": "세토피아",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-03-16",
+    "reason": "감사의견 거절(계속기업 존속능력 불확실성)",
+    "rows": 2063,
+    "startDate": "2015-08-13",
+    "endDate": "2026-03-13"
+  },
+  {
+    "code": "457940",
+    "name": "에스케이증권제10호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-03-16",
+    "reason": "합병상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날(2026.02.04)부터 1개월 이내 동 사유 미해소",
+    "rows": 625,
+    "startDate": "2023-08-11",
+    "endDate": "2026-03-13"
+  },
+  {
+    "code": "450940",
+    "name": "유안타제14호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-03-05",
+    "reason": "합병상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날(2026.1.20)부터 1개월 이내 동 사유 미해소",
+    "rows": 629,
+    "startDate": "2023-07-27",
+    "endDate": "2026-03-04"
+  },
+  {
+    "code": "455910",
+    "name": "에스케이증권제9호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-03-04",
+    "reason": "합병상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날(2026.1.14)부터 1개월 이내 동 사유 미해소",
+    "rows": 632,
+    "startDate": "2023-07-21",
+    "endDate": "2026-03-03"
+  },
+  {
+    "code": "341310",
+    "name": "이앤에치",
+    "market": "KONEX",
+    "delistingDate": "2026-02-24",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결('26.2.5限)",
+    "rows": 1477,
+    "startDate": "2019-12-27",
+    "endDate": "2026-02-23"
+  },
+  {
+    "code": "052670",
+    "name": "제일바이오",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-02-23",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2385,
+    "startDate": "2013-11-28",
+    "endDate": "2026-02-20"
+  },
+  {
+    "code": "019440",
+    "name": "세아특수강",
+    "market": "KOSPI",
+    "delistingDate": "2026-02-12",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 2985,
+    "startDate": "2013-11-22",
+    "endDate": "2026-01-21"
+  },
+  {
+    "code": "456490",
+    "name": "교보14호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-02-10",
+    "reason": "상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날부터 1개월 이내 동 사유 미해소",
+    "rows": 631,
+    "startDate": "2023-07-06",
+    "endDate": "2026-02-09"
+  },
+  {
+    "code": "288490",
+    "name": "나라소프트",
+    "market": "KONEX",
+    "delistingDate": "2026-02-09",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결",
+    "rows": 1289,
+    "startDate": "2018-11-23",
+    "endDate": "2026-02-06"
+  },
+  {
+    "code": "454640",
+    "name": "하나29호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-02-04",
+    "reason": "상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날부터 1개월 이내 동 사유 미해소",
+    "rows": 633,
+    "startDate": "2023-06-28",
+    "endDate": "2026-02-03"
+  },
+  {
+    "code": "450050",
+    "name": "하이제8호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-01-29",
+    "reason": "상장예비심사신청서 미제출 등으로 관리종목으로 지정된 날부터 1개월 이내 동 사유 미해소",
+    "rows": 633,
+    "startDate": "2023-06-22",
+    "endDate": "2026-01-28"
+  },
+  {
+    "code": "455250",
+    "name": "KB제25호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-01-28",
+    "reason": "합병상장예비심사신청서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 545,
+    "startDate": "2023-06-23",
+    "endDate": "2026-01-27"
+  },
+  {
+    "code": "446150",
+    "name": "유안타제12호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-01-28",
+    "reason": "합병상장예비심사청구서 미제출로 관리종목 지정 후 1개월 이내 동 사유 미해소",
+    "rows": 697,
+    "startDate": "2023-03-17",
+    "endDate": "2026-01-27"
+  },
+  {
+    "code": "001140",
+    "name": "국보",
+    "market": "KOSPI",
+    "delistingDate": "2026-01-27",
+    "reason": "감사의견 의견거절 2년 계속",
+    "rows": 2531,
+    "startDate": "2013-11-06",
+    "endDate": "2026-01-26"
+  },
+  {
+    "code": "495900",
+    "name": "에이엠시지",
+    "market": "KONEX",
+    "delistingDate": "2026-01-27",
+    "reason": "상장폐지 신청",
+    "rows": 255,
+    "startDate": "2024-12-13",
+    "endDate": "2026-01-26"
+  },
+  {
+    "code": "208340",
+    "name": "파멥신",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-01-27",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 1284,
+    "startDate": "2018-11-21",
+    "endDate": "2026-01-26"
+  },
+  {
+    "code": "042670",
+    "name": "HD현대인프라코어",
+    "market": "KOSPI",
+    "delistingDate": "2026-01-26",
+    "reason": "해산 사유 발생",
+    "rows": 2955,
+    "startDate": "2013-11-05",
+    "endDate": "2025-12-26"
+  },
+  {
+    "code": "010600",
+    "name": "웰바이오텍",
+    "market": "KOSPI",
+    "delistingDate": "2026-01-26",
+    "reason": "감사의견 의견거절 2년 계속",
+    "rows": 2576,
+    "startDate": "2013-11-05",
+    "endDate": "2026-01-23"
+  },
+  {
+    "code": "150840",
+    "name": "인트로메딕",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-01-26",
+    "reason": "기업의 계속성 및 경영의 투명성 등을 종합적으로 고려하여 상장폐지기준에 해당한다고 결정",
+    "rows": 2008,
+    "startDate": "2013-12-19",
+    "endDate": "2026-01-23"
+  },
+  {
+    "code": "057880",
+    "name": "푸른소나무",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-01-22",
+    "reason": "감사의견 거절(감사범위 제한 및 계속기업 존속능력 불확실성)",
+    "rows": 2066,
+    "startDate": "2013-11-01",
+    "endDate": "2026-01-21"
+  },
+  {
+    "code": "343090",
+    "name": "HLB사이언스",
+    "market": "KONEX",
+    "delistingDate": "2026-01-16",
+    "reason": "피흡수합병",
+    "rows": 1377,
+    "startDate": "2020-04-24",
+    "endDate": "2025-12-26"
+  },
+  {
+    "code": "003560",
+    "name": "IHQ",
+    "market": "KOSPI",
+    "delistingDate": "2026-01-15",
+    "reason": "감사의견 의견거절 2년 계속",
+    "rows": 2336,
+    "startDate": "2013-10-25",
+    "endDate": "2026-01-14"
+  },
+  {
+    "code": "033180",
+    "name": "KH 필룩스",
+    "market": "KOSPI",
+    "delistingDate": "2026-01-15",
+    "reason": "감사의견 의견거절 2년 계속",
+    "rows": 2337,
+    "startDate": "2013-10-25",
+    "endDate": "2026-01-14"
+  },
+  {
+    "code": "226360",
+    "name": "KH 건설",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-01-14",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 1796,
+    "startDate": "2015-10-22",
+    "endDate": "2026-01-13"
+  },
+  {
+    "code": "111870",
+    "name": "KH 미래물산",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-01-14",
+    "reason": "감사의견 거절(감사범위 제한)",
+    "rows": 2339,
+    "startDate": "2013-10-24",
+    "endDate": "2026-01-13"
+  },
+  {
+    "code": "478780",
+    "name": "대신밸런스제18호스팩",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-01-14",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 265,
+    "startDate": "2024-08-22",
+    "endDate": "2025-12-19"
+  },
+  {
+    "code": "448830",
+    "name": "미래에셋비전스팩3호",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-01-14",
+    "reason": "피흡수합병(스팩소멸합병)",
+    "rows": 583,
+    "startDate": "2023-04-07",
+    "endDate": "2025-12-17"
+  },
+  {
+    "code": "174880",
+    "name": "장원테크",
+    "market": "KOSDAQ",
+    "delistingDate": "2026-01-14",
+    "reason": "감사의견 한정(감사범위 제한)",
+    "rows": 1647,
+    "startDate": "2016-07-15",
+    "endDate": "2026-01-13"
+  },
+  {
+    "code": "308700",
+    "name": "테크엔",
+    "market": "KONEX",
+    "delistingDate": "2026-01-14",
+    "reason": "지정자문인 선임계약 해지 후 30일 이내 미체결(2025.5.15限)",
+    "rows": 1305,
+    "startDate": "2018-12-21",
+    "endDate": "2026-01-13"
+  },
+  {
+    "code": "450140",
+    "name": "코오롱모빌리티그룹",
+    "market": "KOSPI",
+    "delistingDate": "2026-01-07",
+    "reason": "지주회사(최대주주등)의 완전자회사화 등",
+    "rows": 699,
+    "startDate": "2023-01-31",
+    "endDate": "2025-12-12"
+  }
+]

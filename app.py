@@ -1237,19 +1237,62 @@ def remove_screener_watchlist():
 # 타임아웃(30초) 안에 못 끝난다 - job을 만들고 즉시 id를 반환한 뒤 백그라운드
 # 스레드에서 계산하고, 프런트는 GET으로 폴링한다.
 
-def _screening_backtest_fetch_fn(market):
+def _delisted_kr_fetch_fn(tickers, start_date, end_date):
+    """상장폐지 종목(".DL" 접미사) 시세를 KrDelistedPrice DB 테이블에서 읽는다 -
+    data_pipeline.import_delisted_to_db로 미리 채워둔 정적 데이터라 외부 API
+    호출 없이 인덱스 조회만으로 끝나 프로덕션 메모리/시간 제약에 안전하다."""
+    from models import KrDelistedPrice
+
+    codes = [t[:-3] for t in tickers if t.endswith(".DL")]
+    if not codes:
+        return
+    rows = KrDelistedPrice.query.filter(
+        KrDelistedPrice.stock_code.in_(codes),
+        KrDelistedPrice.date >= start_date, KrDelistedPrice.date < end_date,
+    ).order_by(KrDelistedPrice.stock_code, KrDelistedPrice.date).all()
+    current_code, bars = None, []
+    for r in rows:
+        if r.stock_code != current_code:
+            if bars:
+                yield f"{current_code}.DL", bars
+            current_code, bars = r.stock_code, []
+        bars.append({"date": r.date, "close": r.close, "high": r.high, "low": r.low, "volume": r.volume})
+    if bars:
+        yield f"{current_code}.DL", bars
+
+
+def _merged_kr_fetch_fn_with_delisted():
+    """상장 종목은 프로덕션 안전 경로(trend_screener.fetch_ohlc_history_batches,
+    스트리밍 방식이라 메모리 한도에 안전) 그대로 쓰고, 상장폐지 종목(.DL)만
+    _delisted_kr_fetch_fn(DB 조회 - 외부 API 호출 없음)로 추가로 채워 합친다."""
+    def _fetch(tickers, start_date, end_date):
+        import trend_screener as ts
+
+        live_tickers = [t for t in tickers if not t.endswith(".DL")]
+        yield from ts.fetch_ohlc_history_batches(live_tickers, start_date, end_date)
+        yield from _delisted_kr_fetch_fn(tickers, start_date, end_date)
+
+    return _fetch
+
+
+def _screening_backtest_fetch_fn(market, include_delisted=False):
     """로컬(DATABASE_URL 미설정 = 로컬 SQLite)에서는 local_price_cache.py의
     디스크 캐시(threads=True 병렬 다운로드)를 써서 웹 화면 백테스트도 CLI만큼
     빠르게 만든다. 프로덕션(Render)은 디스크가 배포마다 초기화되는 데다 무료
     티어 메모리 한도에서 병렬 다운로드를 켜면 예전에 실제로 겪은 OOM(트렌드
     스크리너 38시간 정지, CLAUDE.md 히스토리 참고)이 재발할 수 있어 절대 쓰지
     않는다 - None을 돌려주면 각 백테스트 함수가 기본값(운영 안전 경로인
-    trend_screener.fetch_ohlc_history_batches)을 그대로 쓴다."""
+    trend_screener.fetch_ohlc_history_batches)을 그대로 쓴다. include_delisted=True
+    (스위퍼 프리셋의 생존편향 제거용)면 프로덕션에서도 상장폐지 종목만은
+    DB(KrDelistedPrice)에서 채워야 하므로 이 경우엔 None 대신 병합 fetch_fn을
+    돌려준다 - DB 조회는 외부 API 호출이 아니라 메모리/시간 제약과 무관하다."""
     if os.environ.get("DATABASE_URL"):
+        if include_delisted and market == "KR":
+            return _merged_kr_fetch_fn_with_delisted()
         return None
     try:
         from local_price_cache import cached_fetch_ohlc_history_batches
-        return cached_fetch_ohlc_history_batches(market)
+        return cached_fetch_ohlc_history_batches(market, include_delisted=include_delisted)
     except Exception:
         app.logger.exception("로컬 가격 캐시 사용 실패 - 기본 경로로 폴백")
         return None
@@ -1300,7 +1343,7 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
                 p = vcp_preset_params
                 result = vcp.run_vcp_backtest(
                     p["market"], start_date, end_date, seed=seed, max_positions=max_positions,
-                    fetch_fn=_screening_backtest_fetch_fn(p["market"]),
+                    fetch_fn=_screening_backtest_fetch_fn(p["market"], include_delisted=p.get("include_delisted", False)),
                     shares_map=_vcp_shares_map(), shareholder_rows_by_code=_vcp_shareholder_rows(),
                     adx_threshold=p.get("adx_threshold", vcp.ADX_THRESHOLD),
                     final_contraction_ratio=p.get("final_contraction_ratio", 0.5),
@@ -1330,6 +1373,7 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
                     gate_entries_on_regime=p.get("gate_entries_on_regime", True),
                     max_pct_of_avg_trade_value=p.get("max_pct_of_avg_trade_value"),
                     max_position_value_abs=p.get("max_position_value_abs"),
+                    include_delisted=p.get("include_delisted", False),
                 )
                 job = db.session.get(ScreeningBacktestJob, job_id)
                 if "error" in result:
