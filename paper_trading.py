@@ -360,6 +360,11 @@ def _process_anon_position_day(pos, closes, highs, lows, j, params):
     if pos["barsHeld"] >= params["time_stop_days"] and highest_r < params["time_stop_progress_r"]:
         return close, "timeStop"
 
+    # max_hold_days: 추세와 무관하게 이 날짜수를 넘기면 강제 청산(슬롯 회전율 확보용)
+    max_hold_days = params.get("max_hold_days")
+    if max_hold_days is not None and pos["barsHeld"] >= max_hold_days:
+        return close, "maxHold"
+
     pos["highestHigh"] = max(pos["highestHigh"], high)
     r_reached = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
 
@@ -501,7 +506,7 @@ def run_anonymous_daily_step(account):
     should_rescan = account.last_rescan_date is None or (
         datetime.fromisoformat(latest_date) - datetime.fromisoformat(account.last_rescan_date)
     ).days >= params["rescan_interval_days"]
-    if should_rescan and regime_ok:
+    if should_rescan and (regime_ok or not params.get("gate_entries_on_regime", True)):
         open_slots = params["max_positions"] - len(remaining)
         if open_slots > 0:
             for row in candidate_rows:
@@ -531,12 +536,22 @@ def run_anonymous_daily_step(account):
                 if params.get("position_sizing_mode") == "equal_weight":
                     # 슬롯당 동일 금액 배분 - vcp_strategy.run_vcp_backtest와 동일한 방식
                     target_value = equity_now / params["max_positions"]
+                    max_position_value_abs = params.get("max_position_value_abs")
+                    if max_position_value_abs is not None:
+                        # 계좌가 커져도 포지션 금액이 무한정 커지지 않도록 고정 상한
+                        # ("전략 용량" 가정 - vcp_strategy.run_vcp_backtest와 동일)
+                        target_value = min(target_value, max_position_value_abs)
                     shares = int(target_value // entry_fill)
                     max_pos_value = target_value
                 else:
                     risk_amount = equity_now * vcp.RISK_PCT_PER_TRADE / 100
                     shares = int(risk_amount // risk_per_share)
                     max_pos_value = account.seed * vcp.MAX_POSITION_WEIGHT_PCT / 100
+                max_pct_of_avg_trade_value = params.get("max_pct_of_avg_trade_value")
+                if max_pct_of_avg_trade_value is not None and row.avg_trade_value:
+                    # 종목 자신의 평균거래대금 대비 비율로 추가 제한(시장충격 근사)
+                    liquidity_cap_value = row.avg_trade_value * max_pct_of_avg_trade_value / 100
+                    shares = min(shares, int(liquidity_cap_value // entry_fill))
                 cap_shares = int(min(account.cash, max_pos_value) // entry_fill)
                 shares = min(shares, cap_shares)
                 if shares <= 0:

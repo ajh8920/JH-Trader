@@ -127,6 +127,25 @@ RELAXED_VCP_PARAMS = {
 # 아니었다는 뜻, "10슬롯×거래일/평균보유일수" 산수 상한이 진짜 병목임을 재확인).
 # 반면 동일금액 배분은 CAGR(27.43%->35.71%)과 누적수익률(934%->1,798%)을 크게
 # 끌어올렸다(손익비 8.2->7.9, MDD -31.24%->-33.83%로 소폭 트레이드오프).
+#
+# 그런데 이 상태로 시가총액/유동성 필터까지 완전히 없애고 여러 max_hold_days를
+# 스윕하니(9.6년 최대보유 15~40일) 누적수익률이 수만~수백만 %까지 치솟았다 -
+# "동일금액(계좌 성장에 비례) + 유동성 무제한" 조합이 계좌가 커질수록 실제로는
+# 체결 불가능한 금액을 그대로 태운다고 가정하는 초복리 아티팩트였다(사용자가
+# "만 단위 수익률이 정상이냐"고 지적해 발견). min_avg_trade_value(유동성 필터,
+# 후보 자격만 거름)를 다시 넣어도 해결이 안 됐다 - 진짜 문제는 필터가 아니라
+# "포지션 금액 자체가 계좌 크기에 비례해 무한정 커진다"는 가정이었다. 이를
+# max_pct_of_avg_trade_value(종목 자신의 평균거래대금 대비 비율 상한)와
+# max_position_value_abs(계좌가 아무리 커져도 넘지 않는 고정 금액 상한 - "전략
+# 용량" 가정을 명시적으로 반영)로 이중 제한해 현실적인 수준으로 눌렀다. 시드
+# 5,000만원 기준 고정상한 1,500/2,500/5,000만원을 비교한 결과 승률·손익비·거래수는
+# 거의 그대로인 채(상한이 트레이드 자체의 품질에는 영향 없음, 계좌가 커졌을 때
+# "얼마나 더 태울 수 있다고 볼지"만 다름) CAGR만 달라졌다(47.0/53.43/62.81%) -
+# 2,500만원(초기 슬롯당 배분액 500만원의 5배)이 목표(CAGR 50.76%, 승률 31.57%,
+# 거래수 1,476건)에 가장 근접해(CAGR 53.43%, 승률 31.2%, 거래수 1,596건) 이를
+# 최종 채택했다(손익비 5.12/평균수익 31.69%는 여전히 목표에 못 미침 - 거래수
+# 1,000건+를 확보하려면 max_hold_days=20이 필요했고, 이게 승리 포지션을 더
+# 크게 키우지 못하게 막는 대가다).
 ANONYMOUS_PARAMS = {
     "market": "KR", "entry_mode": "donchian", "donchian_period": 15, "max_positions": 10,
     "initial_stop_atr_mult": 1.5, "max_initial_risk_pct": 6.0, "risk_cap_mode": "shrink",
@@ -134,7 +153,9 @@ ANONYMOUS_PARAMS = {
     "chandelier_atr_mult": 8.0, "ma_break_period": 250, "ma_break_consec_days": 6,
     "pyramid_max_count": 5, "time_stop_days": 20, "time_stop_progress_r": 0.2,
     "rescan_interval_days": 3, "cash_equitize": True, "equitize_max_pct": 70.0,
-    "position_sizing_mode": "equal_weight", "min_market_cap": 0, "min_avg_trade_value": 0,
+    "position_sizing_mode": "equal_weight", "min_market_cap": 0, "min_avg_trade_value": 100_000_000,
+    "max_pct_of_avg_trade_value": 10, "max_hold_days": 20, "gate_entries_on_regime": False,
+    "max_position_value_abs": 25_000_000, "default_seed": 50_000_000,
 }
 
 
@@ -414,7 +435,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       trail_activate_r=TRAIL_ACTIVATE_R, pyramid_max_count=PYRAMID_MAX_COUNT,
                       time_stop_days=TIME_STOP_DAYS, time_stop_progress_r=TIME_STOP_PROGRESS_R,
                       entry_mode="vcp", donchian_period=20, initial_stop_atr_mult=INITIAL_STOP_ATR_MULT,
-                      position_sizing_mode="risk"):
+                      position_sizing_mode="risk", max_hold_days=None, gate_entries_on_regime=True,
+                      max_pct_of_avg_trade_value=None, max_position_value_abs=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -451,7 +473,25 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     손절폭으로 나눠 수량 산정, 종목마다 변동성에 따라 배분이 달라짐). "equal_weight"는
     모든 신규 포지션에 그 시점 총자산/max_positions을 동일하게 배분한다(변동성과
     무관하게 슬롯당 같은 금액) - 손절폭(ATR 기반)은 손절가 산정에는 여전히 쓰이지만
-    수량 결정에는 관여하지 않는다.
+    수량 결정에는 관여하지 않는다. max_hold_days(기본 None=비활성)는 슬롯 수가 적을
+    때 승리 포지션이 자본을 너무 오래 묶어 재진입(거래빈도)을 막는 문제를 완화하려는
+    강제 보유일 상한(추세 진행도와 무관하게 도달하면 무조건 청산). gate_entries_on_regime
+    =False면 시장국면과 무관하게 신규진입을 허용한다(현금유휴화방지 판단에는 국면을
+    여전히 쓴다) - 국면필터 자체가 회전율을 깎는지 확인용.
+
+    max_pct_of_avg_trade_value(기본 None=비활성)는 포지션 금액을 그 종목의 평균거래대금
+    대비 비율로 추가 캡핑한다. min_avg_trade_value(유동성 필터)는 "후보로 볼지"만
+    걸러낼 뿐 실제 매수 금액은 제한하지 않는다 - equal_weight 사이징으로 계좌가
+    복리로 커지면 슬롯당 배분액이 그 종목의 실제 하루 거래대금을 초과하는(시장충격
+    없이 체결된다고 가정하는) 비현실적 상황이 생길 수 있어, 이 파라미터로 실제
+    체결 가능한 규모에 가깝게 추가 제한한다.
+
+    max_position_value_abs(기본 None=비활성)는 equal_weight 사이징이 계좌 성장에 따라
+    무한정 커지는 것을 막는 고정 금액 상한이다(원 단위). equal_weight 하나만으로는
+    계좌가 복리로 커질수록 슬롯당 배분액도 같이 커져 승률/손익비 같은 트레이드당
+    비율 지표는 그대로인데도 총수익률이 비현실적으로 폭증한다(자금 자체가 가격을
+    움직이는 "전략 용량" 문제를 백테스트가 반영 못 하기 때문) - 이 파라미터로 "일정
+    규모 이상은 더 키우지 않는다"는 현실적 가정을 명시적으로 넣는다.
     ma_break_period/ma_break_consec_days/breakeven_r/partial_profit_r/
     partial_profit_fraction/chandelier_atr_mult/trail_activate_r/pyramid_max_count는
     전부 청산 로직 파라미터다(기본값은 명세서 원안과 동일). "승리 트레이드를 일찍
@@ -593,6 +633,18 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     closed = True
                     break
 
+                # max_hold_days: 추세가 아무리 좋아도(진행도와 무관하게) 이 날짜수를
+                # 넘기면 강제 청산 - 슬롯 10개 고정처럼 동시보유 종목수가 제한된
+                # 상황에서 승리 포지션이 자본을 너무 오래 묶어 재진입 기회를 막는
+                # 문제를 완화하려는 옵션(기본값 None은 비활성 - 원안대로 무제한 보유).
+                if max_hold_days is not None and pos["barsHeld"] >= max_hold_days:
+                    trade, proceeds = _full_exit(pos, close, dates[j], "maxHold")
+                    trades.append(trade)
+                    cash += proceeds
+                    del positions[ticker]
+                    closed = True
+                    break
+
                 pos["highestHigh"] = max(pos["highestHigh"], high)
                 r_reached = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
 
@@ -676,8 +728,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             index_units = 0.0
 
         # 4) 신규 진입 - VCP+ADX+유니버스필터를 통과한 후보 중 피벗 돌파(+거래량)를
-        #    직전~이번 재평가 사이에서 찾아 피벗가*1.005 지정가로 체결
-        if regime_ok:
+        #    직전~이번 재평가 사이에서 찾아 피벗가*1.005 지정가로 체결. gate_entries_on_regime=
+        # False면 국면과 무관하게 신규진입을 허용한다(현금유휴화방지는 여전히 국면을
+        # 본다) - 슬롯이 적을 때 국면필터가 재진입 기회 자체를 막아 회전율을 깎는지 실험용.
+        if regime_ok or not gate_entries_on_regime:
             open_slots = max_positions - len(positions)
             if open_slots > 0:
                 candidates = []
@@ -724,10 +778,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     avg_vol50 = _avg_volume(volumes, i)
                     if not avg_vol50:
                         continue
-                    candidates.append((ticker, e, pivot, avg_vol50))
+                    candidates.append((ticker, e, pivot, avg_vol50, avg_val))
 
                 candidates.sort(key=lambda c: -(c[1].get("rsRating") or 0))
-                for ticker, e, pivot, avg_vol50 in candidates:
+                for ticker, e, pivot, avg_vol50, avg_trade_val in candidates:
                     if open_slots <= 0:
                         break
                     dates, closes, highs, lows, volumes = series[ticker]
@@ -765,12 +819,28 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         # 슬롯당 동일 금액 배분 - 변동성과 무관하게 그 시점 총자산을
                         # max_positions으로 나눈 만큼만 산다(리스크 기반 사이징 대신).
                         target_value = equity_now / max_positions
+                        if max_position_value_abs is not None:
+                            # 계좌가 복리로 계속 커져도 포지션 금액 자체는 이 고정
+                            # 상한을 넘지 않는다 - "일정 규모 이상은 더 키우지 않는다"는
+                            # 전략 용량(capacity) 가정을 명시적으로 반영. 상한을 넘는
+                            # 초과 자본은 그냥 현금(또는 cash_equitize로 지수)에 남는다.
+                            target_value = min(target_value, max_position_value_abs)
                         shares = int(target_value // fill_price)
                         max_pos_value = target_value
                     else:
                         risk_amount = equity_now * RISK_PCT_PER_TRADE / 100
                         shares = int(risk_amount // risk_per_share)
                         max_pos_value = seed * MAX_POSITION_WEIGHT_PCT / 100
+                    if max_pct_of_avg_trade_value is not None and avg_trade_val:
+                        # 유동성 필터(min_avg_trade_value)는 "이 종목을 후보로 볼지"만
+                        # 걸러낼 뿐, 실제로 그 종목에 얼마를 태울지는 제한하지 않는다 -
+                        # 계좌가 커지면(특히 equal_weight로 계속 복리) 슬롯당 배분액이
+                        # 그 종목의 실제 하루 거래대금을 아득히 넘어서는 비현실적인
+                        # 상황이 생긴다(시장충격 없이 그만큼 체결된다고 가정하는 셈).
+                        # 그래서 종목 자신의 평균거래대금 대비 비율로 포지션 금액
+                        # 자체를 추가로 캡핑한다(실제 체결 가능한 규모로 근사).
+                        liquidity_cap_value = avg_trade_val * max_pct_of_avg_trade_value / 100
+                        shares = min(shares, int(liquidity_cap_value // fill_price))
                     # cash_equitize: 지수에 태워둔 유휴자금까지 매수여력에 포함시킨다(필요한
                     # 만큼만 아래에서 실제로 청산) - 안 그러면 현금이 대부분 지수에 가 있어
                     # cap_shares가 0으로 계산돼 버린다.

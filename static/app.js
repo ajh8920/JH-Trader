@@ -521,6 +521,7 @@ const I18N = {
   exitTimeStop: { en: 'Time stop', ko: '시간 손절' },
   exitPartialProfit: { en: 'Partial profit (25%)', ko: '분할 익절(25%)' },
   exitMaBreak: { en: 'MA50 breakdown', ko: 'MA50 이탈' },
+  exitMaxHold: { en: 'Max hold days', ko: '최대보유 도달' },
   stratMinerviniV2Title: { en: 'Minervini v2', ko: '미너비니 v2' },
   stratMinerviniV2Note: {
     en: 'Trend Template pass + liquid enough to trade (avg. daily trading value ≥ ₩300M) — the exact entry '
@@ -3446,6 +3447,10 @@ const SBT_PRESET_RENDERERS = {
 const SBT_PRESET_DEFAULT_START = {
   minervini_v2: '2020-01-01', minervini_v21: '2020-01-01', relaxed_vcp: '2017-01-01', anonymous: '2017-01-01',
 };
+// 어나니머스는 슬롯당 고정 금액 상한(2,500만원 = 시드 5천만원/10슬롯의 5배)을
+// 전제로 튜닝됐다 - 기본 시드(1천만원)로 돌리면 그 상한 대비 계좌가 작아 상한이
+// 거의 안 걸려 실측 결과와 괴리가 생긴다.
+const SBT_PRESET_DEFAULT_SEED = { anonymous: 50_000_000 };
 
 function setScreeningBacktestPreset(preset) {
   sbtPreset = preset;
@@ -3457,6 +3462,7 @@ function setScreeningBacktestPreset(preset) {
     if (preset === key) {
       document.getElementById('sbt-start').value = SBT_PRESET_DEFAULT_START[key];
       document.getElementById('sbt-end').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('sbt-seed').value = SBT_PRESET_DEFAULT_SEED[key] || 10_000_000;
       SBT_PRESET_RENDERERS[key]()(refEl);
       refEl.style.display = 'block';
     } else {
@@ -3756,12 +3762,24 @@ async function loadRelaxedVcpReferenceTrades() {
 // 27.43%→35.71%로, 누적수익률을 934%→1,798%로 크게 끌어올렸다(손익비 8.2→7.9,
 // MDD -31.24%→-33.83%로 소폭 트레이드오프). 거래수·승률은 여전히 10슬롯 산수
 // 상한에 막혀 목표에 못 미친다.
+// "동일금액+필터제거"만으로는 계좌가 복리로 커질수록 실제로는 체결 불가능한
+// 금액을 그대로 태운다고 가정하는 초복리 아티팩트가 나왔다(누적수익률이 수십만
+// %까지 치솟음 - 사용자가 "만 단위 수익률이 정상이냐"고 지적해 발견). 원인은
+// min_avg_trade_value(유동성 필터)가 "후보 자격"만 거를 뿐 실제 매수 금액은
+// 제한하지 않는다는 것 - max_pct_of_avg_trade_value(종목 자신의 평균거래대금
+// 대비 10% 이내)와 max_position_value_abs(계좌가 아무리 커져도 넘지 않는 고정
+// 금액 상한 - "전략 용량" 가정을 명시적으로 반영)로 이중 제한해 현실적인 수준으로
+// 눌렀다. 시드 5,000만원 기준 고정상한 1,500/2,500/5,000만원을 비교한 결과
+// 승률·손익비·거래수는 거의 그대로인 채(상한은 "계좌가 커졌을 때 얼마나 더
+// 태울 수 있다고 가정할지"만 다름) CAGR만 달라졌다(47.0/53.43/62.81%) - 목표
+// (CAGR 50.76%, 승률 31.57%, 거래수 1,476건)에 가장 근접한 2,500만원(초기
+// 슬롯당 배분액 500만원의 5배)을 최종 채택했다.
 const ANONYMOUS_REFERENCE = {
-  start: '2017-01-01', end: '2026-08-23', seed: 10000000, finalValue: 189799341.01,
-  returnPct: 1797.99, cagrPct: 35.71, mddPct: 33.83, tradeCount: 570, winCount: 133, winRatePct: 23.3,
-  avgHoldDays: 23.4, profitLossRatio: 7.9, alphaPct: 1599.96,
+  start: '2017-01-01', end: '2026-08-23', seed: 50000000, finalValue: 3097662480.02,
+  returnPct: 6095.32, cagrPct: 53.43, mddPct: 32.25, tradeCount: 1596, winCount: 498, winRatePct: 31.2,
+  avgHoldDays: 14.1, profitLossRatio: 5.12, alphaPct: 5897.29,
   benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 198.03,
-  exitReasonCounts: { initialStop: 425, trailingStop: 133, maBreak: 2, periodEnd: 10 },
+  exitReasonCounts: { initialStop: 1058, trailingStop: 130, maxHold: 388, maBreak: 10, periodEnd: 10 },
 };
 
 function renderAnonymousReference(el) {
@@ -3810,7 +3828,7 @@ async function loadAnonymousReferenceTrades() {
       stopLoss: t('stopLoss'), conditionExit: t('conditionExit'), periodEnd: t('periodEnd'),
       initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
       trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'),
-      partialProfit: t('exitPartialProfit'), maBreak: t('exitMaBreak'),
+      partialProfit: t('exitPartialProfit'), maBreak: t('exitMaBreak'), maxHold: t('exitMaxHold'),
     }[r] || r);
     const fmtPrice = v => `₩${Math.round(v).toLocaleString('en-US')}`;
     body.innerHTML = `
@@ -4022,13 +4040,15 @@ function resetScreeningBacktestZoom() {
 const PAPER_TRADING_EXIT_REASON_LABEL = r => ({
   initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
   trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'), periodEnd: t('periodEnd'),
-  partialProfit: t('exitPartialProfit'), maBreak: t('exitMaBreak'),
+  partialProfit: t('exitPartialProfit'), maBreak: t('exitMaBreak'), maxHold: t('exitMaxHold'),
 }[r] || r);
 
 const PAPER_STRATEGY_LIST = [
-  { key: 'minervini_v2', titleKey: 'stratMinerviniV2Title', emoji: '🎯' },
-  { key: 'minervini_v21', titleKey: 'stratMinerviniV21Title', emoji: '🎯' },
-  { key: 'anonymous', titleKey: 'stratAnonymousTitle', emoji: '🐢' },
+  { key: 'minervini_v2', titleKey: 'stratMinerviniV2Title', emoji: '🎯', defaultSeed: 10_000_000 },
+  { key: 'minervini_v21', titleKey: 'stratMinerviniV21Title', emoji: '🎯', defaultSeed: 10_000_000 },
+  // 슬롯당 고정 금액 상한(2,500만원 = 시드 5천만원/10슬롯의 5배)을 전제로 튜닝된
+  // 전략이라 기본 시드도 맞춰둔다.
+  { key: 'anonymous', titleKey: 'stratAnonymousTitle', emoji: '🐢', defaultSeed: 50_000_000 },
 ];
 
 async function loadPaperTrading() {
@@ -4062,7 +4082,7 @@ function renderPaperTradingStart(el, strategyInfo) {
       </div>
       <div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:16px;">
         <label for="pt-start-seed-${strategyInfo.key}" style="font-size:13px;color:var(--text-secondary);">${t('capital')}</label>
-        <input type="number" id="pt-start-seed-${strategyInfo.key}" value="10000000" step="1000000" min="1" style="width:160px;" />
+        <input type="number" id="pt-start-seed-${strategyInfo.key}" value="${strategyInfo.defaultSeed || 10000000}" step="1000000" min="1" style="width:160px;" />
       </div>
       <button class="bt-preset-btn selected" style="padding:12px 22px;font-size:14px;" onclick="startPaperTrading('${strategyInfo.key}')">
         ${strategyInfo.emoji} ${t(strategyInfo.titleKey)}
