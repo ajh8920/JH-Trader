@@ -327,6 +327,12 @@ class PaperStrategyAccount(db.Model):
     # 벤치마크 시리즈 기준 가상 수량).
     index_units = db.Column(db.Float, nullable=False, default=0.0)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    # "스위퍼" 전용 - 매매(신규진입/피라미딩/청산)가 발생한 거래일에 사용자가 지정한
+    # 주소로 요약 메일을 보내는 기능(app.py의 sweeper_trade_alert_scheduler)용.
+    # alert_email이 비어 있으면 그 계좌는 메일 알림 대상에서 제외된다.
+    # last_alert_sent_date로 같은 거래일에 중복 발송하지 않는다.
+    alert_email = db.Column(db.String(255))
+    last_alert_sent_date = db.Column(db.String(10))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -369,6 +375,14 @@ class PaperPosition(db.Model):
     last_entry_price = db.Column(db.Float)
     total_cost = db.Column(db.Float)
     initial_shares = db.Column(db.Integer)  # 최초 진입 수량(피라미딩 추가매수 규모 산정 기준, 피라미딩해도 안 바뀜)
+    # 분할익절(+2R에 일부 매도, "스위퍼" 등 partial_profit_fraction>0 전략용) 1회
+    # 한도 소진 여부 - vcp_strategy의 pos["partialTaken"]과 동일 개념.
+    partial_taken = db.Column(db.Boolean, nullable=False, default=False)
+    # 매매 알림 메일용 - 가장 최근 피라미딩(추가매수)이 반영된 거래일과 그때 추가된
+    # 수량. 피라미딩은 이 행 자체를 갱신할 뿐 별도 이력 테이블이 없어서, "오늘
+    # 피라미딩이 있었는지"를 조회하려면 이 두 필드가 필요하다.
+    last_pyramid_date = db.Column(db.String(10))
+    last_pyramid_shares = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 

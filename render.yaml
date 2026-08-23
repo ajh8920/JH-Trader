@@ -22,3 +22,14 @@ services:
         value: "true"
       - key: FINNHUB_API_KEY
         sync: false
+      # 스위퍼 매매 알림 메일용 (선택 사항 - 비워두면 알림만 조용히 꺼짐, .env.example 참고)
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false

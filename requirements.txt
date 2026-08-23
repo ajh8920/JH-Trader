@@ -11,3 +11,4 @@ pandas
 pyarrow
 gunicorn
 psycopg2-binary
+tzdata

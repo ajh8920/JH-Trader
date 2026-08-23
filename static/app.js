@@ -556,6 +556,16 @@ const I18N = {
       + '청산은 넓게가 아니라 타이트하게 가져갑니다 — 모의투자 "스위퍼" 전략은 작지만 확률 높은 승리를 '
       + '자주 쌓는 방식입니다.',
   },
+  save: { en: 'Save', ko: '저장' },
+  sweeperAlertEmailTitle: { en: 'Trade alert email', ko: '매매 알림 메일' },
+  sweeperAlertEmailNote: {
+    en: 'Every day at 14:30 KST, an email listing today\'s buys/sells (if any) is sent to this address — '
+      + 'in time to place the same trades yourself before market close (15:30). Leave blank to disable.',
+    ko: '매일 한국시간 14:30에 그날 발생한 매수/매도 내역(없으면 "매매 없음")을 이 주소로 보내드립니다 — '
+      + '장 마감(15:30) 전에 실제 계좌에서 같은 매매를 따라 할 시간을 확보하기 위함입니다. 비워두면 알림이 꺼집니다.',
+  },
+  sweeperAlertEmailSaved: { en: 'Alert email saved.', ko: '알림 이메일이 저장되었습니다.' },
+  sweeperAlertEmailCleared: { en: 'Alert email disabled.', ko: '알림 이메일을 껐습니다.' },
   stage1: { en: 'Stage 1 (Basing)', ko: '1단계(바닥 다지기)' },
   stage2: { en: 'Stage 2 (Advancing)', ko: '2단계(상승 추세)' },
   stage3: { en: 'Stage 3 (Topping)', ko: '3단계(천장)' },
@@ -4265,6 +4275,16 @@ async function startPaperTrading(strategyKey) {
   }
 }
 
+async function savePaperTradingAlertEmail() {
+  const email = document.getElementById('pt-alert-email-sweeper').value.trim();
+  try {
+    await api('POST', '/api/paper-trading/alert-email', { strategy: 'sweeper', email });
+    alert(email ? t('sweeperAlertEmailSaved') : t('sweeperAlertEmailCleared'));
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
 function renderPaperTradingDashboard(el, d, strategyInfo) {
   const pnlCls = d.returnPct >= 0 ? 'positive' : 'negative';
   const fmt = v => `₩${Math.round(v).toLocaleString('en-US')}`;
@@ -4285,6 +4305,16 @@ function renderPaperTradingDashboard(el, d, strategyInfo) {
         <div class="meta-item"><div class="meta-label">${t('cashBalance')}</div><div class="meta-value">${fmt(d.cash)}</div></div>
       </div>
     </div>
+
+    ${strategyInfo.key === 'sweeper' ? `
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">📧 ${t('sweeperAlertEmailTitle')}</div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:10px;line-height:1.5;">${t('sweeperAlertEmailNote')}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <input type="email" id="pt-alert-email-sweeper" value="${escapeHtml(d.alertEmail || '')}" placeholder="you@example.com" style="flex:1;min-width:220px;" />
+        <button class="btn-primary" onclick="savePaperTradingAlertEmail()">${t('save')}</button>
+      </div>
+    </div>` : ''}
 
     <div class="card">
       <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('openPositions')} (${d.positions.length})</div>

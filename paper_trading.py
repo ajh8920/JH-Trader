@@ -436,9 +436,10 @@ def run_anonymous_daily_step(account):
             "stopState": pos_row.stop_state, "highestHigh": pos_row.highest_high, "barsHeld": pos_row.bars_held,
             "maBelowCount": 0, "totalCost": pos_row.total_cost or (pos_row.entry_price * pos_row.shares),
             "lastEntryPrice": pos_row.last_entry_price or pos_row.entry_price, "pyramidCount": pos_row.pyramid_count,
-            "initialShares": pos_row.initial_shares or pos_row.shares,
+            "initialShares": pos_row.initial_shares or pos_row.shares, "partialTaken": pos_row.partial_taken,
         }
         closed = False
+        last_pyramid_date, last_pyramid_shares = None, None
         for j, d in enumerate(dates):
             if account.last_processed_date and d <= account.last_processed_date:
                 continue
@@ -460,6 +461,32 @@ def run_anonymous_daily_step(account):
                 db.session.delete(pos_row)
                 closed = True
                 break
+            # 분할익절 - vcp_strategy.run_vcp_backtest의 분할익절 블록과 동일 규칙(+2R에
+            # partial_profit_fraction만큼 매도, 포지션은 남은 수량으로 계속 유지). 어나니머스는
+            # partial_profit_fraction=0이라 조건이 항상 거짓이 되어 기존 동작에 영향이 없다.
+            partial_profit_fraction = params.get("partial_profit_fraction", 0.0)
+            if partial_profit_fraction > 0 and not pos["partialTaken"]:
+                partial_profit_r = params.get("partial_profit_r", vcp.PARTIAL_PROFIT_R)
+                r = pos["riskPerShare"]
+                r_reached = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
+                if r_reached >= partial_profit_r:
+                    target = pos["avgEntryPrice"] + partial_profit_r * r
+                    if highs[j] >= target:
+                        sell_shares = min(max(1, int(pos["shares"] * partial_profit_fraction)), pos["shares"] - 1)
+                        if sell_shares > 0:
+                            fill = target * (1 - (vcp.SLIPPAGE_EXIT_PCT + vcp.SELL_TAX_PCT) / 100)
+                            pnl_pct = round((fill - pos["avgEntryPrice"]) / pos["avgEntryPrice"] * 100, 2)
+                            account.cash += sell_shares * fill
+                            db.session.add(PaperTrade(
+                                account_id=account.id, code=pos_row.code, name=pos_row.name,
+                                entry_date=pos_row.entry_date, entry_price=round(pos["avgEntryPrice"], 2),
+                                exit_date=d, exit_price=round(target, 2), shares=sell_shares, pnl_pct=pnl_pct,
+                                exit_reason="partialProfit",
+                                hold_days=(datetime.fromisoformat(d) - datetime.fromisoformat(pos_row.entry_date)).days,
+                            ))
+                            pos["totalCost"] -= sell_shares * pos["avgEntryPrice"]
+                            pos["shares"] -= sell_shares
+                        pos["partialTaken"] = True
             # 피라미딩 - vcp_strategy.run_vcp_backtest의 신규 진입 후 피라미딩 블록과 동일 규칙
             if pos["pyramidCount"] < params["pyramid_max_count"]:
                 target = pos["lastEntryPrice"] + vcp.PYRAMID_INTERVAL_R * pos["riskPerShare"]
@@ -476,12 +503,18 @@ def run_anonymous_daily_step(account):
                         pos["lastEntryPrice"] = target
                         pos["pyramidCount"] += 1
                         pos["stopPrice"] = max(pos["stopPrice"], target - params["initial_stop_atr_mult"] * pos["entryAtr"])
+                        # 매매 알림 메일용 - 이 행 갱신만으로는 "언제 얼마나" 추가매수했는지
+                        # 남지 않아 별도로 기록해둔다(피라미딩은 이력 테이블이 없다).
+                        last_pyramid_date, last_pyramid_shares = d, add_shares
         if not closed:
             pos_row.entry_price, pos_row.shares = pos["avgEntryPrice"], pos["shares"]
             pos_row.total_cost, pos_row.last_entry_price = pos["totalCost"], pos["lastEntryPrice"]
             pos_row.pyramid_count, pos_row.initial_shares = pos["pyramidCount"], pos["initialShares"]
             pos_row.stop_price, pos_row.stop_state = pos["stopPrice"], pos["stopState"]
             pos_row.highest_high, pos_row.bars_held = pos["highestHigh"], pos["barsHeld"]
+            pos_row.partial_taken = pos["partialTaken"]
+            if last_pyramid_date:
+                pos_row.last_pyramid_date, pos_row.last_pyramid_shares = last_pyramid_date, last_pyramid_shares
 
     db.session.flush()
 
@@ -586,3 +619,94 @@ def run_anonymous_daily_step(account):
 
     account.last_processed_date = latest_date
     db.session.commit()
+
+
+# ─── "스위퍼" 매매 알림 메일 ──────────────────────────────────────────────────
+# 사용자가 실전 계좌에서 같은 매매를 직접 따라 하려면 장 마감(15:30) 전에
+# 오늘 무엇을 사고팔지 알아야 한다 - app.py의 sweeper_trade_alert_scheduler가
+# 매일 한국시간 14:30에 이 함수를 호출한다. 신규진입/청산(분할익절 포함)은
+# PaperPosition.entry_date/PaperTrade.exit_date로 "오늘 반영된 거래일"을 그대로
+# 조회할 수 있지만, 피라미딩(추가매수)은 기존 행을 갱신할 뿐이라 last_pyramid_date/
+# last_pyramid_shares(run_anonymous_daily_step에서 기록)가 없으면 "오늘 있었는지"를
+# 알 방법이 없다.
+
+_SWEEPER_ALERT_EXIT_REASON_LABEL = {
+    "initialStop": "초기손절", "breakevenStop": "본전손절", "trailingStop": "트레일링손절",
+    "timeStop": "시간손절", "maBreak": "이평선이탈", "maxHold": "최대보유도달",
+    "partialProfit": "분할익절", "periodEnd": "기간종료",
+}
+
+
+def send_sweeper_trade_alerts():
+    """알림 이메일이 설정된 활성 스위퍼 계좌를 전부 찾아 계좌별로 오늘의 매매를
+    보낸다. paper_trading_runner와 같은 이유로 계좌 하나의 실패가 나머지를
+    막지 않도록 계좌별로 예외를 격리한다."""
+    account_ids = [
+        row.id for row in PaperStrategyAccount.query.filter_by(strategy="sweeper", is_active=True)
+        .filter(PaperStrategyAccount.alert_email.isnot(None))
+        .filter(PaperStrategyAccount.alert_email != "").all()
+    ]
+    for account_id in account_ids:
+        try:
+            _send_one_sweeper_alert(account_id)
+        except Exception as e:
+            db.session.rollback()
+            print(f"[스위퍼 매매알림] 계좌 {account_id} 발송 오류: {e}")
+
+
+def _send_one_sweeper_alert(account_id):
+    import email_utils
+
+    # gunicorn 워커 2개가 같은 시각(14:30)에 동시에 깨어날 수 있어, 중복 발송을
+    # 막으려고 행 잠금을 걸고 나서야 last_alert_sent_date를 확인한다(RULES.md의
+    # "워커 간 공유 상태" 문제와 같은 이유 - SQLite에서는 이 잠금이 사실상
+    # 무시되지만 로컬은 어차피 프로세스가 하나뿐이라 문제가 안 된다).
+    account = PaperStrategyAccount.query.filter_by(id=account_id).with_for_update().first()
+    if not account or not account.alert_email:
+        return
+    target_date = account.last_processed_date
+    if not target_date or account.last_alert_sent_date == target_date:
+        db.session.commit()
+        return
+
+    buys = PaperPosition.query.filter_by(account_id=account.id, entry_date=target_date).all()
+    pyramids = PaperPosition.query.filter_by(account_id=account.id, last_pyramid_date=target_date).all()
+    sells = PaperTrade.query.filter_by(account_id=account.id, exit_date=target_date).all()
+
+    lines = []
+    if buys:
+        lines.append("[신규 매수]")
+        lines += [f"- {p.name}({p.code}): {p.shares:,}주 @ {round(p.entry_price):,}원" for p in buys]
+    if pyramids:
+        if lines:
+            lines.append("")
+        lines.append("[추가 매수(피라미딩)]")
+        lines += [
+            f"- {p.name}({p.code}): {(p.last_pyramid_shares or 0):,}주 추가 @ {round(p.last_entry_price):,}원"
+            for p in pyramids
+        ]
+    if sells:
+        if lines:
+            lines.append("")
+        lines.append("[매도]")
+        lines += [
+            f"- {t.name}({t.code}): {t.shares:,}주 @ {round(t.exit_price):,}원 "
+            f"(사유: {_SWEEPER_ALERT_EXIT_REASON_LABEL.get(t.exit_reason, t.exit_reason)}, 손익 {t.pnl_pct:+.1f}%)"
+            for t in sells
+        ]
+
+    if not lines:
+        body = f"{target_date} 기준, 스위퍼 전략에서 오늘 실행할 매매가 없습니다."
+    else:
+        body = (
+            f"{target_date} 확정 종가 기준, 스위퍼 전략의 오늘 매매 내역입니다.\n\n"
+            + "\n".join(lines)
+            + "\n\n※ 위 가격은 계산 기준가이며, 실제 체결가는 다를 수 있습니다."
+        )
+
+    subject = f"[JH-Trader] 스위퍼 오늘의 매매 ({target_date})"
+    if email_utils.send_email(account.alert_email, subject, body):
+        account.last_alert_sent_date = target_date
+        db.session.commit()
+    else:
+        db.session.rollback()

@@ -1575,6 +1575,7 @@ def paper_trading_status():
         "seed": account.seed, "cash": round(account.cash, 2), "equity": round(equity, 2),
         "returnPct": return_pct, "drawdownPct": drawdown_pct,
         "startedOn": account.started_on, "lastProcessedDate": account.last_processed_date,
+        "alertEmail": account.alert_email,
         "positions": position_list,
         "tradeCount": len(trades), "winRatePct": round(len(win_trades) / len(trades) * 100, 1) if trades else None,
         "trades": [{
@@ -1583,6 +1584,33 @@ def paper_trading_status():
             "pnlPct": t.pnl_pct, "exitReason": t.exit_reason, "holdDays": t.hold_days,
         } for t in trades],
     }))
+
+
+@app.route("/api/paper-trading/alert-email", methods=["POST"])
+@login_required
+@limiter.limit("10 per minute")
+def paper_trading_set_alert_email():
+    """스위퍼 전용 매매 알림 이메일을 설정/해제한다. email을 빈 문자열로 보내면
+    알림을 끈다(계좌는 지우지 않음). 스위퍼 이외 전략에는 의미가 없어 막는다 -
+    다른 전략까지 알림 대상으로 넓히려면 sweeper_trade_alert_scheduler가 조회하는
+    전략 목록도 함께 넓혀야 한다."""
+    from models import PaperStrategyAccount
+    import email_utils
+
+    body = request.json or {}
+    strategy = str(body.get("strategy", ""))
+    if strategy != "sweeper":
+        return jsonify({"error": "스위퍼 전략에서만 매매 알림을 설정할 수 있습니다"}), 400
+    email = str(body.get("email", "")).strip()
+    if email and not email_utils.is_valid_email(email):
+        return jsonify({"error": "이메일 형식이 올바르지 않습니다"}), 400
+
+    account = PaperStrategyAccount.query.filter_by(user_id=current_user.id, strategy=strategy).first()
+    if not account:
+        return jsonify({"error": "모의투자 계좌를 먼저 시작하세요"}), 404
+    account.alert_email = email or None
+    db.session.commit()
+    return jsonify({"ok": True, "alertEmail": account.alert_email})
 
 
 # ─── 무한매수법 실전 현황 API ─────────────────────────────────────────────────
@@ -1784,7 +1812,7 @@ for _view in (
     kr_quant_status, kr_quant_screen, kr_quant_backtest, kr_quant_backtest_status,
     screener_status, screener_results, screener_detail,
     create_screening_backtest, screening_backtest_status,
-    paper_trading_start,
+    paper_trading_start, paper_trading_set_alert_email,
     list_screener_watchlist, add_screener_watchlist, remove_screener_watchlist,
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
@@ -1847,6 +1875,34 @@ def paper_trading_runner():
             except Exception:
                 app.logger.exception("모의투자 일별 처리 오류")
         time.sleep(1800)  # 30분마다 깨어나 새 거래일 데이터가 나왔는지 확인
+
+
+def sweeper_trade_alert_scheduler():
+    """스위퍼 전략의 "오늘 매매" 요약 메일을 매일 한국시간 14:30에 한 번 발송한다.
+    사용자가 실전 계좌에서 같은 매매를 따라 하려면 장 마감(15:30) 전에 시간이
+    필요해 이 시각으로 고정했다(paper_trading.send_sweeper_trade_alerts 참고).
+    gunicorn 워커 2개가 매일 같은 시각에 같이 깨어나므로, 실제 중복발송 방지는
+    DB 행 잠금(paper_trading._send_one_sweeper_alert)이 맡는다."""
+    from zoneinfo import ZoneInfo
+    import paper_trading
+
+    kst = ZoneInfo("Asia/Seoul")
+    while True:
+        now = datetime.now(kst)
+        target = now.replace(hour=14, minute=30, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        time.sleep(max(1.0, (target - now).total_seconds()))
+        with app.app_context():
+            try:
+                paper_trading.send_sweeper_trade_alerts()
+            except Exception:
+                app.logger.exception("스위퍼 매매 알림 메일 발송 오류")
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+        time.sleep(90)  # 목표 시각 부근에서 곧바로 다시 깨어나 중복 발송하지 않도록 여유
 
 
 def kr_quant_price_cache_refresher():
@@ -2357,6 +2413,11 @@ with app.app_context():
     _ensure_column("paper_positions", "last_entry_price", "FLOAT")
     _ensure_column("paper_positions", "total_cost", "FLOAT")
     _ensure_column("paper_positions", "initial_shares", "INTEGER")
+    _ensure_column("paper_positions", "partial_taken", "BOOLEAN DEFAULT 0")
+    _ensure_column("paper_positions", "last_pyramid_date", "VARCHAR(10)")
+    _ensure_column("paper_positions", "last_pyramid_shares", "INTEGER")
+    _ensure_column("paper_strategy_accounts", "alert_email", "VARCHAR(255)")
+    _ensure_column("paper_strategy_accounts", "last_alert_sent_date", "VARCHAR(10)")
     _backfill_stage_column()
 
 threading.Thread(target=alert_checker, daemon=True).start()
@@ -2365,6 +2426,7 @@ threading.Thread(target=trend_screen_refresher, daemon=True).start()
 threading.Thread(target=us_fundamentals_refresher, daemon=True).start()
 threading.Thread(target=dart_fundamentals_refresher, daemon=True).start()
 threading.Thread(target=paper_trading_runner, daemon=True).start()
+threading.Thread(target=sweeper_trade_alert_scheduler, daemon=True).start()
 
 
 # ─── 실행 (로컬 개발 서버) ───────────────────────────────────────────────────
