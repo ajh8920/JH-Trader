@@ -158,7 +158,15 @@ def fetch_prices_near_date(codes, market_map, date_str, window_days=10):
             continue
 
         if len(chunk) == 1:
-            closes = df["Close"].dropna() if "Close" in df.columns else None
+            # group_by="ticker"는 종목 1개짜리 리스트를 넘겨도 MultiIndex 컬럼
+            # (티커, 필드)을 그대로 돌려준다 - df["Close"]를 바로 쓰면 컬럼명이
+            # 실제로는 (티커,"Close") 튜플이라 KeyError가 난다(paper_trading.py
+            # fetch_recent_bars에서 발견된 것과 같은 버그 - df[티커]로 먼저 골라야 함).
+            try:
+                sub = df[chunk[0]]
+            except KeyError:
+                continue
+            closes = sub["Close"].dropna() if "Close" in sub.columns else None
             if closes is not None and not closes.empty:
                 prices[code_by_ticker[chunk[0]]] = float(closes.iloc[-1])
             continue

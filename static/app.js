@@ -433,6 +433,7 @@ const I18N = {
   tradeLog: { en: 'Trade Log', ko: '매매 내역' },
   buyDate: { en: 'Buy Date', ko: '매수일' },
   buyPrice: { en: 'Buy Price', ko: '매수가' },
+  quantity: { en: 'Qty', ko: '수량' },
   sellDate: { en: 'Sell Date', ko: '매도일' },
   sellPrice: { en: 'Sell Price', ko: '매도가' },
   returnPct: { en: 'Return', ko: '수익률' },
@@ -4178,6 +4179,7 @@ function renderPaperTradingDashboard(el, d, strategyInfo) {
           <thead><tr>
             <th>${t('name')}</th><th>${t('code')}</th>
             <th style="text-align:right;">${t('buyDate')}</th><th style="text-align:right;">${t('buyPrice')}</th>
+            <th style="text-align:right;">${t('quantity')}</th>
             <th style="text-align:right;">${t('currentPrice')}</th><th style="text-align:right;">${t('returnPct')}</th>
             <th style="text-align:right;">${t('stopPrice')}</th><th>${t('stopState')}</th>
           </tr></thead>
@@ -4186,6 +4188,7 @@ function renderPaperTradingDashboard(el, d, strategyInfo) {
               <tr>
                 <td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.code)}</td>
                 <td style="text-align:right;">${escapeHtml(p.entryDate)}</td><td style="text-align:right;">₩${Math.round(p.entryPrice).toLocaleString('en-US')}</td>
+                <td style="text-align:right;">${p.shares.toLocaleString('en-US')}${t('sharesUnit')}</td>
                 <td style="text-align:right;">₩${Math.round(p.currentPrice).toLocaleString('en-US')}</td>
                 <td style="text-align:right;" class="${p.unrealizedPct >= 0 ? 'positive' : 'negative'}">${p.unrealizedPct>=0?'+':''}${p.unrealizedPct.toFixed(1)}%</td>
                 <td style="text-align:right;">₩${Math.round(p.stopPrice).toLocaleString('en-US')}</td>
@@ -4204,6 +4207,7 @@ function renderPaperTradingDashboard(el, d, strategyInfo) {
           <thead><tr>
             <th>${t('name')}</th><th>${t('code')}</th>
             <th style="text-align:right;">${t('buyDate')}</th><th style="text-align:right;">${t('buyPrice')}</th>
+            <th style="text-align:right;">${t('quantity')}</th>
             <th style="text-align:right;">${t('sellDate')}</th><th style="text-align:right;">${t('sellPrice')}</th>
             <th style="text-align:right;">${t('returnPct')}</th><th>${t('exitReason')}</th>
           </tr></thead>
@@ -4212,6 +4216,7 @@ function renderPaperTradingDashboard(el, d, strategyInfo) {
               <tr>
                 <td>${escapeHtml(tr.name)}</td><td>${escapeHtml(tr.code)}</td>
                 <td style="text-align:right;">${escapeHtml(tr.entryDate)}</td><td style="text-align:right;">₩${Math.round(tr.entryPrice).toLocaleString('en-US')}</td>
+                <td style="text-align:right;">${tr.shares.toLocaleString('en-US')}${t('sharesUnit')}</td>
                 <td style="text-align:right;">${escapeHtml(tr.exitDate)}</td><td style="text-align:right;">₩${Math.round(tr.exitPrice).toLocaleString('en-US')}</td>
                 <td style="text-align:right;" class="${tr.pnlPct >= 0 ? 'positive' : 'negative'}">${tr.pnlPct>=0?'+':''}${tr.pnlPct.toFixed(1)}%</td>
                 <td>${PAPER_TRADING_EXIT_REASON_LABEL(tr.exitReason)}</td>
