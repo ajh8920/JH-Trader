@@ -624,11 +624,29 @@ def run_anonymous_daily_step(account):
 # ─── "스위퍼" 매매 알림 메일 ──────────────────────────────────────────────────
 # 사용자가 실전 계좌에서 같은 매매를 직접 따라 하려면 장 마감(15:30) 전에
 # 오늘 무엇을 사고팔지 알아야 한다 - app.py의 sweeper_trade_alert_scheduler가
-# 매일 한국시간 14:30에 이 함수를 호출한다. 신규진입/청산(분할익절 포함)은
+# 매일 한국시간 14:30에 run_sweeper_accounts()로 "그 시각 기준 최신 계산"을
+# 먼저 끝낸 뒤에야 send_sweeper_trade_alerts()를 호출한다(단순히 정해진
+# 시각에 메일만 보내는 게 아니라, 계산 -> 메일 순서를 그 시각에 보장하는 것이
+# 핵심이다 - 30분마다 도는 일반 리프레셔가 이미 처리해뒀어도 last_processed_date
+# 가드 덕분에 다시 호출해도 안전하다/멱등하다). 신규진입/청산(분할익절 포함)은
 # PaperPosition.entry_date/PaperTrade.exit_date로 "오늘 반영된 거래일"을 그대로
 # 조회할 수 있지만, 피라미딩(추가매수)은 기존 행을 갱신할 뿐이라 last_pyramid_date/
 # last_pyramid_shares(run_anonymous_daily_step에서 기록)가 없으면 "오늘 있었는지"를
 # 알 방법이 없다.
+
+
+def run_sweeper_accounts():
+    """활성 스위퍼 계좌 전부를 먼저 최신 거래일까지 진행시킨다(run_all_accounts와
+    동일한 계좌별 예외 격리 - 계좌 하나의 실패가 나머지와 뒤이은 메일 발송을
+    막으면 안 된다)."""
+    accounts = PaperStrategyAccount.query.filter_by(strategy="sweeper", is_active=True).all()
+    for account in accounts:
+        try:
+            run_daily_step(account)
+        except Exception as e:
+            db.session.rollback()
+            print(f"[스위퍼 매매알림] 계좌 {account.id} 사전 계산 오류: {e}")
+
 
 _SWEEPER_ALERT_EXIT_REASON_LABEL = {
     "initialStop": "초기손절", "breakevenStop": "본전손절", "trailingStop": "트레일링손절",

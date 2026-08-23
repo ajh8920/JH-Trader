@@ -1878,11 +1878,14 @@ def paper_trading_runner():
 
 
 def sweeper_trade_alert_scheduler():
-    """스위퍼 전략의 "오늘 매매" 요약 메일을 매일 한국시간 14:30에 한 번 발송한다.
-    사용자가 실전 계좌에서 같은 매매를 따라 하려면 장 마감(15:30) 전에 시간이
-    필요해 이 시각으로 고정했다(paper_trading.send_sweeper_trade_alerts 참고).
-    gunicorn 워커 2개가 매일 같은 시각에 같이 깨어나므로, 실제 중복발송 방지는
-    DB 행 잠금(paper_trading._send_one_sweeper_alert)이 맡는다."""
+    """매일 한국시간 14:30에 스위퍼 전략을 "그 시각 기준으로" 먼저 계산하고,
+    그 계산이 끝난 뒤에야 오늘의 매매 요약 메일을 보낸다 - 단순히 정해진 시각에
+    메일만 보내는 게 아니라 계산과 메일 순서를 이 시각에 맞춰 보장하는 것이
+    핵심이다(사용자 요청). 사용자가 실전 계좌에서 같은 매매를 따라 하려면 장
+    마감(15:30) 전에 시간이 필요해 이 시각으로 고정했다(paper_trading.
+    run_sweeper_accounts/send_sweeper_trade_alerts 참고). gunicorn 워커 2개가
+    매일 같은 시각에 같이 깨어나므로, 계산은 last_processed_date 가드로,
+    중복발송은 DB 행 잠금(paper_trading._send_one_sweeper_alert)으로 막는다."""
     from zoneinfo import ZoneInfo
     import paper_trading
 
@@ -1895,6 +1898,7 @@ def sweeper_trade_alert_scheduler():
         time.sleep(max(1.0, (target - now).total_seconds()))
         with app.app_context():
             try:
+                paper_trading.run_sweeper_accounts()
                 paper_trading.send_sweeper_trade_alerts()
             except Exception:
                 app.logger.exception("스위퍼 매매 알림 메일 발송 오류")
@@ -2413,7 +2417,7 @@ with app.app_context():
     _ensure_column("paper_positions", "last_entry_price", "FLOAT")
     _ensure_column("paper_positions", "total_cost", "FLOAT")
     _ensure_column("paper_positions", "initial_shares", "INTEGER")
-    _ensure_column("paper_positions", "partial_taken", "BOOLEAN DEFAULT 0")
+    _ensure_column("paper_positions", "partial_taken", "BOOLEAN DEFAULT FALSE")
     _ensure_column("paper_positions", "last_pyramid_date", "VARCHAR(10)")
     _ensure_column("paper_positions", "last_pyramid_shares", "INTEGER")
     _ensure_column("paper_strategy_accounts", "alert_email", "VARCHAR(255)")
