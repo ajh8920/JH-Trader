@@ -447,11 +447,10 @@ const I18N = {
   tabPaperTrading: { en: 'Paper Trading', ko: '모의투자' },
   paperTradingIntroTitle: { en: 'Start automated paper trading', ko: '자동 모의투자를 시작하세요' },
   paperTradingIntroBody: {
-    en: 'Once started, the "Minervini v2" strategy (Trend Template + liquidity entry, ATR-based risk-managed exit) '
-      + 'runs automatically every day with no real money — entering and exiting positions on its own and logging '
-      + 'every trade with the exact reason it sold.',
-    ko: '시작하면 "미너비니 v2" 전략(트렌드템플릿+유동성 진입, ATR 기반 리스크관리 청산)이 실제 돈 없이 '
-      + '매일 자동으로 매수·매도를 진행하며, 팔 때마다 정확히 어떤 사유로 팔았는지까지 전부 기록합니다.',
+    en: 'Once started, this strategy runs automatically every day with no real money — entering and exiting '
+      + 'positions on its own and logging every trade with the exact reason it sold.',
+    ko: '시작하면 이 전략이 실제 돈 없이 매일 자동으로 매수·매도를 진행하며, '
+      + '팔 때마다 정확히 어떤 사유로 팔았는지까지 전부 기록합니다.',
   },
   paperTradingStartNote: {
     en: 'Runs in the background even while you\'re away — progress accumulates from the next trading day.',
@@ -527,6 +526,7 @@ const I18N = {
   stratMinerviniV21Title: { en: 'Minervini v2.1', ko: '미너비니 v2.1' },
   stratAnonymousTitle: { en: 'Anonymous', ko: '어나니머스' },
   stratSweeperTitle: { en: 'Sweeper', ko: '스위퍼' },
+  ptGroupMinerviniTitle: { en: 'Minervini', ko: '미너비니' },
   exitInitialStop: { en: 'Stop-loss (2×ATR)', ko: '초기 손절(2×ATR)' },
   exitBreakevenStop: { en: 'Breakeven stop', ko: '본전 손절' },
   exitTrailingStop: { en: 'Trailing stop', ko: '트레일링 손절' },
@@ -4204,15 +4204,28 @@ const PAPER_TRADING_EXIT_REASON_LABEL = r => ({
   partialProfit: t('exitPartialProfit'), maBreak: t('exitMaBreak'), maxHold: t('exitMaxHold'),
 }[r] || r);
 
+// 표시 순서(요청: 스위퍼 -> 어나니머스 -> 미너비니) 그대로 배열 순서를 정한다 -
+// 아래 렌더링은 이 배열 순서를 그대로 따른다. 미너비니는 v2/v2.1 두 변형을
+// 같은 그룹으로 묶어 탭 하나 안에 나란히 보여준다(둘 다 같은 진입조건, 청산
+// 규칙만 다른 변형이라 굳이 탭을 나눌 필요는 없음).
 const PAPER_STRATEGY_LIST = [
-  { key: 'minervini_v2', titleKey: 'stratMinerviniV2Title', emoji: '🎯', defaultSeed: 10_000_000 },
-  { key: 'minervini_v21', titleKey: 'stratMinerviniV21Title', emoji: '🎯', defaultSeed: 10_000_000 },
+  // 리스크기반 사이징이라 시드가 결과의 "형태"를 바꾸지 않는다 - 실측에 쓴 시드(1천만원)를 그대로 기본값으로.
+  { key: 'sweeper', titleKey: 'stratSweeperTitle', emoji: '🧹', defaultSeed: 10_000_000, group: 'sweeper' },
   // 슬롯당 고정 금액 상한(2,500만원 = 시드 5천만원/10슬롯의 5배)을 전제로 튜닝된
   // 전략이라 기본 시드도 맞춰둔다.
-  { key: 'anonymous', titleKey: 'stratAnonymousTitle', emoji: '🐢', defaultSeed: 50_000_000 },
-  // 리스크기반 사이징이라 시드가 결과의 "형태"를 바꾸지 않는다 - 실측에 쓴 시드(1천만원)를 그대로 기본값으로.
-  { key: 'sweeper', titleKey: 'stratSweeperTitle', emoji: '🧹', defaultSeed: 10_000_000 },
+  { key: 'anonymous', titleKey: 'stratAnonymousTitle', emoji: '🐢', defaultSeed: 50_000_000, group: 'anonymous' },
+  { key: 'minervini_v2', titleKey: 'stratMinerviniV2Title', emoji: '🎯', defaultSeed: 10_000_000, group: 'minervini' },
+  { key: 'minervini_v21', titleKey: 'stratMinerviniV21Title', emoji: '🎯', defaultSeed: 10_000_000, group: 'minervini' },
 ];
+
+const PAPER_TRADING_GROUPS = [
+  { key: 'sweeper', icon: '🧹', titleKey: 'stratSweeperTitle' },
+  { key: 'anonymous', icon: '🐢', titleKey: 'stratAnonymousTitle' },
+  { key: 'minervini', icon: '🎯', titleKey: 'ptGroupMinerviniTitle' },
+];
+
+let ptActiveGroup = PAPER_TRADING_GROUPS[0].key;
+let ptStatusData = {};
 
 async function loadPaperTrading() {
   const el = document.getElementById('papertrade-body');
@@ -4221,19 +4234,44 @@ async function loadPaperTrading() {
     const results = await Promise.all(
       PAPER_STRATEGY_LIST.map(s => api('GET', `/api/paper-trading/status?strategy=${s.key}`))
     );
-    el.innerHTML = PAPER_STRATEGY_LIST.map((s, i) => `<div id="papertrade-panel-${s.key}"></div>`).join('');
-    PAPER_STRATEGY_LIST.forEach((s, i) => {
-      const panel = document.getElementById(`papertrade-panel-${s.key}`);
-      const data = results[i];
-      if (!data.exists) {
-        renderPaperTradingStart(panel, s);
-      } else {
-        renderPaperTradingDashboard(panel, data, s);
-      }
-    });
+    PAPER_STRATEGY_LIST.forEach((s, i) => { ptStatusData[s.key] = results[i]; });
+    renderPaperTradingTabs();
   } catch (e) {
     el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
   }
+}
+
+function renderPaperTradingTabs() {
+  const el = document.getElementById('papertrade-body');
+  el.innerHTML = `
+    <div class="bt-preset-row" style="display:flex;gap:8px;margin-bottom:14px;">
+      ${PAPER_TRADING_GROUPS.map(g => `
+        <button type="button" id="pt-tab-${g.key}" class="bt-preset-btn ${ptActiveGroup === g.key ? 'selected' : ''}" onclick="setPaperTradingTab('${g.key}')">
+          ${g.icon} ${t(g.titleKey)}
+        </button>`).join('')}
+    </div>
+    <div id="papertrade-panels"></div>`;
+  renderPaperTradingActiveGroup();
+}
+
+function setPaperTradingTab(group) {
+  ptActiveGroup = group;
+  renderPaperTradingTabs();
+}
+
+function renderPaperTradingActiveGroup() {
+  const panelsEl = document.getElementById('papertrade-panels');
+  const strategies = PAPER_STRATEGY_LIST.filter(s => s.group === ptActiveGroup);
+  panelsEl.innerHTML = strategies.map(s => `<div id="papertrade-panel-${s.key}"></div>`).join('');
+  strategies.forEach(s => {
+    const panel = document.getElementById(`papertrade-panel-${s.key}`);
+    const data = ptStatusData[s.key];
+    if (!data.exists) {
+      renderPaperTradingStart(panel, s);
+    } else {
+      renderPaperTradingDashboard(panel, data, s);
+    }
+  });
 }
 
 function renderPaperTradingStart(el, strategyInfo) {
