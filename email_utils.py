@@ -3,12 +3,35 @@
 비어 있으면 조용히 건너뛴다(메일 기능이 없어도 나머지 기능은 정상 동작해야 하므로) -
 호출부(백그라운드 스레드)가 예외로 죽으면 안 되기 때문에 여기서 예외를 전부 삼킨다.
 """
+import contextlib
 import os
 import re
 import smtplib
+import socket
 from email.mime.text import MIMEText
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _getaddrinfo_ipv4_only(host, port, family=0, type=0, proto=0, flags=0):
+    return _orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+
+@contextlib.contextmanager
+def _force_ipv4():
+    """Render 같은 컨테이너 환경은 IPv6 주소는 받아오지만(smtp.gmail.com 등은
+    AAAA 레코드도 있음) 실제 IPv6 라우트가 없어 "[Errno 101] Network is
+    unreachable"로 실패하는 경우가 흔하다(smtplib가 getaddrinfo가 돌려준 주소
+    순서대로 시도하는데 IPv6를 먼저 집어들면 거기서 막힌다). 연결 시도 구간에서만
+    getaddrinfo가 IPv4 주소만 돌려주도록 임시로 바꿔치기해 우회한다 - 호스트명은
+    그대로 넘기므로 TLS 인증서 검증(SNI)에는 영향이 없다."""
+    socket.getaddrinfo = _getaddrinfo_ipv4_only
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = _orig_getaddrinfo
 
 
 def is_valid_email(addr):
@@ -34,7 +57,7 @@ def send_email_verbose(to_addr, subject, body):
     msg["From"] = from_addr
     msg["To"] = to_addr
     try:
-        with smtplib.SMTP(host, int(port), timeout=20) as server:
+        with _force_ipv4(), smtplib.SMTP(host, int(port), timeout=20) as server:
             server.starttls()
             server.login(user, password)
             server.sendmail(from_addr, [to_addr], msg.as_string())
