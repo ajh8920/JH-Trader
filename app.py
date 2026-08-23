@@ -1292,7 +1292,10 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
         job.status = "running"
         db.session.commit()
         try:
-            vcp_preset_params = {"relaxed_vcp": vcp.RELAXED_VCP_PARAMS, "anonymous": vcp.ANONYMOUS_PARAMS}.get(preset)
+            vcp_preset_params = {
+                "relaxed_vcp": vcp.RELAXED_VCP_PARAMS, "anonymous": vcp.ANONYMOUS_PARAMS,
+                "sweeper": vcp.SWEEPER_PARAMS,
+            }.get(preset)
             if vcp_preset_params:
                 p = vcp_preset_params
                 result = vcp.run_vcp_backtest(
@@ -1384,12 +1387,15 @@ def create_screening_backtest():
     body = request.json or {}
     preset = body.get("preset")
     preset = str(preset) if preset else None
-    if preset not in (None, "minervini_v2", "minervini_v21", "relaxed_vcp", "anonymous"):
+    if preset not in (None, "minervini_v2", "minervini_v21", "relaxed_vcp", "anonymous", "sweeper"):
         return jsonify({"error": "알 수 없는 전략 프리셋입니다"}), 400
 
-    if preset in ("relaxed_vcp", "anonymous"):
+    if preset in ("relaxed_vcp", "anonymous", "sweeper"):
         import vcp_strategy as vcp
-        p = vcp.RELAXED_VCP_PARAMS if preset == "relaxed_vcp" else vcp.ANONYMOUS_PARAMS
+        p = {
+            "relaxed_vcp": vcp.RELAXED_VCP_PARAMS, "anonymous": vcp.ANONYMOUS_PARAMS,
+            "sweeper": vcp.SWEEPER_PARAMS,
+        }[preset]
         market, strategy = p["market"], "trendTemplate"
         stop_loss_pct, max_positions = None, p.get("max_positions", 10)
     elif preset:
@@ -1491,7 +1497,7 @@ def paper_trading_start():
 
     body = request.json or {}
     strategy = str(body.get("strategy", "minervini_v2"))
-    if strategy != "anonymous" and strategy not in pt.STRATEGY_PRESETS:
+    if strategy not in ("anonymous", "sweeper") and strategy not in pt.STRATEGY_PRESETS:
         return jsonify({"error": "알 수 없는 전략입니다"}), 400
     try:
         seed = float(body.get("seed", 10_000_000))
@@ -1500,9 +1506,9 @@ def paper_trading_start():
     if seed <= 0:
         return jsonify({"error": "시드는 0보다 커야 합니다"}), 400
 
-    if strategy == "anonymous":
+    if strategy in ("anonymous", "sweeper"):
         import vcp_strategy as vcp
-        preset = vcp.ANONYMOUS_PARAMS
+        preset = vcp.ANONYMOUS_PARAMS if strategy == "anonymous" else vcp.SWEEPER_PARAMS
     else:
         preset = pt.STRATEGY_PRESETS[strategy]
     account = PaperStrategyAccount.query.filter_by(user_id=current_user.id, strategy=strategy).first()
@@ -2252,6 +2258,53 @@ def us_fundamentals_refresher():
         time.sleep(1800)
 
 
+def dart_fundamentals_refresher():
+    """국내 재무데이터(KrFundamental)를 DART Open API로 서버가 직접, 자동으로
+    보강한다. 예전에는 이 수집을 로컬 PC의 예약 작업(run_dart_fetch.bat)에 의존해
+    parquet에 쌓아뒀다가 사람이 수동으로 import_fundamentals_to_db.py를 돌려
+    운영 DB에 반영해야 했는데(그 수동 반영 단계가 누락되어 운영 DB가 2024년에
+    멈춰 있던 게 실제로 발견됨), 이제 운영 서버 자체가 주기적으로 최신 연도를
+    확인해 채운다.
+
+    DART는 사업보고서(연 1회, 보통 3월 공시)만 제공해 실제로 새 데이터가 나오는
+    건 1년에 한 번뿐이다 - "최근 2개 연도"를 매 주기마다 확인하는데, dart_fetch.
+    backfill이 이미 있는 (종목,연도) 조합은 API 호출 없이 건너뛰므로, 채울 게
+    없는 날은 몇 초 안에 끝나고 다음 주기까지 쉰다. 새 연도 보고서가 막 공시되기
+    시작한 시기(예: 3~4월)에는 하루 여러 주기에 걸쳐 조금씩 이어받는다(전종목을
+    한 번에 다 채우면 DART 일일 요청 한도에 걸릴 수 있어 주기당 max_requests로
+    스스로 제한).
+
+    DART_API_KEY 환경변수가 없으면(로컬 개발에서만 쓰던 값이라 프로덕션엔 아직
+    없을 수 있음) 조용히 쉰다 - 관리자가 Render 환경변수에 추가하면 다음 주기부터
+    자동으로 살아난다. gunicorn 워커 2개가 각자 이 스레드를 하나씩 띄우는데,
+    trend_screen_refresher와 같은 이유로 워커 간 잠금은 걸지 않는다 - 최악의
+    경우 같은 주기에 두 워커가 일부 종목을 중복 조회하는 정도이고, DART 일일
+    한도(20,000회)에 비하면 무시할 수준이라 us_fundamentals_refresher처럼 행
+    단위 잠금(SKIP LOCKED)까지 걸 필요는 없다고 판단했다."""
+    import random
+    from models import KrFundamental
+    import dart_fetch
+
+    time.sleep(random.uniform(60, 180))
+    while True:
+        try:
+            if os.environ.get("DART_API_KEY"):
+                with open(KR_STOCKS_PATH, "r", encoding="utf-8") as f:
+                    stocks = json.load(f)
+                codes = [s["code"] for s in stocks]
+                current_year = datetime.utcnow().year
+                target_years = [current_year - 1, current_year - 2]
+                dart_fetch.backfill(app, db, KrFundamental, codes, target_years, max_requests=1500)
+        except Exception:
+            app.logger.exception("DART 재무데이터 자동 수집 오류")
+            with app.app_context():
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+        time.sleep(6 * 3600)  # 6시간마다 - 이미 다 채워진 날은 곧바로 끝나고 다시 쉰다
+
+
 # ─── 초기화 ──────────────────────────────────────────────────────────────────
 # gunicorn 등 WSGI 서버로 구동해도(=__name__ != "__main__") DB 테이블 생성과 알림
 # 체크 스레드가 항상 시작되도록 모듈 임포트 시점에 실행한다.
@@ -2310,6 +2363,7 @@ threading.Thread(target=alert_checker, daemon=True).start()
 threading.Thread(target=kr_quant_price_cache_refresher, daemon=True).start()
 threading.Thread(target=trend_screen_refresher, daemon=True).start()
 threading.Thread(target=us_fundamentals_refresher, daemon=True).start()
+threading.Thread(target=dart_fundamentals_refresher, daemon=True).start()
 threading.Thread(target=paper_trading_runner, daemon=True).start()
 
 

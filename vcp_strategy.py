@@ -158,6 +158,38 @@ ANONYMOUS_PARAMS = {
     "max_position_value_abs": 25_000_000, "default_seed": 50_000_000,
 }
 
+# "스위퍼" - 사용자가 "어나니머스는 내가 직접 제안한 제약(균등배분, 고정 금액 상한 등)이
+# 많으니, 그런 제약을 걷어내고 수익률·승률·손익비만 보고 최적 조건을 찾아달라"고
+# 요청해 나온 별도 전략이다. 진입 신호(돈치안15일 브레이크아웃)는 어나니머스와 같지만
+# 청산·사이징 철학이 정반대다 - 어나니머스는 "손실은 짧게, 수익은 최대한 오래"(챈들리어
+# 8×ATR, 분할익절 없음, 평균보유 14일)인데, 이 전략은 챈들리어를 3×ATR로 바짝 좁히고
+# +1R 본전이동 + 25% 분할익절을 되살려 "짧고 빠르게, 자주 이기며" 자본을 빠르게
+# 회전시킨다(평균보유 5.9일). position_sizing_mode도 "risk"(계좌 대비 리스크%
+# 기반)로 되돌렸다 - equal_weight는 계좌가 복리로 커질수록 포지션 금액이 무한정
+# 커지는 초복리 아티팩트가 있어(어나니머스에서 실측으로 확인) 고정 상한이 필수였는데,
+# risk 기반 사이징은 그 문제 자체가 구조적으로 없다.
+#
+# 슬롯 수를 40/60/80으로 자유롭게 풀어본 스윕에서는 슬롯이 늘수록 CAGR이 계속
+# 올라갔지만(슬롯40 CAGR 66.32%→슬롯80 72.28%), 사용자가 "슬롯이 너무 많다"며
+# 다시 10개 고정을 요청해 그 제약 안에서 트레일링 폭(3/5/8×ATR)·분할익절 비율
+# (25/50%)·회당 리스크%(6/10%)·국면게이팅 여부를 스윕한 결과(9.6년, 시드
+# 1,000만원, 유동성 최소선 평균거래대금 1억원): 타이트 트레일링(3×ATR)+분할익절
+# 25%+회당리스크6%+국면게이팅 해제 조합이 CAGR 51.14%·승률 58.6%·손익비 5.39·
+# 거래 4,194건으로 승률·CAGR을 동시에 압도했다(와이드 트레일링으로 "크게 먹는"
+# 접근은 슬롯이 10개뿐이면 평균보유가 21일까지 늘어나 자본회전이 느려지고 오히려
+# CAGR·승률 모두 이 조합보다 낮았다 - CAGR 39.73%/승률 24.5%). 국면게이팅을
+# 다시 켜면 MDD가 32.1%→30.3%로 개선되지만 CAGR이 51.1%→42.5%로 크게 낮아지는
+# 트레이드오프가 뚜렷해 해제 상태를 최종 채택했다.
+SWEEPER_PARAMS = {
+    "market": "KR", "entry_mode": "donchian", "donchian_period": 15, "max_positions": 10,
+    "initial_stop_atr_mult": 1.5, "max_initial_risk_pct": 6.0, "risk_cap_mode": "shrink",
+    "partial_profit_fraction": 0.25, "breakeven_r": 1.0,
+    "chandelier_atr_mult": 3.0,
+    "rescan_interval_days": 3, "cash_equitize": True, "equitize_max_pct": 70.0,
+    "position_sizing_mode": "risk", "min_market_cap": 0, "min_avg_trade_value": 100_000_000,
+    "gate_entries_on_regime": False, "default_seed": 10_000_000,
+}
+
 
 def _true_range(highs, lows, closes, k):
     prev_close = closes[k - 1] if k > 0 else closes[k]

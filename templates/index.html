@@ -530,6 +530,9 @@
             <button type="button" id="sbt-preset-anonymous" class="bt-preset-btn" onclick="setScreeningBacktestPreset('anonymous')">
               <span data-i18n="btPresetAnonymous">🐢 어나니머스</span>
             </button>
+            <button type="button" id="sbt-preset-sweeper" class="bt-preset-btn" onclick="setScreeningBacktestPreset('sweeper')">
+              <span data-i18n="btPresetSweeper">🧹 스위퍼</span>
+            </button>
           </div>
           <div class="bt-form-grid">
             <div class="bt-field" id="sbt-field-market">
@@ -647,11 +650,30 @@
             생존편향 제거는 데이터가 없어 반영하지 못했습니다.
             </span>
           </div>
+          <div class="info-box" id="sbt-info-sweeper" style="display:none;margin-top:12px;">
+            <i class="ti ti-info-circle" aria-hidden="true"></i>
+            <span>
+            진입 조건은 <b>어나니머스와 완전히 동일</b>합니다(돈치안 채널 15거래일 고가 돌파 +
+            평균거래대금 1억원 이상, VCP 패턴·트렌드템플릿·시장국면 요구 없음). 다른 점은
+            <b>청산과 사이징</b>입니다 — 어나니머스가 "손실은 짧게, 수익은 최대한 오래"(챈들리어
+            8×ATR, 분할익절 없음)라면, 스위퍼는 챈들리어를 <b>3×ATR로 바짝 좁히고</b> +1R에서
+            본전이동, <b>+2R에 25% 분할익절</b>을 되살려 "짧고 빠르게, 자주 이기며" 자본을 회전시킵니다
+            (평균보유 5.9일). 포지션 크기도 종목마다 동일 금액이 아니라 <b>트레이드당 계좌의 6%
+            리스크</b> 기준으로 정합니다(초기손절 진입가-1.5×ATR20, 최대 6% 리스크폭). 최대 보유는
+            <b>10종목 고정</b>입니다 — 슬롯을 40~80개까지 풀면 CAGR이 더 오르지만(최대 72.28%),
+            "슬롯이 너무 많다"는 판단에 따라 10개로 고정한 상태에서 트레일링폭·분할익절·회당리스크%를
+            최적화한 결과입니다. 실측 결과 CAGR 51.14%·<b>승률 58.6%</b>(어나니머스의 거의 2배)·
+            손익비 5.39·거래 4,194건으로, 어나니머스와 비슷한 CAGR을 훨씬 많은 승리로 쌓는 방식입니다.
+            관리종목·감사의견·정리매매·회계위반이력·생존편향 제거는 데이터가 없어 반영하지
+            못했습니다.
+            </span>
+          </div>
         </div>
         <div id="sbt-reference-minervini_v2" style="display:none;"></div>
         <div id="sbt-reference-minervini_v21" style="display:none;"></div>
         <div id="sbt-reference-relaxed_vcp" style="display:none;"></div>
         <div id="sbt-reference-anonymous" style="display:none;"></div>
+        <div id="sbt-reference-sweeper" style="display:none;"></div>
         <div id="screenbt-result"></div>
       </section>
 

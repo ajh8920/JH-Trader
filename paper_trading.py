@@ -165,7 +165,7 @@ def run_daily_step(account):
     """계좌 하나를 최신 거래일까지 진행시킨다. 이미 최신 거래일까지 처리된
     상태면 아무 것도 하지 않고 조용히 반환한다(하루에 여러 번 깨어나는
     리프레셔가 중복 처리하지 않도록)."""
-    if account.strategy == "anonymous":
+    if account.strategy in ("anonymous", "sweeper"):
         return run_anonymous_daily_step(account)
 
     preset = STRATEGY_PRESETS.get(account.strategy)
@@ -302,7 +302,7 @@ def run_all_accounts():
             print(f"[모의투자] 계좌 {account.id}({account.strategy}) 처리 오류: {e}")
 
 
-# ─── "어나니머스"(vcp_strategy.ANONYMOUS_PARAMS) 전용 실시간 진행 로직 ──────────
+# ─── "어나니머스"/"스위퍼"(vcp_strategy.ANONYMOUS_PARAMS/SWEEPER_PARAMS) 공용 실시간 진행 로직 ──
 # 트렌드템플릿 단일손절 모델(위)과 포지션 구조가 완전히 달라(피라미딩·챈들리어
 # 트레일링·250일선 이탈·현금 유휴화 방지) 별도 함수로 분리했다. vcp_strategy.
 # run_vcp_backtest와 최대한 같은 계산식을 쓰되, "과거 구간 워크포워드 재생"이
@@ -381,9 +381,12 @@ def _process_anon_position_day(pos, closes, highs, lows, j, params):
 
 
 def run_anonymous_daily_step(account):
-    """"어나니머스" 계좌를 최신 거래일까지 진행시킨다. run_daily_step과 같은
-    "이미 처리된 상태면 조용히 반환" 규칙을 따른다."""
-    params = vcp.ANONYMOUS_PARAMS
+    """"어나니머스"/"스위퍼" 계좌를 최신 거래일까지 진행시킨다(둘 다 vcp_strategy.
+    run_vcp_backtest의 돈치안 브레이크아웃+포지션 관리 규칙을 그대로 쓰되 파라미터
+    딕셔너리만 다르다 - 어나니머스는 균등배분+고정상한, 스위퍼는 리스크기반
+    사이징+타이트 트레일링). run_daily_step과 같은 "이미 처리된 상태면 조용히
+    반환" 규칙을 따른다."""
+    params = vcp.ANONYMOUS_PARAMS if account.strategy == "anonymous" else vcp.SWEEPER_PARAMS
     held_positions = list(account.positions)
     held_codes = [p.code for p in held_positions]
 

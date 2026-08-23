@@ -523,8 +523,10 @@ const I18N = {
   btPresetMinerviniV21: { en: '🎯 Minervini v2.1', ko: '🎯 미너비니 v2.1' },
   btPresetRelaxedVcp: { en: '🎯 Relaxed VCP Strategy', ko: '🎯 완화 VCP 전략' },
   btPresetAnonymous: { en: '🐢 Anonymous', ko: '🐢 어나니머스' },
+  btPresetSweeper: { en: '🧹 Sweeper', ko: '🧹 스위퍼' },
   stratMinerviniV21Title: { en: 'Minervini v2.1', ko: '미너비니 v2.1' },
   stratAnonymousTitle: { en: 'Anonymous', ko: '어나니머스' },
+  stratSweeperTitle: { en: 'Sweeper', ko: '스위퍼' },
   exitInitialStop: { en: 'Stop-loss (2×ATR)', ko: '초기 손절(2×ATR)' },
   exitBreakevenStop: { en: 'Breakeven stop', ko: '본전 손절' },
   exitTrailingStop: { en: 'Trailing stop', ko: '트레일링 손절' },
@@ -546,6 +548,13 @@ const I18N = {
     ko: '돈치안 채널 브레이크아웃(직전 15거래일 고가 돌파) + 평균 일 거래대금 1억원 이상 — 모의투자 '
       + '"어나니머스" 전략이 신규 진입에 실제로 쓰는 조건과 동일합니다. 트렌드템플릿 통과 여부는 요구하지 '
       + '않으니, 정확한 후보를 보려면 위 "전체 조건 통과만" 체크를 해제하세요.',
+  },
+  stratSweeperNote: {
+    en: 'Same entry filter as "Anonymous" (Donchian 15-day breakout + avg. daily trading value ≥ ₩100M), but '
+      + 'exits are tight instead of wide — the "Sweeper" paper-trading strategy takes many small, high-probability wins.',
+    ko: '진입 조건은 "어나니머스"와 동일(돈치안 15일 브레이크아웃 + 평균 일 거래대금 1억원 이상)하지만, '
+      + '청산은 넓게가 아니라 타이트하게 가져갑니다 — 모의투자 "스위퍼" 전략은 작지만 확률 높은 승리를 '
+      + '자주 쌓는 방식입니다.',
   },
   stage1: { en: 'Stage 1 (Basing)', ko: '1단계(바닥 다지기)' },
   stage2: { en: 'Stage 2 (Advancing)', ko: '2단계(상승 추세)' },
@@ -2482,6 +2491,13 @@ const SCREENER_STRATEGY_PRESETS = [
     predicate: r => !isPreferredStockName(r.name) && r.donchianHigh15 != null && r.price > r.donchianHigh15
       && r.avgTradeValue != null && r.avgTradeValue >= 100_000_000,
   },
+  {
+    // 스위퍼 - 진입 신호(돈치안15일 브레이크아웃+유동성)는 어나니머스와 완전히 동일,
+    // 청산 방식(타이트 트레일링+분할익절+리스크기반 사이징)만 다르다.
+    key: 'sweeper', icon: '🧹', titleKey: 'stratSweeperTitle', noteKey: 'stratSweeperNote',
+    predicate: r => !isPreferredStockName(r.name) && r.donchianHigh15 != null && r.price > r.donchianHigh15
+      && r.avgTradeValue != null && r.avgTradeValue >= 100_000_000,
+  },
 ];
 
 const FIN_FILTER_CATEGORIES = [
@@ -3490,19 +3506,23 @@ function initScreeningBacktestTab() {
   }
 }
 
-const SBT_PRESET_KEYS = ['minervini_v2', 'minervini_v21', 'relaxed_vcp', 'anonymous'];
+const SBT_PRESET_KEYS = ['minervini_v2', 'minervini_v21', 'relaxed_vcp', 'anonymous', 'sweeper'];
 const SBT_PRESET_RENDERERS = {
   minervini_v2: () => renderMinerviniV2Reference,
   minervini_v21: () => renderMinerviniV21Reference,
   relaxed_vcp: () => renderRelaxedVcpReference,
   anonymous: () => renderAnonymousReference,
+  sweeper: () => renderSweeperReference,
 };
 const SBT_PRESET_DEFAULT_START = {
   minervini_v2: '2020-01-01', minervini_v21: '2020-01-01', relaxed_vcp: '2017-01-01', anonymous: '2017-01-01',
+  sweeper: '2017-01-01',
 };
 // 어나니머스는 슬롯당 고정 금액 상한(2,500만원 = 시드 5천만원/10슬롯의 5배)을
 // 전제로 튜닝됐다 - 기본 시드(1천만원)로 돌리면 그 상한 대비 계좌가 작아 상한이
-// 거의 안 걸려 실측 결과와 괴리가 생긴다.
+// 거의 안 걸려 실측 결과와 괴리가 생긴다. 스위퍼는 리스크기반 사이징(계좌 대비
+// 리스크%)이라 시드 자체가 결과의 "형태"를 바꾸지 않아 실측에 쓴 시드(1천만원,
+// 즉 기본값)를 그대로 둔다.
 const SBT_PRESET_DEFAULT_SEED = { anonymous: 50_000_000 };
 
 function setScreeningBacktestPreset(preset) {
@@ -3910,6 +3930,94 @@ async function loadAnonymousReferenceTrades() {
   }
 }
 
+// 스위퍼 참고 결과 - vcp_strategy.SWEEPER_PARAMS(돈치안15일 브레이크아웃, 초기손절
+// 1.5×ATR/최대6%, 챈들리어3×ATR 타이트 트레일링, +1R 본전이동, +2R에 25% 분할익절,
+// 리스크기반 사이징(트레이드당 6%), 슬롯10개 고정, 재평가3일, 국면게이팅 해제)로
+// 계산. "어나니머스는 사용자가 직접 제안한 제약이 많으니 그걸 걷어내고 수익률·
+// 승률·손익비만 최적화해달라"는 요청으로 슬롯을 40/60/80까지 풀어본 결과 슬롯이
+// 늘수록 CAGR이 계속 올랐지만(슬롯40 66.32%→슬롯80 72.28%), "슬롯이 너무 많다"는
+// 피드백으로 다시 10개 고정 제약 안에서 트레일링폭·분할익절·회당리스크%·국면게이팅
+// 여부를 스윕했다. 그 결과 타이트 트레일링+분할익절 조합이 승률·CAGR을 동시에
+// 압도해(CAGR 51.14%, 승률 58.6%, 손익비 5.39, 거래 4,194건) 최종 채택했다 -
+// 어나니머스(CAGR 53.43%, 승률 31.2%, 손익비 5.12, 거래 1,596건) 대비 CAGR은
+// 비슷하거나 소폭 낮지만 승률이 거의 두 배다("많이 이기고 조금씩 먹는" 방식).
+const SWEEPER_REFERENCE = {
+  start: '2017-01-01', end: '2026-08-23', seed: 10000000, finalValue: 535947582.1,
+  returnPct: 5259.48, cagrPct: 51.14, mddPct: 32.08, tradeCount: 4194, winCount: 2459, winRatePct: 58.6,
+  avgHoldDays: 5.9, profitLossRatio: 5.39, alphaPct: 5061.45,
+  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 198.03,
+  exitReasonCounts: { partialProfit: 1423, trailingStop: 1046, initialStop: 730, breakevenStop: 956, timeStop: 9, maBreak: 20, periodEnd: 10 },
+};
+
+function renderSweeperReference(el) {
+  const d = SWEEPER_REFERENCE;
+  const fmt = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+  const reasons = Object.entries(d.exitReasonCounts)
+    .map(([k, v]) => `${PAPER_TRADING_EXIT_REASON_LABEL(k)} ${v}${t('countUnit') || '건'}`).join(', ');
+  el.innerHTML = `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+        <div style="font-size:13px;font-weight:700;">📌 ${t('referenceResultTitle')}</div>
+        <div style="font-size:11.5px;color:var(--text-muted);">${escapeHtml(d.start)} ~ ${escapeHtml(d.end)}</div>
+      </div>
+      <div class="bt-summary-grid">
+        <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">${fmt(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('finalValue')}</div><div class="meta-value">${fmt(d.finalValue)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('totalReturn')}</div><div class="meta-value positive">+${d.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('annualizedReturn')}</div><div class="meta-value positive">+${d.cagrPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('winRate')}</div><div class="meta-value">${d.winRatePct.toFixed(1)}% (${d.winCount}/${d.tradeCount})</div></div>
+        <div class="meta-item"><div class="meta-label">${t('avgHoldDays')}</div><div class="meta-value">${d.avgHoldDays}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('profitLossRatio')}</div><div class="meta-value">${d.profitLossRatio}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('alphaExcessReturn')}</div><div class="meta-value ${d.alphaPct >= 0 ? 'positive' : 'negative'}">${d.alphaPct >= 0 ? '+' : ''}${d.alphaPct.toFixed(1)}%p</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmarkLabel)}</div><div class="meta-value positive">+${d.benchmarkReturnPct.toFixed(1)}%</div></div>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px;line-height:1.5;">
+        ${t('exitReason')}: ${escapeHtml(reasons)}<br>
+        ${t('referenceResultNote')}
+      </div>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('tradeLog')} (${d.tradeCount})</div>
+      <div id="sbt-refsweeper-trades-body"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i></div></div>
+    </div>`;
+  loadSweeperReferenceTrades();
+}
+
+async function loadSweeperReferenceTrades() {
+  const body = document.getElementById('sbt-refsweeper-trades-body');
+  if (!body) return;
+  try {
+    const res = await fetch('/static/sweeper_reference.json');
+    if (!res.ok) throw new Error('fetch failed');
+    const data = await res.json();
+    const fmtPrice = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+    body.innerHTML = `
+      <div class="pf-table-wrap pf-table-wrap-scroll">
+        <table class="pf-table">
+          <thead><tr>
+            <th>${t('name')}</th><th>${t('code')}</th>
+            <th style="text-align:right;">${t('buyDate')}</th><th style="text-align:right;">${t('buyPrice')}</th>
+            <th style="text-align:right;">${t('sellDate')}</th><th style="text-align:right;">${t('sellPrice')}</th>
+            <th style="text-align:right;">${t('returnPct')}</th><th>${t('exitReason')}</th>
+          </tr></thead>
+          <tbody>
+            ${data.trades.map(tr => `
+              <tr>
+                <td>${escapeHtml(tr.name)}</td><td>${escapeHtml(tr.code)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.entryDate)}</td><td style="text-align:right;">${fmtPrice(tr.entryPrice)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.exitDate)}</td><td style="text-align:right;">${fmtPrice(tr.exitPrice)}</td>
+                <td style="text-align:right;" class="${tr.pnlPct >= 0 ? 'positive' : 'negative'}">${tr.pnlPct>=0?'+':''}${tr.pnlPct.toFixed(1)}%</td>
+                <td>${PAPER_TRADING_EXIT_REASON_LABEL(tr.exitReason)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${t('referenceTradesLoadError')}</span></div>`;
+  }
+}
+
 async function runScreeningBacktest() {
   const market = document.getElementById('sbt-market').value;
   const strategy = document.getElementById('sbt-strategy').value;
@@ -4102,6 +4210,8 @@ const PAPER_STRATEGY_LIST = [
   // 슬롯당 고정 금액 상한(2,500만원 = 시드 5천만원/10슬롯의 5배)을 전제로 튜닝된
   // 전략이라 기본 시드도 맞춰둔다.
   { key: 'anonymous', titleKey: 'stratAnonymousTitle', emoji: '🐢', defaultSeed: 50_000_000 },
+  // 리스크기반 사이징이라 시드가 결과의 "형태"를 바꾸지 않는다 - 실측에 쓴 시드(1천만원)를 그대로 기본값으로.
+  { key: 'sweeper', titleKey: 'stratSweeperTitle', emoji: '🧹', defaultSeed: 10_000_000 },
 ];
 
 async function loadPaperTrading() {
