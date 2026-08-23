@@ -1575,7 +1575,6 @@ def paper_trading_status():
         "seed": account.seed, "cash": round(account.cash, 2), "equity": round(equity, 2),
         "returnPct": return_pct, "drawdownPct": drawdown_pct,
         "startedOn": account.started_on, "lastProcessedDate": account.last_processed_date,
-        "alertEmail": account.alert_email,
         "positions": position_list,
         "tradeCount": len(trades), "winRatePct": round(len(win_trades) / len(trades) * 100, 1) if trades else None,
         "trades": [{
@@ -1586,28 +1585,40 @@ def paper_trading_status():
     }))
 
 
-@app.route("/api/paper-trading/alert-email", methods=["POST"])
-@login_required
-@limiter.limit("10 per minute")
-def paper_trading_set_alert_email():
-    """스위퍼 전용 매매 알림 이메일을 설정/해제한다. email을 빈 문자열로 보내면
-    알림을 끈다(계좌는 지우지 않음). 스위퍼 이외 전략에는 의미가 없어 막는다 -
-    다른 전략까지 알림 대상으로 넓히려면 sweeper_trade_alert_scheduler가 조회하는
-    전략 목록도 함께 넓혀야 한다."""
+@app.route("/api/admin/sweeper-alerts")
+@admin_required
+def admin_list_sweeper_alerts():
+    """스위퍼 계좌 전부(사용자 무관)를 관리자에게 보여준다 - 매매 알림 이메일은
+    각 사용자가 아니라 관리자 계정(/admin)에서만 설정하도록 바꿨다(자가설정
+    UI는 제거)."""
+    from models import PaperStrategyAccount
+
+    rows = db.session.query(PaperStrategyAccount, User.username) \
+        .join(User, User.id == PaperStrategyAccount.user_id) \
+        .filter(PaperStrategyAccount.strategy == "sweeper") \
+        .order_by(User.username).all()
+    return jsonify([
+        {
+            "accountId": a.id, "username": username, "isActive": a.is_active,
+            "alertEmail": a.alert_email, "lastProcessedDate": a.last_processed_date,
+            "lastAlertSentDate": a.last_alert_sent_date,
+        }
+        for a, username in rows
+    ])
+
+
+@app.route("/api/admin/sweeper-alerts/<int:account_id>", methods=["PATCH"])
+@admin_required
+def admin_set_sweeper_alert_email(account_id):
     from models import PaperStrategyAccount
     import email_utils
 
-    body = request.json or {}
-    strategy = str(body.get("strategy", ""))
-    if strategy != "sweeper":
-        return jsonify({"error": "스위퍼 전략에서만 매매 알림을 설정할 수 있습니다"}), 400
-    email = str(body.get("email", "")).strip()
+    account = PaperStrategyAccount.query.filter_by(id=account_id, strategy="sweeper").first()
+    if not account:
+        return jsonify({"error": "스위퍼 계좌를 찾을 수 없습니다"}), 404
+    email = str((request.json or {}).get("email", "")).strip()
     if email and not email_utils.is_valid_email(email):
         return jsonify({"error": "이메일 형식이 올바르지 않습니다"}), 400
-
-    account = PaperStrategyAccount.query.filter_by(user_id=current_user.id, strategy=strategy).first()
-    if not account:
-        return jsonify({"error": "모의투자 계좌를 먼저 시작하세요"}), 404
     account.alert_email = email or None
     db.session.commit()
     return jsonify({"ok": True, "alertEmail": account.alert_email})
@@ -1812,11 +1823,12 @@ for _view in (
     kr_quant_status, kr_quant_screen, kr_quant_backtest, kr_quant_backtest_status,
     screener_status, screener_results, screener_detail,
     create_screening_backtest, screening_backtest_status,
-    paper_trading_start, paper_trading_set_alert_email,
+    paper_trading_start,
     list_screener_watchlist, add_screener_watchlist, remove_screener_watchlist,
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
+    admin_set_sweeper_alert_email,
 ):
     csrf.exempt(_view)
 
