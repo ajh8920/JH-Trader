@@ -3046,6 +3046,10 @@ function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
   const fmtMult = v => v == null ? null : `${Number(v).toFixed(1)}x`;
   // 재무상태표/포괄손익계산서 절대금액 포맷 - 시가총액과 달리 Finnhub
   // financials-reported는 "백만 달러"가 아니라 달러 원단위 그대로 온다.
+  // 국내(KR)는 실제 공시(DART) 관행대로 "단위: 백만원"을 기본으로 쓰고, 100조원
+  // 이상(초대형주 총자산 등)처럼 그래도 자릿수가 너무 많아지면 "단위: 천만원"으로
+  // 전환한다 - 어느 쪽이든 숫자에 쉼표를 넣고 단위를 그대로 붙여, 어떤 기준으로
+  // 환산했는지 값마다 명확히 보이게 한다(미국은 기존 T/B/M 관행 그대로 유지).
   const fmtAbs = v => {
     if (v == null) return null;
     const neg = v < 0;
@@ -3057,9 +3061,10 @@ function buildFinancialAccordion(d, isUS, fmtMarketCapDetail) {
       else if (av >= 1e6) s = `$${(av / 1e6).toFixed(0)}M`;
       else s = `$${Math.round(av).toLocaleString('en-US')}`;
     } else {
-      if (av >= 1e12) s = `₩${(av / 1e12).toFixed(2)}T`;
-      else if (av >= 1e9) s = `₩${(av / 1e9).toFixed(1)}B`;
-      else s = `₩${(av / 1e6).toFixed(0)}M`;
+      const useJeonman = av >= 1e14; // 100조원 이상이면 천만원 단위로 전환
+      const divisor = useJeonman ? 1e7 : 1e6;
+      const unitLabel = useJeonman ? '천만원' : '백만원';
+      s = `${Math.round(av / divisor).toLocaleString('en-US')} ${unitLabel}`;
     }
     return neg ? `-${s}` : s;
   };
