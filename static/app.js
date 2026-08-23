@@ -2443,6 +2443,14 @@ function renderScreenerResults(data) {
 // 이 화면이 계산해둔 필드(stage/rsRating/epsGrowth/peRatio/metrics.*)만으로
 // 근사한 것으로, 원 저자의 정확한 기준(예: CANSLIM의 기관 매수세, 실적 서프라이즈
 // 등)을 전부 반영하지는 못한다 - 빠른 1차 후보군 추리기용이다.
+// vcp_strategy.is_preferred_stock(Python)과 동일한 근사 규칙 - 국내 우선주는
+// 종목명이 "우"/"우B"/"우C" 등으로 끝난다(예: 삼성전자우, LG화학우, 두산퓨얼셀1우).
+function isPreferredStockName(name) {
+  if (!name) return false;
+  const tail = name.slice(-3);
+  return name.endsWith('우') || tail.includes('우B') || tail.includes('우C');
+}
+
 const SCREENER_STRATEGY_PRESETS = [
   {
     key: 'canslim', icon: '🚀', titleKey: 'stratCanslimTitle', noteKey: 'stratCanslimNote',
@@ -2470,7 +2478,7 @@ const SCREENER_STRATEGY_PRESETS = [
     // 돈치안 채널 15일 신고가 돌파 + 유동성 최소선). "전체 조건 통과만" 체크를 끄지
     // 않으면 서버가 이미 all_pass=True로만 필터링해서 내려주므로 후보가 크게 줄어든다.
     key: 'anonymous', icon: '🐢', titleKey: 'stratAnonymousTitle', noteKey: 'stratAnonymousNote',
-    predicate: r => r.donchianHigh15 != null && r.price > r.donchianHigh15
+    predicate: r => !isPreferredStockName(r.name) && r.donchianHigh15 != null && r.price > r.donchianHigh15
       && r.avgTradeValue != null && r.avgTradeValue >= 100_000_000,
   },
 ];
