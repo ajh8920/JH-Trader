@@ -1073,6 +1073,7 @@ def screener_results():
         "rsRating": r.rs_rating, "passCount": r.pass_count, "allPass": r.all_pass, "stage": r.stage,
         "conditions": json.loads(r.conditions_json) if r.conditions_json else {},
         "volume": r.volume, "relVolume": r.rel_volume, "avgTradeValue": r.avg_trade_value,
+        "donchianHigh15": r.donchian_high_15,
         "marketCap": r.market_cap, "peRatio": r.pe_ratio, "epsGrowth": r.eps_growth,
         "dividendYield": r.dividend_yield, "analystRating": r.analyst_rating,
         "metrics": json.loads(r.metrics_json) if r.metrics_json else {},

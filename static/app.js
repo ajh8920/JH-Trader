@@ -529,6 +529,14 @@ const I18N = {
     ko: '트렌드 템플릿 통과 + 실제로 매매 가능한 유동성(최근 20일 평균 거래대금 3억원 이상) — 모의투자 '
       + '"미너비니 v2" 전략이 신규 진입에 실제로 쓰는 조건과 동일합니다.',
   },
+  stratAnonymousNote: {
+    en: 'Donchian channel breakout (15-day high) + avg. daily trading value ≥ ₩100M — the exact entry filter '
+      + 'used by the "Anonymous" paper-trading strategy. Does NOT require Trend Template pass, so turn off '
+      + '"Passed all conditions only" above to see the full candidate pool.',
+    ko: '돈치안 채널 브레이크아웃(직전 15거래일 고가 돌파) + 평균 일 거래대금 1억원 이상 — 모의투자 '
+      + '"어나니머스" 전략이 신규 진입에 실제로 쓰는 조건과 동일합니다. 트렌드템플릿 통과 여부는 요구하지 '
+      + '않으니, 정확한 후보를 보려면 위 "전체 조건 통과만" 체크를 해제하세요.',
+  },
   stage1: { en: 'Stage 1 (Basing)', ko: '1단계(바닥 다지기)' },
   stage2: { en: 'Stage 2 (Advancing)', ko: '2단계(상승 추세)' },
   stage3: { en: 'Stage 3 (Topping)', ko: '3단계(천장)' },
@@ -2433,6 +2441,14 @@ const SCREENER_STRATEGY_PRESETS = [
   {
     key: 'minervini_v2', icon: '🎯', titleKey: 'stratMinerviniV2Title', noteKey: 'stratMinerviniV2Note',
     predicate: r => !!r.allPass && r.avgTradeValue != null && r.avgTradeValue >= 300_000_000,
+  },
+  {
+    // 트렌드템플릿 통과 여부와 무관(모의투자 "어나니머스"의 실제 신규진입 조건과 동일 -
+    // 돈치안 채널 15일 신고가 돌파 + 유동성 최소선). "전체 조건 통과만" 체크를 끄지
+    // 않으면 서버가 이미 all_pass=True로만 필터링해서 내려주므로 후보가 크게 줄어든다.
+    key: 'anonymous', icon: '🐢', titleKey: 'stratAnonymousTitle', noteKey: 'stratAnonymousNote',
+    predicate: r => r.donchianHigh15 != null && r.price > r.donchianHigh15
+      && r.avgTradeValue != null && r.avgTradeValue >= 100_000_000,
   },
 ];
 
