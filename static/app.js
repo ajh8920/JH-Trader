@@ -534,6 +534,7 @@ const I18N = {
   exitPartialProfit: { en: 'Partial profit (25%)', ko: '분할 익절(25%)' },
   exitMaBreak: { en: 'MA50 breakdown', ko: 'MA50 이탈' },
   exitMaxHold: { en: 'Max hold days', ko: '최대보유 도달' },
+  exitDelisted: { en: 'Delisted', ko: '상장폐지' },
   stratMinerviniV2Title: { en: 'Minervini v2', ko: '미너비니 v2' },
   stratMinerviniV2Note: {
     en: 'Trend Template pass + liquid enough to trade (avg. daily trading value ≥ ₩300M) — the exact entry '
@@ -3938,15 +3939,22 @@ async function loadAnonymousReferenceTrades() {
 // 늘수록 CAGR이 계속 올랐지만(슬롯40 66.32%→슬롯80 72.28%), "슬롯이 너무 많다"는
 // 피드백으로 다시 10개 고정 제약 안에서 트레일링폭·분할익절·회당리스크%·국면게이팅
 // 여부를 스윕했다. 그 결과 타이트 트레일링+분할익절 조합이 승률·CAGR을 동시에
-// 압도해(CAGR 51.14%, 승률 58.6%, 손익비 5.39, 거래 4,194건) 최종 채택했다 -
-// 어나니머스(CAGR 53.43%, 승률 31.2%, 손익비 5.12, 거래 1,596건) 대비 CAGR은
-// 비슷하거나 소폭 낮지만 승률이 거의 두 배다("많이 이기고 조금씩 먹는" 방식).
+// 압도해 최종 채택했다.
+// 이후 백테스트 신뢰도 강화 작업의 1단계로 생존편향(survivorship bias)을 검증했다 -
+// 상장된 종목 스냅샷만 쓰면 2017년 이후 상장폐지된 종목이 유니버스에서 빠져
+// 결과가 낙관적으로 치우칠 수 있었다. 2015년 이후 상장폐지된 보통주 568종목의
+// 전체 시세(FinanceDataReader 출처)를 유니버스에 포함시켜 재검증한 결과 CAGR
+// 51.14%→53.12%로 오히려 개선됐고(거래 4,194→5,116건) 승률·손익비·MDD는 거의
+// 그대로였다 - 전체 5,116건 중 상장폐지 시점까지 들고 있다가 청산된 거래는 9건
+// (0.18%)뿐으로, 타이트한 초기손절 덕분에 부실기업이 실제 상장폐지되기 훨씬
+// 전에 이미 손절로 빠져나가는 구조임을 확인했다. 이 결과(상장폐지 포함)를 정식
+// 채택했다.
 const SWEEPER_REFERENCE = {
-  start: '2017-01-01', end: '2026-08-23', seed: 10000000, finalValue: 535947582.1,
-  returnPct: 5259.48, cagrPct: 51.14, mddPct: 32.08, tradeCount: 4194, winCount: 2459, winRatePct: 58.6,
-  avgHoldDays: 5.9, profitLossRatio: 5.39, alphaPct: 5061.45,
-  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 198.03,
-  exitReasonCounts: { partialProfit: 1423, trailingStop: 1046, initialStop: 730, breakevenStop: 956, timeStop: 9, maBreak: 20, periodEnd: 10 },
+  start: '2017-01-01', end: '2026-08-24', seed: 10000000, finalValue: 608405467.01,
+  returnPct: 5984.05, cagrPct: 53.12, mddPct: 32.37, tradeCount: 5116, winCount: 2938, winRatePct: 57.4,
+  avgHoldDays: 6.3, profitLossRatio: 5.16, alphaPct: 5745.84,
+  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 238.21,
+  exitReasonCounts: { partialProfit: 1684, trailingStop: 1255, initialStop: 940, breakevenStop: 1177, maBreak: 36, timeStop: 5, delisted: 9, periodEnd: 10 },
 };
 
 function renderSweeperReference(el) {
@@ -4202,6 +4210,7 @@ const PAPER_TRADING_EXIT_REASON_LABEL = r => ({
   initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
   trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'), periodEnd: t('periodEnd'),
   partialProfit: t('exitPartialProfit'), maBreak: t('exitMaBreak'), maxHold: t('exitMaxHold'),
+  delisted: t('exitDelisted'),
 }[r] || r);
 
 // 표시 순서(요청: 스위퍼 -> 어나니머스 -> 미너비니) 그대로 배열 순서를 정한다 -
