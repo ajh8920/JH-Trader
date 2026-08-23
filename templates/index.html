@@ -471,6 +471,11 @@
           </label>
           <div id="screener-status" class="scr-status-bar"></div>
           <button class="btn-secondary" onclick="loadScreenerResults()" style="margin-left:auto;flex:0 0 auto;"><i class="ti ti-refresh" aria-hidden="true"></i> <span data-i18n="refresh">Refresh</span></button>
+          {% if current_user.is_admin %}
+          <button class="btn-secondary" id="scr-force-refresh-btn" onclick="forceTrendScreenRefresh()" style="flex:0 0 auto;" title="12시간 대기 없이 트렌드 스크리닝 캐시를 지금 바로 재계산합니다(수 분~십수 분 소요, 관리자 전용)">
+            <i class="ti ti-server-cog" aria-hidden="true"></i> <span data-i18n="forceRefreshAdmin">Force Refresh (Admin)</span>
+          </button>
+          {% endif %}
         </div>
 
         <div class="scr-search-row">

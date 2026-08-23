@@ -266,6 +266,15 @@ const I18N = {
   retry: { en: 'Retry', ko: '다시 시도' },
   asOf: { en: 'As of', ko: '기준' },
   refresh: { en: 'Refresh', ko: '새로고침' },
+  forceRefreshAdmin: { en: 'Force Refresh (Admin)', ko: '지금 새로고침(관리자)' },
+  forceRefreshConfirm: {
+    en: 'This recomputes the trend screening cache right now (takes several minutes). Proceed?',
+    ko: '트렌드 스크리닝 캐시를 지금 바로 재계산합니다(수 분~십수 분 소요). 진행할까요?',
+  },
+  forceRefreshStarted: {
+    en: 'Recompute started in the background. It takes several minutes to finish — use the Refresh button afterward to see the latest results.',
+    ko: '재계산을 시작했습니다. 완료까지 수 분~십수 분 걸리며, 완료되면 새로고침 버튼으로 최신 결과를 확인할 수 있습니다.',
+  },
   noData: { en: 'No data', ko: '데이터 없음' },
 
   // 공포·탐욕 지수
@@ -2377,6 +2386,20 @@ async function loadScreenerResults() {
     renderScreenerResults(data);
   } catch (e) {
     el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
+  }
+}
+
+async function forceTrendScreenRefresh() {
+  const btn = document.getElementById('scr-force-refresh-btn');
+  if (!confirm(t('forceRefreshConfirm') || '트렌드 스크리닝 캐시를 지금 바로 재계산합니다(수 분~십수 분 소요). 진행할까요?')) return;
+  if (btn) { btn.disabled = true; }
+  try {
+    await api('POST', '/api/admin/trend-screen-refresh', { markets: ['KR', 'US'] });
+    alert(t('forceRefreshStarted') || '재계산을 시작했습니다. 완료까지 수 분~십수 분 걸리며, 완료되면 새로고침 버튼으로 최신 결과를 확인할 수 있습니다.');
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    if (btn) { btn.disabled = false; }
   }
 }
 

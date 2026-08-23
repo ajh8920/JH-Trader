@@ -1747,6 +1747,27 @@ def delete_user(user_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/admin/trend-screen-refresh", methods=["POST"])
+@admin_required
+def force_trend_screen_refresh():
+    """트렌드 스크리닝 캐시(TrendScreenCache)를 12시간 대기 없이 지금 바로
+    다시 계산한다 - 새 컬럼을 추가했을 때(예: donchian_high_15) 기존 값들을
+    빨리 채우고 싶을 때 등에 쓴다. 전체 유니버스 재계산이라 수 분~십수 분
+    걸리므로 백그라운드 스레드로 돌리고 즉시 응답한다(gunicorn 30초 제한
+    회피 - RULES.md R6)."""
+    markets = request.json.get("markets", ["KR", "US"]) if request.is_json else ["KR", "US"]
+    markets = [m for m in markets if m in ("KR", "US")]
+    if not markets:
+        return jsonify({"error": "markets는 KR 또는 US여야 합니다"}), 400
+
+    def _run():
+        for market in markets:
+            _refresh_trend_screen_market(market, force=True)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "markets": markets})
+
+
 # JSON API는 CSRF 토큰 대신 로그인 세션 + JSON Content-Type(교차 출처 요청 시
 # 브라우저 프리플라이트로 차단됨) 조합으로 보호하므로 폼 기반 CSRF 검사에서 제외합니다.
 for _view in (
@@ -1761,7 +1782,7 @@ for _view in (
     list_screener_watchlist, add_screener_watchlist, remove_screener_watchlist,
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
-    list_users, update_user_role, delete_user,
+    list_users, update_user_role, delete_user, force_trend_screen_refresh,
 ):
     csrf.exempt(_view)
 
@@ -1946,78 +1967,91 @@ def _enrich_kr_fundamentals(results):
         r["metrics"] = metrics
 
 
-def trend_screen_refresher():
-    import random
+def _refresh_trend_screen_market(market, force=False):
+    """트렌드 스크리닝 캐시를 한 시장(KR/US)만 갱신한다. 주기적 리프레셔
+    (trend_screen_refresher)와 수동 강제 갱신(관리자 API) 양쪽이 공유하는
+    로직이라 여기 하나로 모아뒀다. force=True면 마지막 갱신 후 12시간이
+    안 지났어도 무시하고 다시 계산한다(예: TrendScreenCache에 새 컬럼을
+    추가해서 기존 값들을 빨리 채워야 할 때)."""
     from models import TrendScreenCache
     import trend_screener
+
+    with app.app_context():
+        try:
+            if not force:
+                latest = (
+                    TrendScreenCache.query.filter_by(market=market)
+                    .order_by(TrendScreenCache.updated_at.desc()).first()
+                )
+                if latest and latest.updated_at:
+                    age = (datetime.utcnow() - latest.updated_at).total_seconds()
+                    if age < TREND_SCREEN_MIN_INTERVAL_SECONDS:
+                        return {"skipped": True}
+
+            results = trend_screener.run_screen(market)
+            if market == "KR":
+                _enrich_kr_fundamentals(results)
+
+            now = datetime.utcnow()
+            # delete-all 후 재삽입하면 미국 종목의 Finnhub 재무 보강 결과가
+            # 이 12시간 주기 갱신마다 통째로 날아간다(재무 보강은 훨씬 느린
+            # 별도 주기로 돈다) - 종목별 upsert로 바꿔 market_cap/pe_ratio 등
+            # 재무 보강 컬럼은 그대로 보존한다.
+            existing = {row.code: row for row in TrendScreenCache.query.filter_by(market=market).all()}
+            seen = set()
+            for r in results:
+                seen.add(r["code"])
+                row = existing.get(r["code"])
+                if row is None:
+                    row = TrendScreenCache(market=market, code=r["code"])
+                    db.session.add(row)
+                row.name = r["name"]
+                row.industry = r.get("industry")
+                row.sector = r.get("sector")
+                row.price = r["price"]
+                row.ma50 = r["ma50"]
+                row.ma150 = r["ma150"]
+                row.ma200 = r["ma200"]
+                row.week52_high = r["week52High"]
+                row.week52_low = r["week52Low"]
+                row.pct_above_52w_low = r["pctAbove52wLow"]
+                row.pct_below_52w_high = r["pctBelow52wHigh"]
+                row.rs_rating = r.get("rsRating")
+                row.pass_count = r["passCount"]
+                row.all_pass = r["allPass"]
+                row.stage = r.get("stage")
+                row.conditions_json = json.dumps(r["conditions"])
+                row.volume = r.get("volume")
+                row.rel_volume = r.get("relVolume")
+                row.avg_trade_value = r.get("avgTradeValue")
+                row.donchian_high_15 = r.get("donchianHigh15")
+                if market == "KR":
+                    row.market_cap = r.get("marketCap")
+                    row.pe_ratio = r.get("peRatio")
+                    row.eps_growth = r.get("epsGrowth")
+                    row.dividend_yield = r.get("dividendYield")
+                    row.analyst_rating = r.get("analystRating")
+                    row.metrics_json = json.dumps(r.get("metrics") or {})
+                row.updated_at = now
+            for code, row in existing.items():
+                if code not in seen:
+                    db.session.delete(row)
+            db.session.commit()
+            print(f"[트렌드 스크리닝] {market} {len(results)}개 종목 평가 완료 "
+                  f"({sum(1 for r in results if r['allPass'])}개 전 조건 통과)")
+            return {"skipped": False, "count": len(results)}
+        except Exception:
+            app.logger.exception("트렌드 스크리닝 갱신 오류: %s", market)
+            return {"skipped": False, "error": True}
+
+
+def trend_screen_refresher():
+    import random
 
     time.sleep(random.uniform(30, 120))
     while True:
         for market in ("KR", "US"):
-            with app.app_context():
-                try:
-                    latest = (
-                        TrendScreenCache.query.filter_by(market=market)
-                        .order_by(TrendScreenCache.updated_at.desc()).first()
-                    )
-                    if latest and latest.updated_at:
-                        age = (datetime.utcnow() - latest.updated_at).total_seconds()
-                        if age < TREND_SCREEN_MIN_INTERVAL_SECONDS:
-                            continue
-
-                    results = trend_screener.run_screen(market)
-                    if market == "KR":
-                        _enrich_kr_fundamentals(results)
-
-                    now = datetime.utcnow()
-                    # delete-all 후 재삽입하면 미국 종목의 Finnhub 재무 보강 결과가
-                    # 이 12시간 주기 갱신마다 통째로 날아간다(재무 보강은 훨씬 느린
-                    # 별도 주기로 돈다) - 종목별 upsert로 바꿔 market_cap/pe_ratio 등
-                    # 재무 보강 컬럼은 그대로 보존한다.
-                    existing = {row.code: row for row in TrendScreenCache.query.filter_by(market=market).all()}
-                    seen = set()
-                    for r in results:
-                        seen.add(r["code"])
-                        row = existing.get(r["code"])
-                        if row is None:
-                            row = TrendScreenCache(market=market, code=r["code"])
-                            db.session.add(row)
-                        row.name = r["name"]
-                        row.industry = r.get("industry")
-                        row.sector = r.get("sector")
-                        row.price = r["price"]
-                        row.ma50 = r["ma50"]
-                        row.ma150 = r["ma150"]
-                        row.ma200 = r["ma200"]
-                        row.week52_high = r["week52High"]
-                        row.week52_low = r["week52Low"]
-                        row.pct_above_52w_low = r["pctAbove52wLow"]
-                        row.pct_below_52w_high = r["pctBelow52wHigh"]
-                        row.rs_rating = r.get("rsRating")
-                        row.pass_count = r["passCount"]
-                        row.all_pass = r["allPass"]
-                        row.stage = r.get("stage")
-                        row.conditions_json = json.dumps(r["conditions"])
-                        row.volume = r.get("volume")
-                        row.rel_volume = r.get("relVolume")
-                        row.avg_trade_value = r.get("avgTradeValue")
-                        row.donchian_high_15 = r.get("donchianHigh15")
-                        if market == "KR":
-                            row.market_cap = r.get("marketCap")
-                            row.pe_ratio = r.get("peRatio")
-                            row.eps_growth = r.get("epsGrowth")
-                            row.dividend_yield = r.get("dividendYield")
-                            row.analyst_rating = r.get("analystRating")
-                            row.metrics_json = json.dumps(r.get("metrics") or {})
-                        row.updated_at = now
-                    for code, row in existing.items():
-                        if code not in seen:
-                            db.session.delete(row)
-                    db.session.commit()
-                    print(f"[트렌드 스크리닝] {market} {len(results)}개 종목 평가 완료 "
-                          f"({sum(1 for r in results if r['allPass'])}개 전 조건 통과)")
-                except Exception as e:
-                    app.logger.exception("트렌드 스크리닝 갱신 오류: %s", market)
+            _refresh_trend_screen_market(market)
         time.sleep(1800)  # 30분마다 깨어나 시장별로 갱신 필요 여부를 확인
 
 
