@@ -1529,8 +1529,9 @@ def screening_backtest_status(job_id):
 # ─── 모의투자 (실시간 자동 페이퍼 트레이딩) ───────────────────────────────────
 # 백테스트(screening_backtest.py)와 매매 규칙은 동일하지만, 여기는 "오늘 실제로
 # 확정된 가격"을 매일 하루치씩 실시간으로 누적 반영한다(paper_trading.py).
-# 무거운 계산(야후 조회 + 종목별 판정)은 백그라운드 리프레셔(paper_trading_runner)가
-# 미리 끝내두고, 이 라우트들은 이미 DB에 반영된 계좌 상태를 읽기만 한다.
+# 무거운 계산(야후 조회 + 종목별 판정)은 백그라운드 스케줄러(paper_trading_scheduler,
+# 매일 한국시간 14:30 1회)가 미리 끝내두고, 이 라우트들은 이미 DB에 반영된 계좌
+# 상태를 읽기만 한다.
 
 @app.route("/api/paper-trading/start", methods=["POST"])
 @login_required
@@ -1939,32 +1940,21 @@ def alert_checker():
 # 그래서 이 스레드가 백그라운드에서 주기적으로 미리 받아 kr_quant의 캐시를
 # 채워두고, /api/kr-quant/screen은 그 캐시만 읽는다.
 
-def paper_trading_runner():
-    """모의투자 계좌들을 주기적으로 최신 거래일까지 진행시킨다. 실제 무거운
-    작업(paper_trading.run_all_accounts)은 계좌별 예외 격리 + 롤백을 자체적으로
-    갖추고 있다(RULES.md R7과 같은 이유 - 이 스레드 자체가 죽으면 안 된다)."""
-    import random
-    import paper_trading
+def paper_trading_scheduler():
+    """모든 모의투자 전략(미너비니 v2/v2.1, 어나니머스, 스위퍼)을 매일 한국시간
+    14:30 "이 시각을 기점으로만" 계산한다 - 예전에는 30분마다 하루 종일 깨어나
+    처리해서 장중에도 이미 매매가 반영되는 문제가 있었다(사용자 지적: "2시 30분이
+    지나지 않았는데 벌써 포지션을 보유/매도한 내역이 있다"). 실제로 이 시각에
+    쓰는 가격은 전날 확정 종가라(오늘 종가는 15:30 장마감 전까지 확정되지 않음)
+    이르게 계산해도 데이터 확정성 문제는 없지만, 사용자가 실전 계좌에서 같은
+    매매를 따라 하려면 장 마감 전에 시간이 필요해 이 시각으로 통일했다.
 
-    time.sleep(random.uniform(30, 90))
-    while True:
-        with app.app_context():
-            try:
-                paper_trading.run_all_accounts()
-            except Exception:
-                app.logger.exception("모의투자 일별 처리 오류")
-        time.sleep(1800)  # 30분마다 깨어나 새 거래일 데이터가 나왔는지 확인
-
-
-def sweeper_trade_alert_scheduler():
-    """매일 한국시간 14:30에 스위퍼 전략을 "그 시각 기준으로" 먼저 계산하고,
-    그 계산이 끝난 뒤에야 오늘의 매매 요약 메일을 보낸다 - 단순히 정해진 시각에
-    메일만 보내는 게 아니라 계산과 메일 순서를 이 시각에 맞춰 보장하는 것이
-    핵심이다(사용자 요청). 사용자가 실전 계좌에서 같은 매매를 따라 하려면 장
-    마감(15:30) 전에 시간이 필요해 이 시각으로 고정했다(paper_trading.
-    run_sweeper_accounts/send_sweeper_trade_alerts 참고). gunicorn 워커 2개가
-    매일 같은 시각에 같이 깨어나므로, 계산은 last_processed_date 가드로,
-    중복발송은 DB 행 잠금(paper_trading._send_one_sweeper_alert)으로 막는다."""
+    계산이 끝난 뒤에야 스위퍼의 매매 요약 메일을 보낸다(계산 -> 메일 순서 보장).
+    실제 무거운 작업(run_all_accounts)은 계좌별 예외 격리 + 롤백을 자체적으로
+    갖추고 있다(RULES.md R7과 같은 이유 - 이 스레드 자체가 죽으면 안 된다).
+    gunicorn 워커 2개가 같은 시각에 같이 깨어나도 계산은 last_processed_date
+    가드로, 메일 중복발송은 DB 행 잠금(paper_trading._send_one_sweeper_alert)으로
+    막는다."""
     from zoneinfo import ZoneInfo
     import paper_trading
 
@@ -1977,15 +1967,15 @@ def sweeper_trade_alert_scheduler():
         time.sleep(max(1.0, (target - now).total_seconds()))
         with app.app_context():
             try:
-                paper_trading.run_sweeper_accounts()
+                paper_trading.run_all_accounts()
                 paper_trading.send_sweeper_trade_alerts()
             except Exception:
-                app.logger.exception("스위퍼 매매 알림 메일 발송 오류")
+                app.logger.exception("모의투자 일별 처리/알림 오류")
                 try:
                     db.session.rollback()
                 except Exception:
                     pass
-        time.sleep(90)  # 목표 시각 부근에서 곧바로 다시 깨어나 중복 발송하지 않도록 여유
+        time.sleep(90)  # 목표 시각 부근에서 곧바로 다시 깨어나 중복 처리하지 않도록 여유
 
 
 def kr_quant_price_cache_refresher():
@@ -2508,8 +2498,7 @@ threading.Thread(target=kr_quant_price_cache_refresher, daemon=True).start()
 threading.Thread(target=trend_screen_refresher, daemon=True).start()
 threading.Thread(target=us_fundamentals_refresher, daemon=True).start()
 threading.Thread(target=dart_fundamentals_refresher, daemon=True).start()
-threading.Thread(target=paper_trading_runner, daemon=True).start()
-threading.Thread(target=sweeper_trade_alert_scheduler, daemon=True).start()
+threading.Thread(target=paper_trading_scheduler, daemon=True).start()
 
 
 # ─── 실행 (로컬 개발 서버) ───────────────────────────────────────────────────

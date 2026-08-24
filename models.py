@@ -327,7 +327,8 @@ class PaperStrategyAccount(db.Model):
     계좌를 갖는다(같은 전략을 여러 사용자가 각자 시작해도 서로 섞이지 않음).
 
     paper_trading.py의 일별 처리 로직이 background_thread(app.py의
-    paper_trading_runner)에서 주기적으로 이 계좌를 찾아 진행 상황을 갱신한다.
+    paper_trading_scheduler)에서 매일 한국시간 14:30에 이 계좌를 찾아 진행
+    상황을 갱신한다.
     실제 백테스트(screening_backtest.py)와 같은 매매 규칙을 쓰지만, 여기는
     "그 시점까지의 과거"가 아니라 "오늘 실제로 확정된 가격"을 매일 하루치씩
     누적 반영한다는 점이 다르다(워크포워드가 아니라 진짜 실시간 진행).
@@ -357,7 +358,7 @@ class PaperStrategyAccount(db.Model):
     index_units = db.Column(db.Float, nullable=False, default=0.0)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     # "스위퍼" 전용 - 매매(신규진입/피라미딩/청산)가 발생한 거래일에 사용자가 지정한
-    # 주소로 요약 메일을 보내는 기능(app.py의 sweeper_trade_alert_scheduler)용.
+    # 주소로 요약 메일을 보내는 기능(app.py의 paper_trading_scheduler)용.
     # alert_email이 비어 있으면 그 계좌는 메일 알림 대상에서 제외된다.
     # last_alert_sent_date로 같은 거래일에 중복 발송하지 않는다.
     alert_email = db.Column(db.String(255))
