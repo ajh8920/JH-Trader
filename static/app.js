@@ -2980,8 +2980,8 @@ function hideScrPopover() {
 let scrDetailChart = null;
 const scrDetailPanState = { cleanup: null };
 
-async function openScreenerDetail(code) {
-  const market = document.getElementById('scr-market').value;
+async function openScreenerDetail(code, market) {
+  market = market || document.getElementById('scr-market').value;
   const overlay = document.getElementById('scr-detail-overlay');
   const body = document.getElementById('scr-detail-body');
   overlay.style.display = 'flex';
@@ -4347,7 +4347,7 @@ function renderPaperTradingDashboard(el, d, strategyInfo) {
           </tr></thead>
           <tbody>
             ${d.positions.map(p => `
-              <tr>
+              <tr onclick="openScreenerDetail('${escapeHtml(p.code)}', '${d.market}')" style="cursor:pointer;">
                 <td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.code)}</td>
                 <td style="text-align:right;">${escapeHtml(p.entryDate)}</td><td style="text-align:right;">₩${Math.round(p.entryPrice).toLocaleString('en-US')}</td>
                 <td style="text-align:right;">${p.shares.toLocaleString('en-US')}${t('sharesUnit')}</td>
