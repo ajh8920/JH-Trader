@@ -227,20 +227,6 @@ def _sma(values, period, i):
     return sum(values[i - period + 1:i + 1]) / period
 
 
-# 사용자가 실제로는 장중 계속 화면을 보지 않고 "하루 중 정해진 한 시점"(14:30,
-# 모의투자 실전 계산 시각과 동일)에만 확인해서 그때 주문을 낸다고 가정한다. 분봉
-# 데이터가 없어(특히 2015년 이후 상장폐지 568종목은 일봉조차 겨우 구했다) 실제
-# 14:30 체결가를 알 수 없으므로, 시가→종가를 정규장 시간대(09:00~15:30, 6.5시간)
-# 안에서 선형보간해 근사한다. 14:30은 시가로부터 5.5시간 지난 시점 -> 구간 비율
-# 5.5/6.5 ≈ 0.846. (장중 실제 가격 경로는 직선이 아니지만, 분봉 없이 얻을 수 있는
-# 가장 단순하고 설명 가능한 근사치다.)
-KRX_1430_FRACTION = 5.5 / 6.5
-
-
-def _approx_intraday_price(open_price, close_price, fraction=KRX_1430_FRACTION):
-    return open_price + (close_price - open_price) * fraction
-
-
 def _adx(highs, lows, closes, i, period=ADX_PERIOD):
     """Wilder's ADX. i번 인덱스(포함)까지의 값. period*2 이상의 데이터가 필요하다
     (첫 스무딩 구간 + 그 결과의 재스무딩)."""
@@ -712,90 +698,56 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             closed = False
             for j in range(start_i, i + 1):
                 close = closes[j]
-                open_ = _approx_intraday_price(opens[j], close)
-                # 매매 판단은 전부 그날 "종가"로만 내리고, 실제 체결은 판단이 확정된
-                # 다음날 "사용자가 확인하는 시각"(모의투자와 동일하게 14:30 근사가)에
-                # 이뤄진다고 가정한다 - 사용자가 실전에서 장중 내내 화면을 보지 않고
-                # 하루 한 시점(14:30)에만 확인해 그때 주문을 낸다고 밝혔기 때문에,
-                # 시가가 아니라 이 근사가로 체결해야 모의투자 계산 방식과 일치한다.
-                # 그래서 이 루프는 하루치를 두 단계로 나눠 처리한다: (0) 어제 확정된
-                # 신호가 있으면 오늘 14:30 근사가로 먼저 체결 → (1) 오늘 종가로 새
-                # 신호를 평가해 "내일 체결 예약"만 걸어둔다. 한 포지션에 하루 한 건만
-                # 예약한다(같은 날 손절과 피라미딩이 동시에 뜨는 경우처럼 여러 신호가
-                # 겹치면 우선순위가 높은 것 하나만 예약되고 나머지는 다음 재평가에서
-                # 다시 판정된다).
-                pending = pos.get("pendingAction")
-                if pending is not None:
-                    pos["pendingAction"] = None
-                    kind = pending["kind"]
-                    if kind == "exit":
-                        trade, proceeds = _full_exit(pos, open_, dates[j], pending["reason"])
-                        trades.append(trade)
-                        cash += proceeds
-                        del positions[ticker]
-                        closed = True
-                        break
-                    elif kind == "partial":
-                        sell_shares = min(max(1, int(pos["shares"] * partial_profit_fraction)), pos["shares"] - 1)
-                        if sell_shares > 0:
-                            fill = open_ * (1 - (SLIPPAGE_EXIT_PCT + SELL_TAX_PCT) / 100)
-                            pnl_pct = round((fill - pos["avgEntryPrice"]) / pos["avgEntryPrice"] * 100, 2)
-                            trades.append({
-                                "code": pos["code"], "name": pos["name"], "entryDate": pos["entryDate"],
-                                "entryPrice": round(pos["avgEntryPrice"], 2), "exitDate": dates[j],
-                                "exitPrice": round(open_, 2), "shares": sell_shares, "pnlPct": pnl_pct,
-                                "exitReason": "partialProfit", "pyramidCount": pos["pyramidCount"],
-                                "partialTaken": True,
-                                "holdDays": (datetime.fromisoformat(dates[j]) - datetime.fromisoformat(pos["entryDate"])).days,
-                            })
-                            cash += sell_shares * fill
-                            pos["totalCost"] -= sell_shares * pos["avgEntryPrice"]
-                            pos["shares"] -= sell_shares
-                        pos["partialTaken"] = True
-                    elif kind == "pyramid":
-                        add_shares = max(1, int(pos["initialShares"] * PYRAMID_SIZE_FRACTION))
-                        cost = add_shares * open_ * (1 + SLIPPAGE_ENTRY_PCT / 100)
-                        max_pos_value = seed * MAX_POSITION_WEIGHT_PCT / 100
-                        current_value = pos["shares"] * open_
-                        if cost <= cash and (current_value + add_shares * open_) <= max_pos_value:
-                            cash -= cost
-                            pos["totalCost"] += cost
-                            pos["shares"] += add_shares
-                            pos["avgEntryPrice"] = pos["totalCost"] / pos["shares"]
-                            pos["lastEntryPrice"] = open_
-                            pos["pyramidCount"] += 1
-                            pos["stopPrice"] = max(pos["stopPrice"], open_ - initial_stop_atr_mult * pos["entryAtr"])
+                # 손절/트레일링/분할익절/피라미딩 전부 종가 기준으로만 판정하고 종가로
+                # 체결한다 - 장중 저가/고가가 손절가·목표가를 스쳤다고 그 가격에 정확히
+                # 체결됐다고 가정하지 않는다(그날 종가가 확정돼야 실제로 알 수 있는
+                # 정보라는 지적 반영). 그만큼 손절은 더 늦게(더 나쁜 가격에), 익절/
+                # 피라미딩은 더 늦게(놓칠 수도 있게) 체결되어 백테스트가 더 보수적이다.
+                if close <= pos["stopPrice"]:
+                    trade, proceeds = _full_exit(pos, close, dates[j], pos["stopState"])
+                    trades.append(trade)
+                    cash += proceeds
+                    del positions[ticker]
+                    closed = True
+                    break
 
                 pos["barsHeld"] += 1
-
-                if close <= pos["stopPrice"]:
-                    pos["pendingAction"] = {"kind": "exit", "reason": pos["stopState"]}
-                    continue
-
                 ma50 = _sma(closes, ma_break_period, j)
                 if ma50 is not None and close < ma50:
                     pos["maBelowCount"] += 1
                 else:
                     pos["maBelowCount"] = 0
                 if pos["maBelowCount"] >= ma_break_consec_days:
-                    pos["pendingAction"] = {"kind": "exit", "reason": "maBreak"}
-                    continue
+                    trade, proceeds = _full_exit(pos, close, dates[j], "maBreak")
+                    trades.append(trade)
+                    cash += proceeds
+                    del positions[ticker]
+                    closed = True
+                    break
 
                 r = pos["riskPerShare"]
                 highest_r = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
                 if pos["barsHeld"] >= time_stop_days and highest_r < time_stop_progress_r:
-                    pos["pendingAction"] = {"kind": "exit", "reason": "timeStop"}
-                    continue
+                    trade, proceeds = _full_exit(pos, close, dates[j], "timeStop")
+                    trades.append(trade)
+                    cash += proceeds
+                    del positions[ticker]
+                    closed = True
+                    break
 
                 # max_hold_days: 추세가 아무리 좋아도(진행도와 무관하게) 이 날짜수를
                 # 넘기면 강제 청산 - 슬롯 10개 고정처럼 동시보유 종목수가 제한된
                 # 상황에서 승리 포지션이 자본을 너무 오래 묶어 재진입 기회를 막는
                 # 문제를 완화하려는 옵션(기본값 None은 비활성 - 원안대로 무제한 보유).
                 if max_hold_days is not None and pos["barsHeld"] >= max_hold_days:
-                    pos["pendingAction"] = {"kind": "exit", "reason": "maxHold"}
-                    continue
+                    trade, proceeds = _full_exit(pos, close, dates[j], "maxHold")
+                    trades.append(trade)
+                    cash += proceeds
+                    del positions[ticker]
+                    closed = True
+                    break
 
-                # highestHigh는 이름은 그대로지만 장중 고가가 아니라 "이제까지의
+                # highestHigh는 이름은 그대로지만 이제 장중 고가가 아니라 "이제까지의
                 # 최고 종가"를 추적한다(트레일링/R계산의 기준을 전부 종가로 통일).
                 pos["highestHigh"] = max(pos["highestHigh"], close)
                 r_reached = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
@@ -805,10 +757,27 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     pos["stopState"] = "breakevenStop"
 
                 if partial_profit_fraction > 0 and not pos["partialTaken"] and r_reached >= partial_profit_r:
+                    # target(+2R 목표가) 자체가 아니라 그 목표가를 넘어선 그날 종가로
+                    # 체결한다 - 장중에 목표가를 스쳤다가 종가는 못 미쳤다면 그날은
+                    # 익절하지 않는다(다음날 이후 r_reached 조건이 다시 충족되면 그때 체결).
                     target = pos["avgEntryPrice"] + partial_profit_r * r
                     if close >= target:
-                        pos["pendingAction"] = {"kind": "partial"}
-                        continue
+                        sell_shares = min(max(1, int(pos["shares"] * partial_profit_fraction)), pos["shares"] - 1)
+                        if sell_shares > 0:
+                            fill = close * (1 - (SLIPPAGE_EXIT_PCT + SELL_TAX_PCT) / 100)
+                            pnl_pct = round((fill - pos["avgEntryPrice"]) / pos["avgEntryPrice"] * 100, 2)
+                            trades.append({
+                                "code": pos["code"], "name": pos["name"], "entryDate": pos["entryDate"],
+                                "entryPrice": round(pos["avgEntryPrice"], 2), "exitDate": dates[j],
+                                "exitPrice": round(close, 2), "shares": sell_shares, "pnlPct": pnl_pct,
+                                "exitReason": "partialProfit", "pyramidCount": pos["pyramidCount"],
+                                "partialTaken": True,
+                                "holdDays": (datetime.fromisoformat(dates[j]) - datetime.fromisoformat(pos["entryDate"])).days,
+                            })
+                            cash += sell_shares * fill
+                            pos["totalCost"] -= sell_shares * pos["avgEntryPrice"]
+                            pos["shares"] -= sell_shares
+                        pos["partialTaken"] = True
 
                 if r_reached >= trail_activate_r:
                     chandelier = pos["highestHigh"] - chandelier_atr_mult * pos["entryAtr"]
@@ -817,9 +786,22 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         pos["stopState"] = "trailingStop"
 
                 if pos["pyramidCount"] < pyramid_max_count and ticker in trend_ok_set:
+                    # 장중에 목표가(lastEntryPrice+0.5R)를 스쳤는지가 아니라, 그날
+                    # 종가가 그 목표가를 넘어섰는지로 판정하고 그 종가로 추가매수한다.
                     target = pos["lastEntryPrice"] + PYRAMID_INTERVAL_R * r
                     if close >= target:
-                        pos["pendingAction"] = {"kind": "pyramid"}
+                        add_shares = max(1, int(pos["initialShares"] * PYRAMID_SIZE_FRACTION))
+                        cost = add_shares * close * (1 + SLIPPAGE_ENTRY_PCT / 100)
+                        max_pos_value = seed * MAX_POSITION_WEIGHT_PCT / 100
+                        current_value = pos["shares"] * close
+                        if cost <= cash and (current_value + add_shares * close) <= max_pos_value:
+                            cash -= cost
+                            pos["totalCost"] += cost
+                            pos["shares"] += add_shares
+                            pos["avgEntryPrice"] = pos["totalCost"] / pos["shares"]
+                            pos["lastEntryPrice"] = close
+                            pos["pyramidCount"] += 1
+                            pos["stopPrice"] = max(pos["stopPrice"], close - initial_stop_atr_mult * pos["entryAtr"])
             if closed:
                 continue
             # 상장폐지 종목(.DL)의 마지막 거래일에 도달했는데 손절/이탈 조건에 걸리지
@@ -939,28 +921,15 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     i = idx_at_rd[ticker]
                     s_i = bisect.bisect_right(dates, prev_rd) if prev_rd else max(0, i - rescan_interval_days)
                     # 피벗가+0.5% 지정가로 장중 저가 터치를 기다리지 않는다 - 그날 종가가
-                    # 피벗을 넘었고 거래량 조건도 맞으면 그날을 "돌파 신호일"로 확정하고,
-                    # 실제 체결은 다음날 사용자가 확인하는 시각(14:30 근사가)에 한다
-                    # (신호가 확정되는 시점이 그날 장마감 이후라 그날 종가에 곧바로 살
-                    # 수는 없다는 지적 반영 + 사용자가 실제로는 시가가 아니라 하루 한 번
-                    # 14:30에만 확인해 주문한다고 밝혀 그 시각 근사가로 통일). series[ticker]는
-                    # 이 재평가 구간(s_i~i)을 넘어 전체 백테스트 기간 데이터를 갖고 있으므로
-                    # 신호일이 이번 재평가일(i)이어도 j+1은 series 안에서 바로 다음 거래일을
-                    # 가리킨다 - 재평가 구간 경계 때문에 체결을 다음 재평가 회차까지
-                    # 미루지 않는다(그러면 신호일이 매번 딱 재평가일에 잡히는 흔한 경우가
-                    # 재평가 구간 사이에서 계속 유실되는 버그가 된다).
+                    # 피벗을 넘었고 거래량 조건도 맞으면 그날 종가로 곧바로 체결한다.
                     fill_date = fill_price = fj = None
                     for j in range(s_i, i + 1):
-                        if j + 1 >= len(dates):
-                            continue
                         if closes[j] <= pivot:
                             continue
                         vol = volumes[j]
                         if vol is None or vol < avg_vol50 * volume_breakout_mult:
                             continue
-                        fj = j + 1
-                        fill_date = dates[fj]
-                        fill_price = _approx_intraday_price(opens[fj], closes[fj])
+                        fill_date, fill_price, fj = dates[j], closes[j], j
                         break
                     if fill_date is None:
                         continue
@@ -1033,7 +1002,6 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         "stopPrice": entry_fill - risk_per_share, "stopState": "initialStop",
                         "highestHigh": entry_fill, "partialTaken": False, "pyramidCount": 0,
                         "lastEntryPrice": entry_fill, "maBelowCount": 0, "barsHeld": 0,
-                        "pendingAction": None,
                     }
                     open_slots -= 1
 

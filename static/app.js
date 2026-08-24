@@ -3943,23 +3943,21 @@ async function loadAnonymousReferenceTrades() {
 // 여부를 스윕했다. 그 결과 타이트 트레일링+분할익절 조합이 승률·CAGR을 동시에
 // 압도해 최종 채택했다.
 // 이후 지인의 피드백(저가 즉시체결·상장폐지 마지막가 강제청산은 실제로는 알 수
-// 없는/체결 불가능한 정보를 쓴 lookahead)을 반영해 체결 모델을 "종가로 신호 확정
-// → 다음날 사용자가 실제로 확인하는 시각(14:30, 모의투자 실전 계산과 동일 시각)의
-// 근사가에 체결"로 전면 재작성했다(사용자가 하루 한 번, 장 시작이 아니라 14:30에만
-// 확인해서 주문한다고 밝혀 시가가 아니라 이 시각 기준으로 통일 - 분봉 데이터가 없어
-// 시가→종가 구간을 정규장 09:00~15:30 기준 선형보간한 근사치를 쓴다). 그 결과
-// CAGR이 53.12%(과거)에서 -30.56%로 뒤집혔다 - 예전 수치는 실제로는 존재하지 않는
+// 없는/체결 불가능한 정보를 쓴 lookahead)을 반영해 체결 모델을 "손절/트레일링/
+// 분할익절/피라미딩/진입 전부 그날 확정 종가로만 판정하고 종가로 체결"로 재작성
+// 했다(장중 저가/고가 터치를 그 가격에 정확히 체결됐다고 가정하지 않음). 그 결과
+// CAGR이 53.12%(과거)에서 -22.44%로 뒤집혔다 - 예전 수치는 실제로는 존재하지 않는
 // 유리한 체결 가정이 만든 착시였던 것으로 결론 내렸다. 손절폭을 6→25%로 넓혀
 // 재검증해도(10%에서 CAGR -31.71%로 오히려 더 나쁨) 회복되지 않아, 이 신호(돈치안
 // 브레이크아웃) 자체가 한국 중소형주의 ±30% 하한가 갭 리스크를 이길 만한 엣지를
 // 갖고 있지 않다고 판단해 모의투자를 중단했다. 아래 수치는 현재 파라미터(초기손절
 // 최대6%) 기준 최종 재검증 결과다.
 const SWEEPER_REFERENCE = {
-  start: '2016-01-01', end: '2026-08-24', seed: 10000000, finalValue: 205900.21,
-  returnPct: -97.94, cagrPct: -30.56, mddPct: 98.73, tradeCount: 2376, winCount: 843, winRatePct: 35.5,
-  avgHoldDays: 12.4, profitLossRatio: 2.04, alphaPct: -358.22,
+  start: '2016-01-01', end: '2026-08-25', seed: 10000000, finalValue: 668034.45,
+  returnPct: -93.32, cagrPct: -22.44, mddPct: 97.47, tradeCount: 2779, winCount: 927, winRatePct: 33.4,
+  avgHoldDays: 10.0, profitLossRatio: 2.53, alphaPct: -353.6,
   benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 260.28,
-  exitReasonCounts: { initialStop: 1114, partialProfit: 418, breakevenStop: 379, timeStop: 75, trailingStop: 329, maBreak: 49, delisted: 5, periodEnd: 7 },
+  exitReasonCounts: { initialStop: 1239, breakevenStop: 394, timeStop: 116, partialProfit: 520, trailingStop: 457, maBreak: 40, delisted: 5, periodEnd: 8 },
 };
 
 function renderSweeperReference(el) {
@@ -3973,8 +3971,8 @@ function renderSweeperReference(el) {
         <i class="ti ti-alert-triangle" aria-hidden="true" style="color:var(--danger,#e5484d);font-size:16px;margin-top:1px;"></i>
         <div style="font-size:12.5px;line-height:1.6;">
           <div style="font-weight:700;margin-bottom:2px;">모의투자 중단됨 - 참고 결과 정정 안내</div>
-          체결 가정을 종가확정→익일 14:30 근사가 체결(하루 한 번, 실전과 동일 시각에 확인해 주문한다고
-          가정)로 현실화해 재검증한 결과 CAGR이 기존 +53.1%에서 -30.6%로 뒤집혔습니다(기존 수치는 저가
+          체결 가정을 "장중 저가/고가 터치 시 즉시 체결"에서 "그날 확정 종가로만 판정하고 종가로 체결"로
+          현실화해 재검증한 결과 CAGR이 기존 +53.1%에서 -22.4%로 뒤집혔습니다(기존 수치는 저가
           즉시체결·상장폐지 강제청산 등 실제로는 불가능한 체결 가정이 만든 결과였습니다). 손절폭을
           넓혀도(6~25%, 10%에서 CAGR -31.7%로 오히려 더 나쁨) 회복되지 않아 이 전략의 모의투자를
           중단했습니다.
