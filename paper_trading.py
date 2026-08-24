@@ -105,6 +105,44 @@ def fetch_recent_bars(codes, market, lookback_days=FETCH_LOOKBACK_DAYS):
     return bars_by_code
 
 
+def fetch_realtime_prices(codes, market):
+    """"스위퍼"/"어나니머스"가 매일 한국시간 14:30에 그 순간의 실시간가로 계산할 수
+    있도록, 전일 확정 종가가 아니라 조회 시점의 최근 체결가(fast_info.last_price)를
+    종목별로 받는다. yf.download의 일봉 조회는 장중에 "오늘" 행을 안정적으로
+    주지 않아(당일 데이터가 아예 없거나 지연되는 경우가 흔함) 종목별 실시간
+    시세 조회로 명시적으로 받는다 - 배치 다운로드가 아니라 종목당 한 번씩
+    호출하므로(연결당 수십~수백ms) 많아야 수십 종목 규모(보유+후보)에서만 쓴다.
+    실패한 종목은 결과에서 빠진다(그 종목은 이번 실행에서 건너뛰고 다음 실행에
+    다시 시도)."""
+    if not codes:
+        return {}
+    market_map = _load_market_map() if market == "KR" else {}
+    prices = {}
+    for code in codes:
+        ticker = _yf_ticker(code, market_map) if market == "KR" else code
+        try:
+            price = yf.Ticker(ticker).fast_info.last_price
+            if price and price > 0:
+                prices[code] = float(price)
+        except Exception:
+            continue
+    return prices
+
+
+def _append_realtime_bar(bars_by_code, realtime_prices, today_str):
+    """fetch_recent_bars가 받아온 과거 확정 봉 뒤에, 그날(today_str) 실시간가로 만든
+    합성 "오늘 봉"을 붙인다(시가/고가/저가는 알 수 없어 전부 현재가로 채운다 -
+    이후 로직은 종가만 참조하므로 문제없다). 이미 마지막 봉의 날짜가 오늘이면
+    (예: 장마감 후 재실행) 덮어써서 중복 날짜가 생기지 않게 한다."""
+    for code, price in realtime_prices.items():
+        bars = bars_by_code.setdefault(code, [])
+        today_bar = {"date": today_str, "close": price, "high": price, "low": price, "volume": None}
+        if bars and bars[-1]["date"] == today_str:
+            bars[-1] = today_bar
+        else:
+            bars.append(today_bar)
+
+
 def _process_position_day(pos, bar, preset):
     """포지션 하루치 봉을 반영한다. 청산되면 (exit_price, exit_date, reason)을
     돌려주고, 아니면 None을 돌려주며 pos의 상태(stop_price/stop_state/
@@ -381,13 +419,15 @@ def _anon_market_index_and_regime():
 
 
 def _process_anon_position_day(pos, closes, highs, lows, j, params):
-    """"어나니머스" 포지션 하루치(인덱스 j)를 반영한다 - vcp_strategy.
+    """"어나니머스"/"스위퍼" 포지션 하루치(인덱스 j)를 반영한다 - vcp_strategy.
     run_vcp_backtest의 포지션 관리 블록과 동일한 규칙(손절 > MA이탈 > 시간손절 >
-    트레일링 갱신 순). 청산되면 (청산가, 사유)를, 아니면 None을 돌려주며 pos를
-    그 자리에서 갱신한다."""
-    low, high, close = lows[j], highs[j], closes[j]
-    if low <= pos["stopPrice"]:
-        return pos["stopPrice"], pos["stopState"]
+    트레일링 갱신 순), 동일하게 전부 종가(스위퍼의 경우 14:30 실시간가로 만든
+    합성 "오늘 봉") 기준으로만 판정·체결한다 - 장중 저가/고가를 그 가격에
+    정확히 체결됐다고 가정하지 않는다. 청산되면 (청산가, 사유)를, 아니면 None을
+    돌려주며 pos를 그 자리에서 갱신한다."""
+    close = closes[j]
+    if close <= pos["stopPrice"]:
+        return close, pos["stopState"]
 
     pos["barsHeld"] += 1
     ma = vcp._sma(closes, params["ma_break_period"], j)
@@ -408,7 +448,8 @@ def _process_anon_position_day(pos, closes, highs, lows, j, params):
     if max_hold_days is not None and pos["barsHeld"] >= max_hold_days:
         return close, "maxHold"
 
-    pos["highestHigh"] = max(pos["highestHigh"], high)
+    # highestHigh는 이름은 그대로지만 "이제까지의 최고 종가"를 추적한다.
+    pos["highestHigh"] = max(pos["highestHigh"], close)
     r_reached = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
 
     if r_reached >= params["breakeven_r"] and pos["stopPrice"] < pos["avgEntryPrice"]:
@@ -456,6 +497,18 @@ def run_anonymous_daily_step(account):
     held_bars = fetch_recent_bars(held_codes, params["market"], lookback_days=ANON_HELD_LOOKBACK_DAYS)
     candidate_bars = fetch_recent_bars(
         candidate_codes, params["market"], lookback_days=ANON_CANDIDATE_ATR_LOOKBACK_DAYS)
+
+    # 이 함수는 매일 한국시간 14:30(app.py의 paper_trading_scheduler)에 호출된다 -
+    # 전일 확정 종가만 쓰면 장마감(15:30) 전에 "오늘" 신호를 알 방법이 없다.
+    # 그래서 오늘 날짜로 실시간가(fetch_realtime_prices) 봉을 합성해 붙이고, 이후
+    # 모든 판정은 이 "14:30 실시간가"를 그날의 종가처럼 취급한다(사용자 요청 -
+    # 백테스트는 확정 종가만 쓰지만 실시간 모의투자는 매매 알림을 장마감 전에
+    # 보내야 실전에서 그대로 따라 할 수 있으므로 다른 기준을 쓴다).
+    today_str = datetime.today().strftime("%Y-%m-%d")
+    realtime_codes = list(dict.fromkeys(held_codes + candidate_codes))
+    realtime_prices = fetch_realtime_prices(realtime_codes, params["market"])
+    _append_realtime_bar(held_bars, {c: p for c, p in realtime_prices.items() if c in held_codes}, today_str)
+    _append_realtime_bar(candidate_bars, {c: p for c, p in realtime_prices.items() if c in candidate_codes}, today_str)
 
     latest_date = max(
         [bars[-1]["date"] for bars in held_bars.values() if bars]
@@ -505,8 +558,11 @@ def run_anonymous_daily_step(account):
                 closed = True
                 break
             # 분할익절 - vcp_strategy.run_vcp_backtest의 분할익절 블록과 동일 규칙(+2R에
-            # partial_profit_fraction만큼 매도, 포지션은 남은 수량으로 계속 유지). 어나니머스는
-            # partial_profit_fraction=0이라 조건이 항상 거짓이 되어 기존 동작에 영향이 없다.
+            # partial_profit_fraction만큼 매도, 포지션은 남은 수량으로 계속 유지). 장중
+            # 고가가 목표가를 스쳤는지가 아니라 그날 종가가 목표가를 넘었는지로 판정하고
+            # 그 종가로 체결한다. 어나니머스는 partial_profit_fraction=0이라 조건이
+            # 항상 거짓이 되어 기존 동작에 영향이 없다.
+            close = closes[j]
             partial_profit_fraction = params.get("partial_profit_fraction", 0.0)
             if partial_profit_fraction > 0 and not pos["partialTaken"]:
                 partial_profit_r = params.get("partial_profit_r", vcp.PARTIAL_PROFIT_R)
@@ -514,38 +570,40 @@ def run_anonymous_daily_step(account):
                 r_reached = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
                 if r_reached >= partial_profit_r:
                     target = pos["avgEntryPrice"] + partial_profit_r * r
-                    if highs[j] >= target:
+                    if close >= target:
                         sell_shares = min(max(1, int(pos["shares"] * partial_profit_fraction)), pos["shares"] - 1)
                         if sell_shares > 0:
-                            fill = target * (1 - (vcp.SLIPPAGE_EXIT_PCT + vcp.SELL_TAX_PCT) / 100)
+                            fill = close * (1 - (vcp.SLIPPAGE_EXIT_PCT + vcp.SELL_TAX_PCT) / 100)
                             pnl_pct = round((fill - pos["avgEntryPrice"]) / pos["avgEntryPrice"] * 100, 2)
                             account.cash += sell_shares * fill
                             db.session.add(PaperTrade(
                                 account_id=account.id, code=pos_row.code, name=pos_row.name,
                                 entry_date=pos_row.entry_date, entry_price=round(pos["avgEntryPrice"], 2),
-                                exit_date=d, exit_price=round(target, 2), shares=sell_shares, pnl_pct=pnl_pct,
+                                exit_date=d, exit_price=round(close, 2), shares=sell_shares, pnl_pct=pnl_pct,
                                 exit_reason="partialProfit",
                                 hold_days=(datetime.fromisoformat(d) - datetime.fromisoformat(pos_row.entry_date)).days,
                             ))
                             pos["totalCost"] -= sell_shares * pos["avgEntryPrice"]
                             pos["shares"] -= sell_shares
                         pos["partialTaken"] = True
-            # 피라미딩 - vcp_strategy.run_vcp_backtest의 신규 진입 후 피라미딩 블록과 동일 규칙
+            # 피라미딩 - vcp_strategy.run_vcp_backtest의 신규 진입 후 피라미딩 블록과 동일
+            # 규칙. 장중에 목표가를 스쳤는지가 아니라 그날 종가가 목표가를 넘었는지로
+            # 판정하고 그 종가로 추가매수한다.
             if pos["pyramidCount"] < params["pyramid_max_count"]:
                 target = pos["lastEntryPrice"] + vcp.PYRAMID_INTERVAL_R * pos["riskPerShare"]
-                if highs[j] >= target and lows[j] <= target:
+                if close >= target:
                     add_shares = max(1, int(pos["initialShares"] * vcp.PYRAMID_SIZE_FRACTION))
-                    cost = add_shares * target * (1 + vcp.SLIPPAGE_ENTRY_PCT / 100)
+                    cost = add_shares * close * (1 + vcp.SLIPPAGE_ENTRY_PCT / 100)
                     max_pos_value = account.seed * vcp.MAX_POSITION_WEIGHT_PCT / 100
-                    current_value = pos["shares"] * target
-                    if cost <= account.cash and (current_value + add_shares * target) <= max_pos_value:
+                    current_value = pos["shares"] * close
+                    if cost <= account.cash and (current_value + add_shares * close) <= max_pos_value:
                         account.cash -= cost
                         pos["totalCost"] += cost
                         pos["shares"] += add_shares
                         pos["avgEntryPrice"] = pos["totalCost"] / pos["shares"]
-                        pos["lastEntryPrice"] = target
+                        pos["lastEntryPrice"] = close
                         pos["pyramidCount"] += 1
-                        pos["stopPrice"] = max(pos["stopPrice"], target - params["initial_stop_atr_mult"] * pos["entryAtr"])
+                        pos["stopPrice"] = max(pos["stopPrice"], close - params["initial_stop_atr_mult"] * pos["entryAtr"])
                         # 매매 알림 메일용 - 이 행 갱신만으로는 "언제 얼마나" 추가매수했는지
                         # 남지 않아 별도로 기록해둔다(피라미딩은 이력 테이블이 없다).
                         last_pyramid_date, last_pyramid_shares = d, add_shares
@@ -600,6 +658,11 @@ def run_anonymous_daily_step(account):
                 highs = [b["high"] for b in bars]
                 lows = [b["low"] for b in bars]
                 j = len(bars) - 1
+                # 후보 목록(candidate_rows) 자체는 TrendScreenCache의 마지막 스크리너
+                # 갱신 시점 가격으로 걸러진 것이라, 그 이후 가격이 되돌림했을 수 있다.
+                # 진입은 14:30 실시간가 기준이어야 하므로 여기서 다시 확인한다.
+                if row.donchian_high_15 is not None and closes[j] <= row.donchian_high_15:
+                    continue
                 atr20 = vcp._atr(highs, lows, closes, j, vcp.ATR_PERIOD)
                 price = closes[j]
                 if not atr20 or atr20 <= 0 or not price or price <= 0:

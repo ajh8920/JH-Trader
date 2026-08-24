@@ -651,9 +651,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             start_i = max(start_i, pos["entryIdx"] + 1)
             closed = False
             for j in range(start_i, i + 1):
-                low, high, close = lows[j], highs[j], closes[j]
-                if low <= pos["stopPrice"]:
-                    trade, proceeds = _full_exit(pos, pos["stopPrice"], dates[j], pos["stopState"])
+                close = closes[j]
+                # 손절/트레일링/분할익절/피라미딩 전부 종가 기준으로만 판정하고 종가로
+                # 체결한다 - 장중 저가/고가가 손절가·목표가를 스쳤다고 그 가격에 정확히
+                # 체결됐다고 가정하지 않는다(그날 종가가 확정돼야 실제로 알 수 있는
+                # 정보라는 지적 반영). 그만큼 손절은 더 늦게(더 나쁜 가격에), 익절/
+                # 피라미딩은 더 늦게(놓칠 수도 있게) 체결되어 백테스트가 더 보수적이다.
+                if close <= pos["stopPrice"]:
+                    trade, proceeds = _full_exit(pos, close, dates[j], pos["stopState"])
                     trades.append(trade)
                     cash += proceeds
                     del positions[ticker]
@@ -696,7 +701,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     closed = True
                     break
 
-                pos["highestHigh"] = max(pos["highestHigh"], high)
+                # highestHigh는 이름은 그대로지만 이제 장중 고가가 아니라 "이제까지의
+                # 최고 종가"를 추적한다(트레일링/R계산의 기준을 전부 종가로 통일).
+                pos["highestHigh"] = max(pos["highestHigh"], close)
                 r_reached = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
 
                 if r_reached >= breakeven_r and pos["stopPrice"] < pos["avgEntryPrice"]:
@@ -704,16 +711,19 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     pos["stopState"] = "breakevenStop"
 
                 if partial_profit_fraction > 0 and not pos["partialTaken"] and r_reached >= partial_profit_r:
+                    # target(+2R 목표가) 자체가 아니라 그 목표가를 넘어선 그날 종가로
+                    # 체결한다 - 장중에 목표가를 스쳤다가 종가는 못 미쳤다면 그날은
+                    # 익절하지 않는다(다음날 이후 r_reached 조건이 다시 충족되면 그때 체결).
                     target = pos["avgEntryPrice"] + partial_profit_r * r
-                    if high >= target:
+                    if close >= target:
                         sell_shares = min(max(1, int(pos["shares"] * partial_profit_fraction)), pos["shares"] - 1)
                         if sell_shares > 0:
-                            fill = target * (1 - (SLIPPAGE_EXIT_PCT + SELL_TAX_PCT) / 100)
+                            fill = close * (1 - (SLIPPAGE_EXIT_PCT + SELL_TAX_PCT) / 100)
                             pnl_pct = round((fill - pos["avgEntryPrice"]) / pos["avgEntryPrice"] * 100, 2)
                             trades.append({
                                 "code": pos["code"], "name": pos["name"], "entryDate": pos["entryDate"],
                                 "entryPrice": round(pos["avgEntryPrice"], 2), "exitDate": dates[j],
-                                "exitPrice": round(target, 2), "shares": sell_shares, "pnlPct": pnl_pct,
+                                "exitPrice": round(close, 2), "shares": sell_shares, "pnlPct": pnl_pct,
                                 "exitReason": "partialProfit", "pyramidCount": pos["pyramidCount"],
                                 "partialTaken": True,
                                 "holdDays": (datetime.fromisoformat(dates[j]) - datetime.fromisoformat(pos["entryDate"])).days,
@@ -730,20 +740,22 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         pos["stopState"] = "trailingStop"
 
                 if pos["pyramidCount"] < pyramid_max_count and ticker in trend_ok_set:
+                    # 장중에 목표가(lastEntryPrice+0.5R)를 스쳤는지가 아니라, 그날
+                    # 종가가 그 목표가를 넘어섰는지로 판정하고 그 종가로 추가매수한다.
                     target = pos["lastEntryPrice"] + PYRAMID_INTERVAL_R * r
-                    if high >= target and low <= target:
+                    if close >= target:
                         add_shares = max(1, int(pos["initialShares"] * PYRAMID_SIZE_FRACTION))
-                        cost = add_shares * target * (1 + SLIPPAGE_ENTRY_PCT / 100)
+                        cost = add_shares * close * (1 + SLIPPAGE_ENTRY_PCT / 100)
                         max_pos_value = seed * MAX_POSITION_WEIGHT_PCT / 100
-                        current_value = pos["shares"] * target
-                        if cost <= cash and (current_value + add_shares * target) <= max_pos_value:
+                        current_value = pos["shares"] * close
+                        if cost <= cash and (current_value + add_shares * close) <= max_pos_value:
                             cash -= cost
                             pos["totalCost"] += cost
                             pos["shares"] += add_shares
                             pos["avgEntryPrice"] = pos["totalCost"] / pos["shares"]
-                            pos["lastEntryPrice"] = target
+                            pos["lastEntryPrice"] = close
                             pos["pyramidCount"] += 1
-                            pos["stopPrice"] = max(pos["stopPrice"], target - initial_stop_atr_mult * pos["entryAtr"])
+                            pos["stopPrice"] = max(pos["stopPrice"], close - initial_stop_atr_mult * pos["entryAtr"])
             if closed:
                 continue
             # 상장폐지 종목(.DL)의 마지막 거래일에 도달했는데 손절/이탈 조건에 걸리지
@@ -850,7 +862,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     dates, closes, highs, lows, volumes = series[ticker]
                     i = idx_at_rd[ticker]
                     s_i = bisect.bisect_right(dates, prev_rd) if prev_rd else max(0, i - rescan_interval_days)
-                    limit_price = pivot * (1 + 0.5 / 100)
+                    # 피벗가+0.5% 지정가로 장중 저가 터치를 기다리지 않는다 - 그날 종가가
+                    # 피벗을 넘었고 거래량 조건도 맞으면 그날 종가로 곧바로 체결한다.
                     fill_date = fill_price = fj = None
                     for j in range(s_i, i + 1):
                         if closes[j] <= pivot:
@@ -858,9 +871,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         vol = volumes[j]
                         if vol is None or vol < avg_vol50 * volume_breakout_mult:
                             continue
-                        if lows[j] <= limit_price:
-                            fill_date, fill_price, fj = dates[j], limit_price, j
-                            break
+                        fill_date, fill_price, fj = dates[j], closes[j], j
+                        break
                     if fill_date is None:
                         continue
                     atr20 = _atr(highs, lows, closes, fj)
