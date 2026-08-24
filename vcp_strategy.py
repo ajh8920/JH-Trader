@@ -227,6 +227,20 @@ def _sma(values, period, i):
     return sum(values[i - period + 1:i + 1]) / period
 
 
+# 사용자가 실제로는 장중 계속 화면을 보지 않고 "하루 중 정해진 한 시점"(14:30,
+# 모의투자 실전 계산 시각과 동일)에만 확인해서 그때 주문을 낸다고 가정한다. 분봉
+# 데이터가 없어(특히 2015년 이후 상장폐지 568종목은 일봉조차 겨우 구했다) 실제
+# 14:30 체결가를 알 수 없으므로, 시가→종가를 정규장 시간대(09:00~15:30, 6.5시간)
+# 안에서 선형보간해 근사한다. 14:30은 시가로부터 5.5시간 지난 시점 -> 구간 비율
+# 5.5/6.5 ≈ 0.846. (장중 실제 가격 경로는 직선이 아니지만, 분봉 없이 얻을 수 있는
+# 가장 단순하고 설명 가능한 근사치다.)
+KRX_1430_FRACTION = 5.5 / 6.5
+
+
+def _approx_intraday_price(open_price, close_price, fraction=KRX_1430_FRACTION):
+    return open_price + (close_price - open_price) * fraction
+
+
 def _adx(highs, lows, closes, i, period=ADX_PERIOD):
     """Wilder's ADX. i번 인덱스(포함)까지의 값. period*2 이상의 데이터가 필요하다
     (첫 스무딩 구간 + 그 결과의 재스무딩)."""
@@ -698,15 +712,18 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             closed = False
             for j in range(start_i, i + 1):
                 close = closes[j]
-                open_ = opens[j]
+                open_ = _approx_intraday_price(opens[j], close)
                 # 매매 판단은 전부 그날 "종가"로만 내리고, 실제 체결은 판단이 확정된
-                # 다음날 "시가"에 이뤄진다고 가정한다(그날 종가가 나와야 신호를 알 수
-                # 있고, 그 신호로 낼 수 있는 가장 빠른 주문은 다음날 시가라는 원칙 반영).
+                # 다음날 "사용자가 확인하는 시각"(모의투자와 동일하게 14:30 근사가)에
+                # 이뤄진다고 가정한다 - 사용자가 실전에서 장중 내내 화면을 보지 않고
+                # 하루 한 시점(14:30)에만 확인해 그때 주문을 낸다고 밝혔기 때문에,
+                # 시가가 아니라 이 근사가로 체결해야 모의투자 계산 방식과 일치한다.
                 # 그래서 이 루프는 하루치를 두 단계로 나눠 처리한다: (0) 어제 확정된
-                # 신호가 있으면 오늘 시가로 먼저 체결 → (1) 오늘 종가로 새 신호를 평가해
-                # "내일 체결 예약"만 걸어둔다. 한 포지션에 하루 한 건만 예약한다(같은 날
-                # 손절과 피라미딩이 동시에 뜨는 경우처럼 여러 신호가 겹치면 우선순위가
-                # 높은 것 하나만 예약되고 나머지는 다음 재평가에서 다시 판정된다).
+                # 신호가 있으면 오늘 14:30 근사가로 먼저 체결 → (1) 오늘 종가로 새
+                # 신호를 평가해 "내일 체결 예약"만 걸어둔다. 한 포지션에 하루 한 건만
+                # 예약한다(같은 날 손절과 피라미딩이 동시에 뜨는 경우처럼 여러 신호가
+                # 겹치면 우선순위가 높은 것 하나만 예약되고 나머지는 다음 재평가에서
+                # 다시 판정된다).
                 pending = pos.get("pendingAction")
                 if pending is not None:
                     pos["pendingAction"] = None
@@ -923,8 +940,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     s_i = bisect.bisect_right(dates, prev_rd) if prev_rd else max(0, i - rescan_interval_days)
                     # 피벗가+0.5% 지정가로 장중 저가 터치를 기다리지 않는다 - 그날 종가가
                     # 피벗을 넘었고 거래량 조건도 맞으면 그날을 "돌파 신호일"로 확정하고,
-                    # 실제 체결은 다음날 시가로 한다(신호가 확정되는 시점이 그날 장마감
-                    # 이후라 그날 종가에 곧바로 살 수는 없다는 지적 반영). series[ticker]는
+                    # 실제 체결은 다음날 사용자가 확인하는 시각(14:30 근사가)에 한다
+                    # (신호가 확정되는 시점이 그날 장마감 이후라 그날 종가에 곧바로 살
+                    # 수는 없다는 지적 반영 + 사용자가 실제로는 시가가 아니라 하루 한 번
+                    # 14:30에만 확인해 주문한다고 밝혀 그 시각 근사가로 통일). series[ticker]는
                     # 이 재평가 구간(s_i~i)을 넘어 전체 백테스트 기간 데이터를 갖고 있으므로
                     # 신호일이 이번 재평가일(i)이어도 j+1은 series 안에서 바로 다음 거래일을
                     # 가리킨다 - 재평가 구간 경계 때문에 체결을 다음 재평가 회차까지
@@ -939,7 +958,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         vol = volumes[j]
                         if vol is None or vol < avg_vol50 * volume_breakout_mult:
                             continue
-                        fill_date, fill_price, fj = dates[j + 1], opens[j + 1], j + 1
+                        fj = j + 1
+                        fill_date = dates[fj]
+                        fill_price = _approx_intraday_price(opens[fj], closes[fj])
                         break
                     if fill_date is None:
                         continue
