@@ -161,6 +161,49 @@ def _regime_ok(preset):
     return float(closes.iloc[-1]) >= ma200
 
 
+def get_watchlist(account, limit=15):
+    """"슬롯이 꽉 차 대기 중인 종목" 조회용 - run_daily_step/run_anonymous_daily_step의
+    후보 조회 조건(트렌드템플릿+유동성 또는 돈치안+유동성, RS 랭킹 순)과 동일하게
+    계산하되, 슬롯 여유 여부와 무관하게 항상 계산하고 실제 매매에는 관여하지 않는다
+    (조회 전용 - 실제 진입 여부는 여전히 다음 재평가일에 run_daily_step이 결정한다)."""
+    held_codes = {p.code for p in account.positions}
+    if account.strategy in ("anonymous", "sweeper"):
+        params = vcp.ANONYMOUS_PARAMS if account.strategy == "anonymous" else vcp.SWEEPER_PARAMS
+        query = (
+            TrendScreenCache.query.filter_by(market=params["market"])
+            .filter(TrendScreenCache.donchian_high_15.isnot(None))
+            .filter(TrendScreenCache.price > TrendScreenCache.donchian_high_15)
+        )
+        min_avg_trade_value = params.get("min_avg_trade_value", vcp.MIN_AVG_TRADE_VALUE)
+        if min_avg_trade_value:
+            query = query.filter(TrendScreenCache.avg_trade_value.isnot(None)) \
+                .filter(TrendScreenCache.avg_trade_value >= min_avg_trade_value)
+        min_market_cap = params.get("min_market_cap", vcp.MIN_MARKET_CAP)
+        if min_market_cap:
+            query = query.filter(TrendScreenCache.market_cap.isnot(None)) \
+                .filter(TrendScreenCache.market_cap >= min_market_cap)
+        rows = query.order_by(TrendScreenCache.rs_rating.desc()).limit((limit + len(held_codes)) * 3).all()
+        rows = [r for r in rows if not vcp.is_preferred_stock(r.name)]
+    else:
+        preset = STRATEGY_PRESETS.get(account.strategy)
+        if not preset:
+            return []
+        rows = (
+            TrendScreenCache.query.filter_by(market=preset["market"], all_pass=True)
+            .filter(TrendScreenCache.avg_trade_value.isnot(None))
+            .filter(TrendScreenCache.avg_trade_value >= preset["min_avg_trade_value"])
+            .order_by(TrendScreenCache.rs_rating.desc())
+            .limit((limit + len(held_codes)) * 3)
+            .all()
+        )
+    rows = [r for r in rows if r.code not in held_codes][:limit]
+    return [
+        {"code": r.code, "name": r.name, "price": r.price, "rsRating": r.rs_rating,
+         "avgTradeValue": r.avg_trade_value}
+        for r in rows
+    ]
+
+
 def run_daily_step(account):
     """계좌 하나를 최신 거래일까지 진행시킨다. 이미 최신 거래일까지 처리된
     상태면 아무 것도 하지 않고 조용히 반환한다(하루에 여러 번 깨어나는

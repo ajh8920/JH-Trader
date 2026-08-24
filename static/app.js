@@ -535,6 +535,9 @@ const I18N = {
   exitMaBreak: { en: 'MA50 breakdown', ko: 'MA50 이탈' },
   exitMaxHold: { en: 'Max hold days', ko: '최대보유 도달' },
   exitDelisted: { en: 'Delisted', ko: '상장폐지' },
+  ptWatchlistTitle: { en: 'Next-buy candidates', ko: '다음 매수 후보' },
+  ptWatchlistFullTitle: { en: 'Waiting list (slots full)', ko: '슬롯 대기 종목' },
+  ptWatchlistEmpty: { en: 'No qualifying candidates right now.', ko: '지금 조건을 만족하는 후보가 없습니다.' },
   stratMinerviniV2Title: { en: 'Minervini v2', ko: '미너비니 v2' },
   stratMinerviniV2Note: {
     en: 'Trend Template pass + liquid enough to trade (avg. daily trading value ≥ ₩300M) — the exact entry '
@@ -4279,8 +4282,44 @@ function renderPaperTradingActiveGroup() {
       renderPaperTradingStart(panel, s);
     } else {
       renderPaperTradingDashboard(panel, data, s);
+      loadPaperTradingWatchlist(s.key);
     }
   });
+}
+
+async function loadPaperTradingWatchlist(strategyKey) {
+  const el = document.getElementById(`pt-watchlist-${strategyKey}`);
+  if (!el) return;
+  try {
+    const data = await api('GET', `/api/paper-trading/watchlist?strategy=${strategyKey}`);
+    renderPaperTradingWatchlist(el, data);
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
+  }
+}
+
+function renderPaperTradingWatchlist(el, d) {
+  if (!d.exists) { el.innerHTML = ''; return; }
+  const title = d.slotsFull ? t('ptWatchlistFullTitle') : t('ptWatchlistTitle');
+  el.innerHTML = `
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${title} (${d.heldCount}/${d.maxPositions})</div>
+    ${d.watchlist.length ? `
+    <div class="pf-table-wrap">
+      <table class="pf-table">
+        <thead><tr>
+          <th>${t('name')}</th><th>${t('code')}</th>
+          <th style="text-align:right;">${t('currentPrice')}</th><th style="text-align:right;">RS</th>
+        </tr></thead>
+        <tbody>
+          ${d.watchlist.map(w => `
+            <tr onclick="openScreenerDetail('${escapeHtml(w.code)}', 'KR')" style="cursor:pointer;">
+              <td>${escapeHtml(w.name)}</td><td>${escapeHtml(w.code)}</td>
+              <td style="text-align:right;">₩${Math.round(w.price).toLocaleString('en-US')}</td>
+              <td style="text-align:right;">${w.rsRating ?? '-'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : `<div class="empty-state" style="padding:1.5rem;"><p>${t('ptWatchlistEmpty')}</p></div>`}`;
 }
 
 function renderPaperTradingStart(el, strategyInfo) {
@@ -4359,6 +4398,10 @@ function renderPaperTradingDashboard(el, d, strategyInfo) {
           </tbody>
         </table>
       </div>` : `<div class="empty-state" style="padding:1.5rem;"><p>${t('noOpenPositions')}</p></div>`}
+    </div>
+
+    <div class="card" id="pt-watchlist-${strategyInfo.key}">
+      <div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i></div>
     </div>
 
     <div class="card">

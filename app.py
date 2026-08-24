@@ -1630,6 +1630,34 @@ def paper_trading_status():
     }))
 
 
+@app.route("/api/paper-trading/watchlist")
+@login_required
+def paper_trading_watchlist():
+    """슬롯이 꽉 차 있어도(또는 비어 있어도) "지금 조건은 만족하지만 아직 계좌에
+    들어오지 않은" 상위 후보를 보여준다 - 실제 매매에는 관여하지 않는 조회 전용
+    엔드포인트(paper_trading.get_watchlist 참고)."""
+    from models import PaperStrategyAccount
+    import paper_trading as pt
+    import vcp_strategy as vcp
+
+    strategy = request.args.get("strategy", "minervini_v2")
+    account = PaperStrategyAccount.query.filter_by(user_id=current_user.id, strategy=strategy).first()
+    if not account:
+        return jsonify({"exists": False})
+
+    if strategy in ("anonymous", "sweeper"):
+        max_positions = (vcp.ANONYMOUS_PARAMS if strategy == "anonymous" else vcp.SWEEPER_PARAMS)["max_positions"]
+    else:
+        max_positions = pt.STRATEGY_PRESETS.get(strategy, {}).get("max_positions", 10)
+    held_count = len(account.positions)
+
+    return jsonify(sanitize_json({
+        "exists": True, "maxPositions": max_positions, "heldCount": held_count,
+        "slotsFull": held_count >= max_positions,
+        "watchlist": pt.get_watchlist(account),
+    }))
+
+
 @app.route("/api/admin/sweeper-alerts")
 @admin_required
 def admin_list_sweeper_alerts():
