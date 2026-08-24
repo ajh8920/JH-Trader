@@ -492,6 +492,16 @@ def run_anonymous_daily_step(account):
         candidate_rows = query.order_by(TrendScreenCache.rs_rating.desc()) \
             .limit(params["max_positions"] * 5).all()
     candidate_rows = [r for r in candidate_rows if not vcp.is_preferred_stock(r.name)]
+    # 기본적 분석(수익성) 필터 - 스위퍼(require_profitable=True)만 적용. 가장 최근
+    # 공시된 결산 기준 영업이익·순이익이 둘 다 적자인 종목은 후보에서 제외한다.
+    if params.get("require_profitable"):
+        from models import KrFundamental
+        fundamentals_rows_by_code = vcp.load_fundamentals_rows(KrFundamental)
+        today_str = datetime.today().strftime("%Y-%m-%d")
+        candidate_rows = [
+            r for r in candidate_rows
+            if vcp.latest_is_profitable(fundamentals_rows_by_code.get(r.code, []), today_str) is not False
+        ]
     candidate_codes = [r.code for r in candidate_rows if r.code not in held_codes]
 
     held_bars = fetch_recent_bars(held_codes, params["market"], lookback_days=ANON_HELD_LOOKBACK_DAYS)

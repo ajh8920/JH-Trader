@@ -205,6 +205,7 @@ SWEEPER_PARAMS = {
     "rescan_interval_days": 3, "cash_equitize": True, "equitize_max_pct": 70.0,
     "position_sizing_mode": "risk", "min_market_cap": 0, "min_avg_trade_value": 100_000_000,
     "gate_entries_on_regime": False, "default_seed": 10_000_000, "include_delisted": True,
+    "require_profitable": True,
 }
 
 
@@ -442,6 +443,49 @@ def load_shareholder_rows(paths):
     return rows_by_code
 
 
+def latest_is_profitable(rows_for_code, as_of_date):
+    """rows_for_code: 한 종목의 DART 재무데이터 이력
+    [{"rcept_date":, "bsns_year":, "net_income":, "operating_income":}, ...].
+    as_of_date까지 실제 공시된 것 중 가장 최근 결산연도(bsns_year) 하나를 골라
+    영업이익 또는 순이익 중 하나라도 흑자(양수)면 True, 둘 다 적자거나 0이면
+    False를 돌려준다(kr_quant.latest_fundamentals_as_of와 같은 point-in-time
+    방식 - 아직 공시 전인 미래 결산 데이터를 미리 쓰지 않는다). 데이터가 없으면
+    None(필터 미적용 - latest_max_shareholder_pct와 같은 이유로, 신규상장 등
+    DART 데이터가 아직 없는 종목을 무조건 배제하지 않기 위함)."""
+    best = None
+    for row in rows_for_code:
+        rd = row.get("rcept_date")
+        if not rd or rd > as_of_date:
+            continue
+        if best is None or row["bsns_year"] > best["bsns_year"]:
+            best = row
+    if best is None:
+        return None
+    net_income = best.get("net_income")
+    operating_income = best.get("operating_income")
+    if net_income is None and operating_income is None:
+        return None
+    return (net_income or 0) > 0 or (operating_income or 0) > 0
+
+
+def load_fundamentals_rows(KrFundamental):
+    """KrFundamental 테이블 전체를 읽어 {stock_code: [{"rcept_date","bsns_year",
+    "net_income","operating_income"}, ...]}로 묶는다. shareholder_rows처럼
+    백테스트 시작 전에 한 번만 로드해둔다(일별 루프 안에서 매번 DB 조회하면
+    느리다). 호출부가 이미 Flask app context 안에 있어야 한다."""
+    rows = KrFundamental.query.filter(KrFundamental.rcept_no != "").all()
+    rows_by_code = {}
+    for r in rows:
+        rd = r.rcept_date
+        if not rd:
+            continue
+        rows_by_code.setdefault(r.stock_code, []).append({
+            "rcept_date": rd, "bsns_year": r.bsns_year,
+            "net_income": r.net_income, "operating_income": r.operating_income,
+        })
+    return rows_by_code
+
+
 def _avg_trade_value(closes, volumes, i, window=20):
     if i < window - 1:
         return None
@@ -471,7 +515,7 @@ def _full_exit(pos, price, date, reason, tax=True):
 
 
 def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_positions=DEFAULT_MAX_POSITIONS_FALLBACK,
-                      fetch_fn=None, shares_map=None, shareholder_rows_by_code=None,
+                      fetch_fn=None, shares_map=None, shareholder_rows_by_code=None, fundamentals_rows_by_code=None,
                       adx_threshold=ADX_THRESHOLD, min_market_cap=MIN_MARKET_CAP,
                       min_avg_trade_value=MIN_AVG_TRADE_VALUE, volume_breakout_mult=VOLUME_BREAKOUT_MULT,
                       final_contraction_ratio=0.5, min_final_duration=5, max_days_since_low=15,
@@ -583,6 +627,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         series[ticker] = (
             [b["date"] for b in bars], [b["close"] for b in bars], [b["high"] for b in bars],
             [b["low"] for b in bars], [b.get("volume") for b in bars],
+            [b.get("open", b["close"]) for b in bars],
         )
 
     all_dates = sorted({d for dates, *_ in series.values() for d in dates if start_date <= d <= end_date})
@@ -599,13 +644,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     equity_curve = []
     peak_equity = float(seed)
     prev_rd = None
-    excluded_preferred = excluded_cap = excluded_liquidity = excluded_shareholder = 0
+    excluded_preferred = excluded_cap = excluded_liquidity = excluded_shareholder = excluded_unprofitable = 0
     shareholder_rows_by_code = shareholder_rows_by_code or {}
+    fundamentals_rows_by_code = fundamentals_rows_by_code or {}
 
     for rd in rebalance_dates:
         idx_at_rd = {}
         evaluated = []
-        for ticker, (dates, closes, highs, lows, volumes) in series.items():
+        for ticker, (dates, closes, highs, lows, volumes, *_rest) in series.items():
             i = bisect.bisect_right(dates, rd) - 1
             if i < 0:
                 continue
@@ -643,7 +689,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         # 1) 보유 포지션 처리 - 하루씩 순서대로(손절/트레일링 히트 > MA50이탈 > 시간손절 > 본전/분할익절/트레일링갱신 > 피라미딩)
         for ticker in list(positions.keys()):
             pos = positions[ticker]
-            dates, closes, highs, lows, volumes = series[ticker]
+            dates, closes, highs, lows, volumes, opens = series[ticker]
             i = idx_at_rd.get(ticker)
             if i is None:
                 continue
@@ -652,56 +698,87 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             closed = False
             for j in range(start_i, i + 1):
                 close = closes[j]
-                # 손절/트레일링/분할익절/피라미딩 전부 종가 기준으로만 판정하고 종가로
-                # 체결한다 - 장중 저가/고가가 손절가·목표가를 스쳤다고 그 가격에 정확히
-                # 체결됐다고 가정하지 않는다(그날 종가가 확정돼야 실제로 알 수 있는
-                # 정보라는 지적 반영). 그만큼 손절은 더 늦게(더 나쁜 가격에), 익절/
-                # 피라미딩은 더 늦게(놓칠 수도 있게) 체결되어 백테스트가 더 보수적이다.
-                if close <= pos["stopPrice"]:
-                    trade, proceeds = _full_exit(pos, close, dates[j], pos["stopState"])
-                    trades.append(trade)
-                    cash += proceeds
-                    del positions[ticker]
-                    closed = True
-                    break
+                open_ = opens[j]
+                # 매매 판단은 전부 그날 "종가"로만 내리고, 실제 체결은 판단이 확정된
+                # 다음날 "시가"에 이뤄진다고 가정한다(그날 종가가 나와야 신호를 알 수
+                # 있고, 그 신호로 낼 수 있는 가장 빠른 주문은 다음날 시가라는 원칙 반영).
+                # 그래서 이 루프는 하루치를 두 단계로 나눠 처리한다: (0) 어제 확정된
+                # 신호가 있으면 오늘 시가로 먼저 체결 → (1) 오늘 종가로 새 신호를 평가해
+                # "내일 체결 예약"만 걸어둔다. 한 포지션에 하루 한 건만 예약한다(같은 날
+                # 손절과 피라미딩이 동시에 뜨는 경우처럼 여러 신호가 겹치면 우선순위가
+                # 높은 것 하나만 예약되고 나머지는 다음 재평가에서 다시 판정된다).
+                pending = pos.get("pendingAction")
+                if pending is not None:
+                    pos["pendingAction"] = None
+                    kind = pending["kind"]
+                    if kind == "exit":
+                        trade, proceeds = _full_exit(pos, open_, dates[j], pending["reason"])
+                        trades.append(trade)
+                        cash += proceeds
+                        del positions[ticker]
+                        closed = True
+                        break
+                    elif kind == "partial":
+                        sell_shares = min(max(1, int(pos["shares"] * partial_profit_fraction)), pos["shares"] - 1)
+                        if sell_shares > 0:
+                            fill = open_ * (1 - (SLIPPAGE_EXIT_PCT + SELL_TAX_PCT) / 100)
+                            pnl_pct = round((fill - pos["avgEntryPrice"]) / pos["avgEntryPrice"] * 100, 2)
+                            trades.append({
+                                "code": pos["code"], "name": pos["name"], "entryDate": pos["entryDate"],
+                                "entryPrice": round(pos["avgEntryPrice"], 2), "exitDate": dates[j],
+                                "exitPrice": round(open_, 2), "shares": sell_shares, "pnlPct": pnl_pct,
+                                "exitReason": "partialProfit", "pyramidCount": pos["pyramidCount"],
+                                "partialTaken": True,
+                                "holdDays": (datetime.fromisoformat(dates[j]) - datetime.fromisoformat(pos["entryDate"])).days,
+                            })
+                            cash += sell_shares * fill
+                            pos["totalCost"] -= sell_shares * pos["avgEntryPrice"]
+                            pos["shares"] -= sell_shares
+                        pos["partialTaken"] = True
+                    elif kind == "pyramid":
+                        add_shares = max(1, int(pos["initialShares"] * PYRAMID_SIZE_FRACTION))
+                        cost = add_shares * open_ * (1 + SLIPPAGE_ENTRY_PCT / 100)
+                        max_pos_value = seed * MAX_POSITION_WEIGHT_PCT / 100
+                        current_value = pos["shares"] * open_
+                        if cost <= cash and (current_value + add_shares * open_) <= max_pos_value:
+                            cash -= cost
+                            pos["totalCost"] += cost
+                            pos["shares"] += add_shares
+                            pos["avgEntryPrice"] = pos["totalCost"] / pos["shares"]
+                            pos["lastEntryPrice"] = open_
+                            pos["pyramidCount"] += 1
+                            pos["stopPrice"] = max(pos["stopPrice"], open_ - initial_stop_atr_mult * pos["entryAtr"])
 
                 pos["barsHeld"] += 1
+
+                if close <= pos["stopPrice"]:
+                    pos["pendingAction"] = {"kind": "exit", "reason": pos["stopState"]}
+                    continue
+
                 ma50 = _sma(closes, ma_break_period, j)
                 if ma50 is not None and close < ma50:
                     pos["maBelowCount"] += 1
                 else:
                     pos["maBelowCount"] = 0
                 if pos["maBelowCount"] >= ma_break_consec_days:
-                    trade, proceeds = _full_exit(pos, close, dates[j], "maBreak")
-                    trades.append(trade)
-                    cash += proceeds
-                    del positions[ticker]
-                    closed = True
-                    break
+                    pos["pendingAction"] = {"kind": "exit", "reason": "maBreak"}
+                    continue
 
                 r = pos["riskPerShare"]
                 highest_r = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
                 if pos["barsHeld"] >= time_stop_days and highest_r < time_stop_progress_r:
-                    trade, proceeds = _full_exit(pos, close, dates[j], "timeStop")
-                    trades.append(trade)
-                    cash += proceeds
-                    del positions[ticker]
-                    closed = True
-                    break
+                    pos["pendingAction"] = {"kind": "exit", "reason": "timeStop"}
+                    continue
 
                 # max_hold_days: 추세가 아무리 좋아도(진행도와 무관하게) 이 날짜수를
                 # 넘기면 강제 청산 - 슬롯 10개 고정처럼 동시보유 종목수가 제한된
                 # 상황에서 승리 포지션이 자본을 너무 오래 묶어 재진입 기회를 막는
                 # 문제를 완화하려는 옵션(기본값 None은 비활성 - 원안대로 무제한 보유).
                 if max_hold_days is not None and pos["barsHeld"] >= max_hold_days:
-                    trade, proceeds = _full_exit(pos, close, dates[j], "maxHold")
-                    trades.append(trade)
-                    cash += proceeds
-                    del positions[ticker]
-                    closed = True
-                    break
+                    pos["pendingAction"] = {"kind": "exit", "reason": "maxHold"}
+                    continue
 
-                # highestHigh는 이름은 그대로지만 이제 장중 고가가 아니라 "이제까지의
+                # highestHigh는 이름은 그대로지만 장중 고가가 아니라 "이제까지의
                 # 최고 종가"를 추적한다(트레일링/R계산의 기준을 전부 종가로 통일).
                 pos["highestHigh"] = max(pos["highestHigh"], close)
                 r_reached = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
@@ -711,27 +788,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     pos["stopState"] = "breakevenStop"
 
                 if partial_profit_fraction > 0 and not pos["partialTaken"] and r_reached >= partial_profit_r:
-                    # target(+2R 목표가) 자체가 아니라 그 목표가를 넘어선 그날 종가로
-                    # 체결한다 - 장중에 목표가를 스쳤다가 종가는 못 미쳤다면 그날은
-                    # 익절하지 않는다(다음날 이후 r_reached 조건이 다시 충족되면 그때 체결).
                     target = pos["avgEntryPrice"] + partial_profit_r * r
                     if close >= target:
-                        sell_shares = min(max(1, int(pos["shares"] * partial_profit_fraction)), pos["shares"] - 1)
-                        if sell_shares > 0:
-                            fill = close * (1 - (SLIPPAGE_EXIT_PCT + SELL_TAX_PCT) / 100)
-                            pnl_pct = round((fill - pos["avgEntryPrice"]) / pos["avgEntryPrice"] * 100, 2)
-                            trades.append({
-                                "code": pos["code"], "name": pos["name"], "entryDate": pos["entryDate"],
-                                "entryPrice": round(pos["avgEntryPrice"], 2), "exitDate": dates[j],
-                                "exitPrice": round(close, 2), "shares": sell_shares, "pnlPct": pnl_pct,
-                                "exitReason": "partialProfit", "pyramidCount": pos["pyramidCount"],
-                                "partialTaken": True,
-                                "holdDays": (datetime.fromisoformat(dates[j]) - datetime.fromisoformat(pos["entryDate"])).days,
-                            })
-                            cash += sell_shares * fill
-                            pos["totalCost"] -= sell_shares * pos["avgEntryPrice"]
-                            pos["shares"] -= sell_shares
-                        pos["partialTaken"] = True
+                        pos["pendingAction"] = {"kind": "partial"}
+                        continue
 
                 if r_reached >= trail_activate_r:
                     chandelier = pos["highestHigh"] - chandelier_atr_mult * pos["entryAtr"]
@@ -740,22 +800,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         pos["stopState"] = "trailingStop"
 
                 if pos["pyramidCount"] < pyramid_max_count and ticker in trend_ok_set:
-                    # 장중에 목표가(lastEntryPrice+0.5R)를 스쳤는지가 아니라, 그날
-                    # 종가가 그 목표가를 넘어섰는지로 판정하고 그 종가로 추가매수한다.
                     target = pos["lastEntryPrice"] + PYRAMID_INTERVAL_R * r
                     if close >= target:
-                        add_shares = max(1, int(pos["initialShares"] * PYRAMID_SIZE_FRACTION))
-                        cost = add_shares * close * (1 + SLIPPAGE_ENTRY_PCT / 100)
-                        max_pos_value = seed * MAX_POSITION_WEIGHT_PCT / 100
-                        current_value = pos["shares"] * close
-                        if cost <= cash and (current_value + add_shares * close) <= max_pos_value:
-                            cash -= cost
-                            pos["totalCost"] += cost
-                            pos["shares"] += add_shares
-                            pos["avgEntryPrice"] = pos["totalCost"] / pos["shares"]
-                            pos["lastEntryPrice"] = close
-                            pos["pyramidCount"] += 1
-                            pos["stopPrice"] = max(pos["stopPrice"], close - initial_stop_atr_mult * pos["entryAtr"])
+                        pos["pendingAction"] = {"kind": "pyramid"}
             if closed:
                 continue
             # 상장폐지 종목(.DL)의 마지막 거래일에 도달했는데 손절/이탈 조건에 걸리지
@@ -810,7 +857,11 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             open_slots = max_positions - len(positions)
             if open_slots > 0:
                 candidates = []
-                for ticker in trend_ok_set:
+                # trend_ok_set은 파이썬 set이라 순회 순서가 프로세스마다(해시 랜덤화로)
+                # 달라진다 - RS등급이 동률인 후보가 많은 상황(슬롯 수 제한이 걸릴 때)에서
+                # 정렬 동률 처리가 이 순회 순서에 좌우돼 같은 파라미터로 돌려도 실행마다
+                # 다른 거래가 나오는 재현성 버그가 있었다. 정렬해서 순회 순서를 고정한다.
+                for ticker in sorted(trend_ok_set):
                     if ticker in positions:
                         continue
                     e = by_ticker[ticker]
@@ -819,7 +870,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         excluded_preferred += 1
                         continue
                     i = idx_at_rd[ticker]
-                    dates, closes, highs, lows, volumes = series[ticker]
+                    dates, closes, highs, lows, volumes, opens = series[ticker]
                     price_now = closes[i]
                     shares_out = shares_map.get(code)
                     if shares_out and price_now * shares_out < min_market_cap:
@@ -832,6 +883,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     max_holder_pct = latest_max_shareholder_pct(shareholder_rows_by_code.get(code, []), rd)
                     if max_holder_pct is not None and max_holder_pct > MAX_SHAREHOLDER_PCT:
                         excluded_shareholder += 1
+                        continue
+                    # 기본적 분석(수익성) 필터 - 가장 최근 공시된 결산 기준 영업이익·
+                    # 순이익이 둘 다 적자인 기업은 후보에서 제외한다(기술적 신호만으로는
+                    # 과최적화 위험이 있다는 피드백 반영). 데이터가 없으면(신규상장 등)
+                    # 필터를 적용하지 않는다 - latest_max_shareholder_pct와 같은 이유.
+                    profitable = latest_is_profitable(fundamentals_rows_by_code.get(code, []), rd)
+                    if profitable is False:
+                        excluded_unprofitable += 1
                         continue
                     if entry_mode == "donchian":
                         brk = detect_donchian_breakout(highs, closes, i, period=donchian_period)
@@ -855,23 +914,32 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         continue
                     candidates.append((ticker, e, pivot, avg_vol50, avg_val))
 
-                candidates.sort(key=lambda c: -(c[1].get("rsRating") or 0))
+                candidates.sort(key=lambda c: (-(c[1].get("rsRating") or 0), c[0]))
                 for ticker, e, pivot, avg_vol50, avg_trade_val in candidates:
                     if open_slots <= 0:
                         break
-                    dates, closes, highs, lows, volumes = series[ticker]
+                    dates, closes, highs, lows, volumes, opens = series[ticker]
                     i = idx_at_rd[ticker]
                     s_i = bisect.bisect_right(dates, prev_rd) if prev_rd else max(0, i - rescan_interval_days)
                     # 피벗가+0.5% 지정가로 장중 저가 터치를 기다리지 않는다 - 그날 종가가
-                    # 피벗을 넘었고 거래량 조건도 맞으면 그날 종가로 곧바로 체결한다.
+                    # 피벗을 넘었고 거래량 조건도 맞으면 그날을 "돌파 신호일"로 확정하고,
+                    # 실제 체결은 다음날 시가로 한다(신호가 확정되는 시점이 그날 장마감
+                    # 이후라 그날 종가에 곧바로 살 수는 없다는 지적 반영). series[ticker]는
+                    # 이 재평가 구간(s_i~i)을 넘어 전체 백테스트 기간 데이터를 갖고 있으므로
+                    # 신호일이 이번 재평가일(i)이어도 j+1은 series 안에서 바로 다음 거래일을
+                    # 가리킨다 - 재평가 구간 경계 때문에 체결을 다음 재평가 회차까지
+                    # 미루지 않는다(그러면 신호일이 매번 딱 재평가일에 잡히는 흔한 경우가
+                    # 재평가 구간 사이에서 계속 유실되는 버그가 된다).
                     fill_date = fill_price = fj = None
                     for j in range(s_i, i + 1):
+                        if j + 1 >= len(dates):
+                            continue
                         if closes[j] <= pivot:
                             continue
                         vol = volumes[j]
                         if vol is None or vol < avg_vol50 * volume_breakout_mult:
                             continue
-                        fill_date, fill_price, fj = dates[j], closes[j], j
+                        fill_date, fill_price, fj = dates[j + 1], opens[j + 1], j + 1
                         break
                     if fill_date is None:
                         continue
@@ -944,6 +1012,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         "stopPrice": entry_fill - risk_per_share, "stopState": "initialStop",
                         "highestHigh": entry_fill, "partialTaken": False, "pyramidCount": 0,
                         "lastEntryPrice": entry_fill, "maBelowCount": 0, "barsHeld": 0,
+                        "pendingAction": None,
                     }
                     open_slots -= 1
 
@@ -1014,6 +1083,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         "exitReasonCounts": exit_reason_counts,
         "excludedPreferred": excluded_preferred, "excludedMarketCap": excluded_cap,
         "excludedLiquidity": excluded_liquidity, "excludedShareholder": excluded_shareholder,
+        "excludedUnprofitable": excluded_unprofitable,
         "benchmark": {"label": BENCHMARK_LABEL.get(market, "Benchmark"), "returnPct": benchmark_return_pct,
                       "equityCurve": benchmark_curve},
         "equityCurve": equity_curve, "trades": trades,

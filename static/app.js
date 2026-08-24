@@ -554,11 +554,10 @@ const I18N = {
       + '않으니, 정확한 후보를 보려면 위 "전체 조건 통과만" 체크를 해제하세요.',
   },
   stratSweeperNote: {
-    en: 'Same entry filter as "Anonymous" (Donchian 15-day breakout + avg. daily trading value ≥ ₩100M), but '
-      + 'exits are tight instead of wide — the "Sweeper" paper-trading strategy takes many small, high-probability wins.',
-    ko: '진입 조건은 "어나니머스"와 동일(돈치안 15일 브레이크아웃 + 평균 일 거래대금 1억원 이상)하지만, '
-      + '청산은 넓게가 아니라 타이트하게 가져갑니다 — 모의투자 "스위퍼" 전략은 작지만 확률 높은 승리를 '
-      + '자주 쌓는 방식입니다.',
+    en: '(Paper trading discontinued — realistic next-day-open fills turned the backtest catastrophic.) Same '
+      + 'entry filter as "Anonymous", but exits are tight instead of wide.',
+    ko: '(모의투자 중단됨 — 익일 시가 체결로 재검증한 결과 손실이 커 중단) 진입 조건은 "어나니머스"와 동일, '
+      + '청산만 넓게가 아니라 타이트하게 가져가는 방식이었습니다.',
   },
   stage1: { en: 'Stage 1 (Basing)', ko: '1단계(바닥 다지기)' },
   stage2: { en: 'Stage 2 (Advancing)', ko: '2단계(상승 추세)' },
@@ -3943,21 +3942,20 @@ async function loadAnonymousReferenceTrades() {
 // 피드백으로 다시 10개 고정 제약 안에서 트레일링폭·분할익절·회당리스크%·국면게이팅
 // 여부를 스윕했다. 그 결과 타이트 트레일링+분할익절 조합이 승률·CAGR을 동시에
 // 압도해 최종 채택했다.
-// 이후 백테스트 신뢰도 강화 작업의 1단계로 생존편향(survivorship bias)을 검증했다 -
-// 상장된 종목 스냅샷만 쓰면 2017년 이후 상장폐지된 종목이 유니버스에서 빠져
-// 결과가 낙관적으로 치우칠 수 있었다. 2015년 이후 상장폐지된 보통주 568종목의
-// 전체 시세(FinanceDataReader 출처)를 유니버스에 포함시켜 재검증한 결과 CAGR
-// 51.14%→53.12%로 오히려 개선됐고(거래 4,194→5,116건) 승률·손익비·MDD는 거의
-// 그대로였다 - 전체 5,116건 중 상장폐지 시점까지 들고 있다가 청산된 거래는 9건
-// (0.18%)뿐으로, 타이트한 초기손절 덕분에 부실기업이 실제 상장폐지되기 훨씬
-// 전에 이미 손절로 빠져나가는 구조임을 확인했다. 이 결과(상장폐지 포함)를 정식
-// 채택했다.
+// 이후 지인의 피드백(저가 즉시체결·상장폐지 마지막가 강제청산은 실제로는 알 수
+// 없는/체결 불가능한 정보를 쓴 lookahead)을 반영해 체결 모델을 종가확정→익일시가
+// 체결로 전면 재작성했다. 그 결과 CAGR이 53.12%(과거)에서 -30.72%로 뒤집혔다 -
+// 예전 수치는 실제로는 존재하지 않는 유리한 체결 가정이 만든 착시였던 것으로
+// 결론 내렸다. 손절폭을 6→25%로 넓혀 재검증해도(최선 10%에서도 CAGR -18.13%,
+// MDD -95.25%) 회복되지 않아, 이 신호(돈치안 브레이크아웃) 자체가 한국 중소형주의
+// ±30% 하한가 갭 리스크를 이길 만한 엣지를 갖고 있지 않다고 판단해 모의투자를
+// 중단했다. 아래 수치는 현재 파라미터(초기손절 최대6%) 기준 최종 재검증 결과다.
 const SWEEPER_REFERENCE = {
-  start: '2017-01-01', end: '2026-08-24', seed: 10000000, finalValue: 608405467.01,
-  returnPct: 5984.05, cagrPct: 53.12, mddPct: 32.37, tradeCount: 5116, winCount: 2938, winRatePct: 57.4,
-  avgHoldDays: 6.3, profitLossRatio: 5.16, alphaPct: 5745.84,
-  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 238.21,
-  exitReasonCounts: { partialProfit: 1684, trailingStop: 1255, initialStop: 940, breakevenStop: 1177, maBreak: 36, timeStop: 5, delisted: 9, periodEnd: 10 },
+  start: '2016-01-01', end: '2026-08-24', seed: 10000000, finalValue: 201182.98,
+  returnPct: -97.99, cagrPct: -30.72, mddPct: 98.88, tradeCount: 2414, winCount: 889, winRatePct: 36.8,
+  avgHoldDays: 12.3, profitLossRatio: 1.99, alphaPct: -358.27,
+  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 260.28,
+  exitReasonCounts: { initialStop: 1081, partialProfit: 427, breakevenStop: 385, timeStop: 116, maBreak: 57, trailingStop: 338, delisted: 4, periodEnd: 6 },
 };
 
 function renderSweeperReference(el) {
@@ -3966,6 +3964,17 @@ function renderSweeperReference(el) {
   const reasons = Object.entries(d.exitReasonCounts)
     .map(([k, v]) => `${PAPER_TRADING_EXIT_REASON_LABEL(k)} ${v}${t('countUnit') || '건'}`).join(', ');
   el.innerHTML = `
+    <div class="card" style="border:1px solid var(--danger,#e5484d);background:color-mix(in srgb, var(--danger,#e5484d) 8%, transparent);">
+      <div style="display:flex;gap:8px;align-items:flex-start;">
+        <i class="ti ti-alert-triangle" aria-hidden="true" style="color:var(--danger,#e5484d);font-size:16px;margin-top:1px;"></i>
+        <div style="font-size:12.5px;line-height:1.6;">
+          <div style="font-weight:700;margin-bottom:2px;">모의투자 중단됨 - 참고 결과 정정 안내</div>
+          체결 가정을 종가확정→익일시가 체결로 현실화해 재검증한 결과 CAGR이 기존 +53.1%에서 -30.7%로
+          뒤집혔습니다(기존 수치는 저가 즉시체결·상장폐지 강제청산 등 실제로는 불가능한 체결 가정이 만든
+          결과였습니다). 손절폭을 넓혀도(6~25%) 회복되지 않아 이 전략의 모의투자를 중단했습니다.
+        </div>
+      </div>
+    </div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
         <div style="font-size:13px;font-weight:700;">📌 ${t('referenceResultTitle')}</div>
@@ -3974,14 +3983,14 @@ function renderSweeperReference(el) {
       <div class="bt-summary-grid">
         <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">${fmt(d.seed)}</div></div>
         <div class="meta-item"><div class="meta-label">${t('finalValue')}</div><div class="meta-value">${fmt(d.finalValue)}</div></div>
-        <div class="meta-item"><div class="meta-label">${t('totalReturn')}</div><div class="meta-value positive">+${d.returnPct.toFixed(1)}%</div></div>
-        <div class="meta-item"><div class="meta-label">${t('annualizedReturn')}</div><div class="meta-value positive">+${d.cagrPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('totalReturn')}</div><div class="meta-value ${d.returnPct >= 0 ? 'positive' : 'negative'}">${d.returnPct >= 0 ? '+' : ''}${d.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('annualizedReturn')}</div><div class="meta-value ${d.cagrPct >= 0 ? 'positive' : 'negative'}">${d.cagrPct >= 0 ? '+' : ''}${d.cagrPct.toFixed(1)}%</div></div>
         <div class="meta-item"><div class="meta-label">MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
         <div class="meta-item"><div class="meta-label">${t('winRate')}</div><div class="meta-value">${d.winRatePct.toFixed(1)}% (${d.winCount}/${d.tradeCount})</div></div>
         <div class="meta-item"><div class="meta-label">${t('avgHoldDays')}</div><div class="meta-value">${d.avgHoldDays}</div></div>
         <div class="meta-item"><div class="meta-label">${t('profitLossRatio')}</div><div class="meta-value">${d.profitLossRatio}</div></div>
         <div class="meta-item"><div class="meta-label">${t('alphaExcessReturn')}</div><div class="meta-value ${d.alphaPct >= 0 ? 'positive' : 'negative'}">${d.alphaPct >= 0 ? '+' : ''}${d.alphaPct.toFixed(1)}%p</div></div>
-        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmarkLabel)}</div><div class="meta-value positive">+${d.benchmarkReturnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmarkLabel)}</div><div class="meta-value ${d.benchmarkReturnPct >= 0 ? 'positive' : 'negative'}">${d.benchmarkReturnPct >= 0 ? '+' : ''}${d.benchmarkReturnPct.toFixed(1)}%</div></div>
       </div>
       <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px;line-height:1.5;">
         ${t('exitReason')}: ${escapeHtml(reasons)}<br>
@@ -4282,7 +4291,9 @@ function renderPaperTradingActiveGroup() {
       renderPaperTradingStart(panel, s);
     } else {
       renderPaperTradingDashboard(panel, data, s);
-      loadPaperTradingWatchlist(s.key);
+      // 중단된 계좌는 더 이상 매매가 진행되지 않으므로 "다음 매수 후보"를 보여주면
+      // 오해를 살 수 있다(마치 계속 후보를 골라내고 있는 것처럼 보임) - 건너뛴다.
+      if (!data.pausedReason) loadPaperTradingWatchlist(s.key);
     }
   });
 }
@@ -4354,7 +4365,18 @@ async function startPaperTrading(strategyKey) {
 function renderPaperTradingDashboard(el, d, strategyInfo) {
   const pnlCls = d.returnPct >= 0 ? 'positive' : 'negative';
   const fmt = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+  const pausedBanner = d.pausedReason ? `
+    <div class="card" style="border:1px solid var(--danger,#e5484d);background:color-mix(in srgb, var(--danger,#e5484d) 8%, transparent);">
+      <div style="display:flex;gap:8px;align-items:flex-start;">
+        <i class="ti ti-alert-triangle" aria-hidden="true" style="color:var(--danger,#e5484d);font-size:16px;margin-top:1px;"></i>
+        <div style="font-size:12.5px;line-height:1.6;">
+          <div style="font-weight:700;margin-bottom:2px;">모의투자 중단됨</div>
+          ${escapeHtml(d.pausedReason)}
+        </div>
+      </div>
+    </div>` : '';
   el.innerHTML = `
+    ${pausedBanner}
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
         <div style="font-size:14px;font-weight:700;">${strategyInfo.emoji} ${t(strategyInfo.titleKey)}</div>
@@ -4400,9 +4422,10 @@ function renderPaperTradingDashboard(el, d, strategyInfo) {
       </div>` : `<div class="empty-state" style="padding:1.5rem;"><p>${t('noOpenPositions')}</p></div>`}
     </div>
 
+    ${d.pausedReason ? '' : `
     <div class="card" id="pt-watchlist-${strategyInfo.key}">
       <div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i></div>
-    </div>
+    </div>`}
 
     <div class="card">
       <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('tradeLog')} (${d.trades.length})</div>

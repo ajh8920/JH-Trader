@@ -52,6 +52,7 @@ def _load_delisted_rows(market):
             rows.append({
                 "ticker": ticker, "date": r.date,
                 "close": float(r.close), "high": float(r.high), "low": float(r.low),
+                "open": float(r.open) if r.open == r.open else float(r.close),
                 "volume": float(r.volume) if r.volume == r.volume else None,
             })
     print(f"[local_price_cache] 상장폐지 종목 {len(list(PRICE_KR_DELISTED_DIR.glob('*.parquet')))}개 로컬 캐시에서 로드")
@@ -93,10 +94,12 @@ def _fetch_full_universe(market, lookback_days=DEFAULT_LOOKBACK_DAYS, include_de
                 continue
             sub = sub.dropna(subset=["Close", "High", "Low"])
             has_volume = "Volume" in sub.columns
+            has_open = "Open" in sub.columns
             for idx, row in sub.iterrows():
                 rows.append({
                     "ticker": t, "date": idx.strftime("%Y-%m-%d"),
                     "close": float(row["Close"]), "high": float(row["High"]), "low": float(row["Low"]),
+                    "open": float(row["Open"]) if has_open and row["Open"] == row["Open"] else float(row["Close"]),
                     "volume": float(row["Volume"]) if has_volume and row["Volume"] == row["Volume"] else None,
                 })
         print(f"[local_price_cache] {market} {min(i + CHUNK, len(tickers))}/{len(tickers)}종목 처리")
@@ -135,10 +138,14 @@ def cached_fetch_ohlc_history_batches(market, max_age_hours=12, force_refresh=Fa
         sub = df[df["ticker"].isin(wanted) & (df["date"] >= start_date) & (df["date"] < end_date)]
         for ticker, g in sub.groupby("ticker"):
             g = g.sort_values("date")
-            bars = [
-                {"date": r.date, "close": r.close, "high": r.high, "low": r.low, "volume": r.volume}
-                for r in g.itertuples()
-            ]
+            bars = []
+            for r in g.itertuples():
+                # 캐시 파일이 open 컬럼 추가 전에 만들어졌을 수 있어(구버전 캐시)
+                # 없거나 NaN이면 종가로 대신한다.
+                o = getattr(r, "open", None)
+                if o is None or o != o:
+                    o = r.close
+                bars.append({"date": r.date, "close": r.close, "high": r.high, "low": r.low, "open": o, "volume": r.volume})
             if bars:
                 yield ticker, bars
 

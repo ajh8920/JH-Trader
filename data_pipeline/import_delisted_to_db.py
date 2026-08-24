@@ -65,6 +65,7 @@ def run(force):
                 {
                     "stock_code": code, "date": r.date, "close": float(r.close),
                     "high": float(r.high), "low": float(r.low),
+                    "open": float(r.open) if r.open == r.open else float(r.close),
                     "volume": float(r.volume) if r.volume == r.volume else None,
                 }
                 for r in df.itertuples()

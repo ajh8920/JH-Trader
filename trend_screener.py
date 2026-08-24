@@ -140,9 +140,11 @@ def _extract_bars(df):
         return []
     sub = df.dropna(subset=list(needed))
     has_volume = "Volume" in sub.columns
+    has_open = "Open" in sub.columns
     return [
         {"date": idx.strftime("%Y-%m-%d"), "close": float(row["Close"]),
          "high": float(row["High"]), "low": float(row["Low"]),
+         "open": float(row["Open"]) if has_open and row["Open"] == row["Open"] else float(row["Close"]),
          "volume": float(row["Volume"]) if has_volume and row["Volume"] == row["Volume"] else None}
         for idx, row in sub.iterrows()
     ]

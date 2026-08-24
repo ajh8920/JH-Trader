@@ -1256,7 +1256,10 @@ def _delisted_kr_fetch_fn(tickers, start_date, end_date):
             if bars:
                 yield f"{current_code}.DL", bars
             current_code, bars = r.stock_code, []
-        bars.append({"date": r.date, "close": r.close, "high": r.high, "low": r.low, "volume": r.volume})
+        bars.append({
+            "date": r.date, "close": r.close, "high": r.high, "low": r.low,
+            "open": r.open if r.open is not None else r.close, "volume": r.volume,
+        })
     if bars:
         yield f"{current_code}.DL", bars
 
@@ -1322,6 +1325,18 @@ def _vcp_shareholder_rows():
         return {}
 
 
+def _vcp_fundamentals_rows():
+    """KrFundamental은 로컬/프로덕션 어디서나 DB에 있다(로컬 전용인
+    _vcp_shareholder_rows와 달리 dart_fundamentals_refresher가 프로덕션도
+    채워둔다) - Flask app context 안에서만 호출해야 한다."""
+    from models import KrFundamental
+    import vcp_strategy as vcp
+    try:
+        return vcp.load_fundamentals_rows(KrFundamental)
+    except Exception:
+        return {}
+
+
 def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, stop_loss_pct, max_positions, seed,
                                  preset=None):
     import screening_backtest as sb
@@ -1345,6 +1360,7 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
                     p["market"], start_date, end_date, seed=seed, max_positions=max_positions,
                     fetch_fn=_screening_backtest_fetch_fn(p["market"], include_delisted=p.get("include_delisted", False)),
                     shares_map=_vcp_shares_map(), shareholder_rows_by_code=_vcp_shareholder_rows(),
+                    fundamentals_rows_by_code=_vcp_fundamentals_rows() if p.get("require_profitable") else None,
                     adx_threshold=p.get("adx_threshold", vcp.ADX_THRESHOLD),
                     final_contraction_ratio=p.get("final_contraction_ratio", 0.5),
                     min_final_duration=p.get("min_final_duration", 5),
@@ -1544,6 +1560,12 @@ def paper_trading_start():
     strategy = str(body.get("strategy", "minervini_v2"))
     if strategy not in ("anonymous", "sweeper") and strategy not in pt.STRATEGY_PRESETS:
         return jsonify({"error": "알 수 없는 전략입니다"}), 400
+    if strategy == "sweeper":
+        # 익일 시가 체결 기준으로 재검증한 결과 손절폭을 넓혀도 CAGR -18%~-30%,
+        # MDD -95%~-99%로 파산 수준이라(과거 +53% CAGR은 저가 즉시체결/상장폐지
+        # 편향이 만든 착시였음을 확인) 신규 시작을 막는다. 기존 계좌는 남겨두되
+        # is_active=False로 멈춰 더 이상 매매가 진행되지 않게 했다.
+        return jsonify({"error": "스위퍼 전략은 백테스트 재검증 결과 손실 위험이 커 신규 시작을 중단했습니다"}), 400
     try:
         seed = float(body.get("seed", 10_000_000))
     except (TypeError, ValueError):
@@ -1615,8 +1637,18 @@ def paper_trading_status():
     trades = PaperTrade.query.filter_by(account_id=account.id).order_by(PaperTrade.exit_date.desc()).all()
     win_trades = [t for t in trades if t.pnl_pct > 0]
 
+    paused_reason = None
+    if account.strategy == "sweeper" and not account.is_active:
+        paused_reason = (
+            "익일 시가 체결 기준으로 재검증한 결과 손절폭을 넓혀도(6~25%) CAGR -18%~-30%, "
+            "MDD -95%~-99%로 손실 위험이 커 모의투자를 중단했습니다. 과거에 보였던 +53% CAGR은 "
+            "저가 즉시체결·상장폐지 강제청산 등 비현실적인 체결 가정이 만든 결과였습니다. "
+            "기존 보유 내역은 그대로 남겨두었으며 더 이상 매매는 진행되지 않습니다."
+        )
+
     return jsonify(sanitize_json({
         "exists": True, "strategy": account.strategy, "market": account.market,
+        "isActive": account.is_active, "pausedReason": paused_reason,
         "seed": account.seed, "cash": round(account.cash, 2), "equity": round(equity, 2),
         "returnPct": return_pct, "drawdownPct": drawdown_pct,
         "startedOn": account.started_on, "lastProcessedDate": account.last_processed_date,
@@ -2519,6 +2551,7 @@ with app.app_context():
     _ensure_column("paper_positions", "last_pyramid_shares", "INTEGER")
     _ensure_column("paper_strategy_accounts", "alert_email", "VARCHAR(255)")
     _ensure_column("paper_strategy_accounts", "last_alert_sent_date", "VARCHAR(10)")
+    _ensure_column("kr_delisted_prices", "open", "FLOAT")
     _backfill_stage_column()
 
 threading.Thread(target=alert_checker, daemon=True).start()

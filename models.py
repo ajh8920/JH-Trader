@@ -250,6 +250,7 @@ class KrDelistedPrice(db.Model):
     close = db.Column(db.Float, nullable=False)
     high = db.Column(db.Float, nullable=False)
     low = db.Column(db.Float, nullable=False)
+    open = db.Column(db.Float)  # 익일 시가 체결 모델용(vcp_strategy.run_vcp_backtest)
     volume = db.Column(db.Float)
 
 
