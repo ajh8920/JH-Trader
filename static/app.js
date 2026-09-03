@@ -523,6 +523,7 @@ const I18N = {
   btPresetRelaxedVcp: { en: '🎯 Relaxed VCP Strategy', ko: '🎯 완화 VCP 전략' },
   btPresetAnonymous: { en: '🐢 Anonymous', ko: '🐢 어나니머스' },
   btPresetSweeper: { en: '🧹 Sweeper', ko: '🧹 스위퍼' },
+  btPresetWatcher: { en: '🔭 Watcher', ko: '🔭 와쳐' },
   stratMinerviniV21Title: { en: 'Minervini v2.1', ko: '미너비니 v2.1' },
   stratAnonymousTitle: { en: 'Anonymous', ko: '어나니머스' },
   stratSweeperTitle: { en: 'Sweeper', ko: '스위퍼' },
@@ -3518,8 +3519,9 @@ function initScreeningBacktestTab() {
   }
 }
 
-const SBT_PRESET_KEYS = ['minervini_v2', 'minervini_v21', 'relaxed_vcp', 'anonymous', 'sweeper'];
+const SBT_PRESET_KEYS = ['watcher', 'minervini_v2', 'minervini_v21', 'relaxed_vcp', 'anonymous', 'sweeper'];
 const SBT_PRESET_RENDERERS = {
+  watcher: () => renderWatcherReference,
   minervini_v2: () => renderMinerviniV2Reference,
   minervini_v21: () => renderMinerviniV21Reference,
   relaxed_vcp: () => renderRelaxedVcpReference,
@@ -3528,14 +3530,15 @@ const SBT_PRESET_RENDERERS = {
 };
 const SBT_PRESET_DEFAULT_START = {
   minervini_v2: '2020-01-01', minervini_v21: '2020-01-01', relaxed_vcp: '2017-01-01', anonymous: '2017-01-01',
-  sweeper: '2017-01-01',
+  sweeper: '2017-01-01', watcher: '2016-01-01',
 };
 // 어나니머스는 슬롯당 고정 금액 상한(2,500만원 = 시드 5천만원/10슬롯의 5배)을
 // 전제로 튜닝됐다 - 기본 시드(1천만원)로 돌리면 그 상한 대비 계좌가 작아 상한이
 // 거의 안 걸려 실측 결과와 괴리가 생긴다. 스위퍼는 리스크기반 사이징(계좌 대비
 // 리스크%)이라 시드 자체가 결과의 "형태"를 바꾸지 않아 실측에 쓴 시드(1천만원,
-// 즉 기본값)를 그대로 둔다.
-const SBT_PRESET_DEFAULT_SEED = { anonymous: 50_000_000 };
+// 즉 기본값)를 그대로 둔다. 와쳐는 어나니머스와 같은 equal_weight 사이징이라
+// vcp_strategy.WATCHER_PARAMS.default_seed(5천만원)와 맞춰둔다.
+const SBT_PRESET_DEFAULT_SEED = { anonymous: 50_000_000, watcher: 50_000_000 };
 
 function setScreeningBacktestPreset(preset) {
   sbtPreset = preset;
@@ -3824,6 +3827,96 @@ async function loadRelaxedVcpReferenceTrades() {
                 <td style="text-align:right;">${escapeHtml(tr.exitDate)}</td><td style="text-align:right;">${fmtPrice(tr.exitPrice)}</td>
                 <td style="text-align:right;" class="${tr.pnlPct >= 0 ? 'positive' : 'negative'}">${tr.pnlPct>=0?'+':''}${tr.pnlPct.toFixed(1)}%</td>
                 <td>${exitReasonLabel(tr.exitReason)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${t('referenceTradesLoadError')}</span></div>`;
+  }
+}
+
+// 와쳐 참고 결과 - vcp_strategy.WATCHER_PARAMS(지인 스크리너 2단계 조건 +
+// RS 상위 백분위85 + 매출성장 20% 이상 + 눌림목 진입, 슬롯10 고정, 손절
+// 3.5%, position_cap_base="equity", max_position_weight_pct=15)로 계산한
+// 최종 확정 결과다(29~37차, 72개 변형 탐색 후 채택). 지인의 실제 실적(9년
+// 승률31.57%·손익비9.30·평균수익+52.38%·CAGR+50.76%·누적+5,049%·MDD-44.45%)
+// 대비 CAGR·누적수익률·MDD는 근접하거나 넘어섰지만(94~102%, MDD는 더 낮음)
+// 승률·평균수익은 못 미친다 - 진입 필터·진입 방식(돌파 재검증)·매도 규칙(트레일
+// 폭·장기보유·지인조건 이탈 청산)·기본적 분석(ROE 상대순위·성장 연속성·밸류
+// 에이션)까지 폭넓게 시험했지만 이 두 지표를 함께 끌어올리는 조합은 못 찾았다 -
+// 재량적 판단이 섞인 실제 매매를 룰 기반 백테스트가 완전히 재현하지는 못한다고
+// 판단해 이 지점을 최종 채택했다. 매일 한국시간 14:30에 실시간가 기준으로
+// 자동 계산되며(모의투자 "와쳐"와 동일 로직), 매매할 종목이 있으면 알림
+// 메일이 발송된다.
+const WATCHER_REFERENCE = {
+  start: '2016-01-01', end: '2026-09-04', seed: 50000000, finalValue: 3209622197.51,
+  returnPct: 6319.24, cagrPct: 47.68, mddPct: 40.39, tradeCount: 1624, winCount: 375, winRatePct: 23.1,
+  avgHoldDays: 16.6, profitLossRatio: 5.2, alphaPct: 6070.21,
+  benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 249.03,
+  exitReasonCounts: { trailingStop: 387, initialStop: 872, breakevenStop: 280, delisted: 7, maBreak: 55, timeStop: 16, periodEnd: 7 },
+};
+
+function renderWatcherReference(el) {
+  const d = WATCHER_REFERENCE;
+  const fmt = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+  const reasons = Object.entries(d.exitReasonCounts)
+    .map(([k, v]) => `${PAPER_TRADING_EXIT_REASON_LABEL(k)} ${v}${t('countUnit') || '건'}`).join(', ');
+  el.innerHTML = `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+        <div style="font-size:13px;font-weight:700;">📌 ${t('referenceResultTitle')}</div>
+        <div style="font-size:11.5px;color:var(--text-muted);">${escapeHtml(d.start)} ~ ${escapeHtml(d.end)}</div>
+      </div>
+      <div class="bt-summary-grid">
+        <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">${fmt(d.seed)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('finalValue')}</div><div class="meta-value">${fmt(d.finalValue)}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('totalReturn')}</div><div class="meta-value positive">+${d.returnPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('annualizedReturn')}</div><div class="meta-value positive">+${d.cagrPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">MDD</div><div class="meta-value negative">-${d.mddPct.toFixed(1)}%</div></div>
+        <div class="meta-item"><div class="meta-label">${t('winRate')}</div><div class="meta-value">${d.winRatePct.toFixed(1)}% (${d.winCount}/${d.tradeCount})</div></div>
+        <div class="meta-item"><div class="meta-label">${t('avgHoldDays')}</div><div class="meta-value">${d.avgHoldDays}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('profitLossRatio')}</div><div class="meta-value">${d.profitLossRatio}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('alphaExcessReturn')}</div><div class="meta-value ${d.alphaPct >= 0 ? 'positive' : 'negative'}">${d.alphaPct >= 0 ? '+' : ''}${d.alphaPct.toFixed(1)}%p</div></div>
+        <div class="meta-item"><div class="meta-label">${escapeHtml(d.benchmarkLabel)}</div><div class="meta-value positive">+${d.benchmarkReturnPct.toFixed(1)}%</div></div>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px;line-height:1.5;">
+        ${t('exitReason')}: ${escapeHtml(reasons)}<br>
+        ${t('referenceResultNote')}
+      </div>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('tradeLog')} (${d.tradeCount})</div>
+      <div id="sbt-refwatcher-trades-body"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i></div></div>
+    </div>`;
+  loadWatcherReferenceTrades();
+}
+
+async function loadWatcherReferenceTrades() {
+  const body = document.getElementById('sbt-refwatcher-trades-body');
+  if (!body) return;
+  try {
+    const res = await fetch('/static/watcher_reference.json');
+    if (!res.ok) throw new Error('fetch failed');
+    const data = await res.json();
+    const fmtPrice = v => `₩${Math.round(v).toLocaleString('en-US')}`;
+    body.innerHTML = `
+      <div class="pf-table-wrap pf-table-wrap-scroll">
+        <table class="pf-table">
+          <thead><tr>
+            <th>${t('name')}</th><th>${t('code')}</th>
+            <th style="text-align:right;">${t('buyDate')}</th><th style="text-align:right;">${t('buyPrice')}</th>
+            <th style="text-align:right;">${t('sellDate')}</th><th style="text-align:right;">${t('sellPrice')}</th>
+            <th style="text-align:right;">${t('returnPct')}</th><th>${t('exitReason')}</th>
+          </tr></thead>
+          <tbody>
+            ${data.trades.map(tr => `
+              <tr>
+                <td>${escapeHtml(tr.name)}</td><td>${escapeHtml(tr.code)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.entryDate)}</td><td style="text-align:right;">${fmtPrice(tr.entryPrice)}</td>
+                <td style="text-align:right;">${escapeHtml(tr.exitDate)}</td><td style="text-align:right;">${fmtPrice(tr.exitPrice)}</td>
+                <td style="text-align:right;" class="${tr.pnlPct >= 0 ? 'positive' : 'negative'}">${tr.pnlPct>=0?'+':''}${tr.pnlPct.toFixed(1)}%</td>
+                <td>${PAPER_TRADING_EXIT_REASON_LABEL(tr.exitReason)}</td>
               </tr>`).join('')}
           </tbody>
         </table>

@@ -315,6 +315,12 @@ WATCHER_PARAMS = {
     "partial_profit_fraction": 0.0,     # 분할익절 안 함
     "position_sizing_mode": "equal_weight", "position_cap_base": "equity",
     "max_pct_of_avg_trade_value": 10,
+    # 피라미딩 상한(그 시점 평가액의 15%) - 29~37차 탐색 스크립트 전부가
+    # vcp.MAX_POSITION_WEIGHT_PCT를 15.0으로 임시 덮어쓴 채 돌린 결과였다(모듈
+    # 상수 기본값은 20.0). 이 키가 없으면 기본값(20%)이 적용돼 포지션이 더 크게
+    # 피라미딩되면서 실제 검증한 결과(CAGR 47.71%/MDD -40.39%)와 달라진다 -
+    # 최종 반영 직후 이 키를 빠뜨려 한 번 이 문제로 수치가 틀어진 적이 있다.
+    "max_position_weight_pct": 15.0,
     # 청산 - 손절폭만 30차 ZC(3.5%)로 좁혔고 나머지는 run_vcp_backtest 기본값과
     # 같다. paper_trading.py가 이 딕셔너리 키를 직접 참조하므로(모듈 기본값
     # fallback이 없다) 아래 항목들을 명시적으로 채워둔다.
@@ -1128,7 +1134,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       min_roe=None, min_roic=None, min_revenue_growth=None,
                       min_operating_margin=None,
                       min_revenue_growth_streak=None, min_operating_margin_trend=None,
-                      min_roe_percentile=None, max_per=None):
+                      min_roe_percentile=None, max_per=None,
+                      max_position_weight_pct=MAX_POSITION_WEIGHT_PCT):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -1264,9 +1271,16 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         복리가 구조적으로 막힌다. 실제로 이것 때문에 거래당 기대값이 플러스인데도
         CAGR이 낮게 나오고 있었다. equity로 두면 대신 계좌가 커질수록 매수 금액이
         그 종목의 하루 거래대금을 넘어설 수 있으니, max_pct_of_avg_trade_value를
-        함께 걸어야 현실적인 결과가 된다."""
+        함께 걸어야 현실적인 결과가 된다.
+
+        비율 자체는 max_position_weight_pct 인자로 받는다(기본값은 모듈 상수
+        MAX_POSITION_WEIGHT_PCT) - 예전엔 이 함수가 모듈 상수를 직접 참조해서,
+        프리셋마다 다른 비율을 쓰려면 호출 스크립트가 vcp.MAX_POSITION_WEIGHT_PCT를
+        임시로 덮어썼다 갱신하는 식이었다(gunicorn 멀티스레드에서 다른 요청과
+        경합할 수 있는 전역 mutable state라 위험했다 - RULES.md 워커간 공유상태
+        금지와 같은 이유). 인자로 받게 바꿔 스레드 안전하게 만들었다."""
         base = equity_value if position_cap_base == "equity" else seed_value
-        return base * MAX_POSITION_WEIGHT_PCT / 100
+        return base * max_position_weight_pct / 100
 
     for rd in rebalance_dates:
         idx_at_rd = {}

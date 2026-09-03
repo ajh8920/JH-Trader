@@ -518,6 +518,9 @@
             <button type="button" id="sbt-preset-default" class="bt-preset-btn selected" onclick="setScreeningBacktestPreset(null)">
               <span data-i18n="btPresetCustom">⚙️ 직접 설정</span>
             </button>
+            <button type="button" id="sbt-preset-watcher" class="bt-preset-btn" onclick="setScreeningBacktestPreset('watcher')">
+              <span data-i18n="btPresetWatcher">🔭 와쳐</span>
+            </button>
             <button type="button" id="sbt-preset-minervini_v2" class="bt-preset-btn" onclick="setScreeningBacktestPreset('minervini_v2')">
               <span data-i18n="btPresetMinerviniV2">🎯 미너비니 v2</span>
             </button>
@@ -582,6 +585,27 @@
             선택한 전략(트렌드 템플릿 또는 단계 조건)을 주 단위로 재평가해, 그 시점까지의 가격만으로 조건을 만족하는 종목을 매수하고
             손절(위 %) 또는 조건 이탈 시 매도하는 방식으로 시뮬레이션합니다. 고정 익절 상한은 두지 않습니다(조건을 계속 만족하면 계속 보유).
             국내 전체 유니버스 기준 계산에 수 분~수십 분 걸릴 수 있습니다.
+            </span>
+          </div>
+          <div class="info-box" id="sbt-info-watcher" style="display:none;margin-top:12px;">
+            <i class="ti ti-info-circle" aria-hidden="true"></i>
+            <span>
+            실제로 아는 지인이 운용 중인 스크리너를 복제한 전략입니다. 진입은 지인 스크리너의
+            "2단계" 판정식(RS Rating·52주 고점 근접·3/6/12개월 수익률·200일선 이격도, 6개 조건
+            AND — 지인의 실제 스냅샷에서 역산) + <b>RS 상위 백분위 85</b>(절대 문턱보다 상대 순위가
+            더 안정적으로 통했습니다) + <b>매출 성장률 20% 이상</b>(가장 강력한 단일 레버였습니다)을
+            전부 만족하는 종목 중, 최근 고점 대비 <b>3~15% 눌린 뒤 20일선 위에서 반등하는 시점</b>에
+            매수합니다. 청산은 초기손절(진입가-1.5×ATR, 최대 -3.5%), +2R 본전이동, +2R부터 챈들리어
+            트레일링(고가-3×ATR), 분할익절 없음. 시가총액 3,000억원 이상만 대상이며, 매수 시 종목마다
+            <b>동일한 금액</b>을 배분합니다(그 시점 총자산/10). <b>최대 보유는 10종목 고정</b>(사용자
+            필수조건)입니다. 지인의 실제 실적(9년, 승률 31.57%·손익비 9.30·평균수익 +52.38%·
+            CAGR +50.76%·누적 +5,049%·MDD -44.45%)에 최대한 근접시키려 72개 변형을 시험한
+            최종 결과이며, CAGR·누적수익률·MDD는 목표에 근접하거나 넘어섰지만 승률·평균수익은
+            여전히 못 미칩니다(재량적 판단이 섞인 지인의 실제 매매를 룰 기반 백테스트가 완전히
+            재현하지는 못한다고 판단해 이 지점을 최종 채택했습니다). 3·4단계 판정식은 아직 정확히
+            몰라 진입 타이밍은 우리 쪽 신호(눌림목)를 대신 씁니다. 매일 한국시간 14:30에 실시간가
+            기준으로 자동 계산되며(모의투자 "와쳐"와 동일 로직), 매매할 종목이 있으면 알림 메일이
+            발송됩니다.
             </span>
           </div>
           <div class="info-box" id="sbt-info-minervini_v2" style="display:none;margin-top:12px;">
@@ -671,6 +695,7 @@
             </span>
           </div>
         </div>
+        <div id="sbt-reference-watcher" style="display:none;"></div>
         <div id="sbt-reference-minervini_v2" style="display:none;"></div>
         <div id="sbt-reference-minervini_v21" style="display:none;"></div>
         <div id="sbt-reference-relaxed_vcp" style="display:none;"></div>

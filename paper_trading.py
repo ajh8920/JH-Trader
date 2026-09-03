@@ -826,6 +826,17 @@ def run_watcher_daily_step(account):
     if latest_date is None or (account.last_processed_date and latest_date <= account.last_processed_date):
         return
 
+    # 피라미딩 상한(아래 for문 안)에 쓸 평가액 근사치 - WATCHER_PARAMS는
+    # position_cap_base="equity"라 vcp_strategy.run_vcp_backtest의 _position_cap도
+    # 시드가 아니라 그 시점 평가액 기준으로 상한을 잡는다. 여기서는 최신 보유
+    # 종가로 근사한다(오늘치 며칠 밀린 날짜를 하루씩 반영하는 도중의 정확한
+    # 시점별 평가액까지는 추적하지 않는다 - run_vcp_backtest도 재평가일 단위로만
+    # 갱신해 완벽히 실시간은 아니다. 피라미딩 상한이라는 부차적 용도엔 충분한 근사).
+    equity_estimate = account.cash + sum(
+        p.shares * ((held_bars.get(p.code) or [{}])[-1].get("close") or p.entry_price)
+        for p in held_positions
+    )
+
     # 1) 보유 포지션 - run_anonymous_daily_step의 같은 블록과 완전히 동일한
     #    규칙(손절 > MA이탈 > 시간손절 > 본전/분할익절/트레일링 갱신 > 피라미딩).
     #    entry_mode가 달라도 포지션이 일단 생기고 난 뒤의 관리 규칙은 어나니머스/
@@ -898,7 +909,12 @@ def run_watcher_daily_step(account):
                 if close >= target:
                     add_shares = max(1, int(pos["initialShares"] * vcp.PYRAMID_SIZE_FRACTION))
                     cost = add_shares * close * (1 + vcp.SLIPPAGE_ENTRY_PCT / 100)
-                    max_pos_value = account.seed * vcp.MAX_POSITION_WEIGHT_PCT / 100
+                    # position_cap_base="equity"(WATCHER_PARAMS) - 시드가 아니라 평가액
+                    # 기준 상한. run_anonymous_daily_step은 어나니머스/스위퍼 둘 다
+                    # position_cap_base가 없어(vcp_strategy.run_vcp_backtest 기본값
+                    # "seed") account.seed를 그대로 쓰지만, 와쳐는 다르다.
+                    cap_base_value = equity_estimate if params.get("position_cap_base") == "equity" else account.seed
+                    max_pos_value = cap_base_value * params.get("max_position_weight_pct", vcp.MAX_POSITION_WEIGHT_PCT) / 100
                     current_value = pos["shares"] * close
                     if cost <= account.cash and (current_value + add_shares * close) <= max_pos_value:
                         account.cash -= cost
