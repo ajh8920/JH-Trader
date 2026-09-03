@@ -222,6 +222,28 @@ def get_watchlist(account, limit=15):
                 .filter(TrendScreenCache.market_cap >= min_market_cap)
         rows = query.order_by(TrendScreenCache.rs_rating.desc()).limit((limit + len(held_codes)) * 3).all()
         rows = [r for r in rows if not vcp.is_preferred_stock(r.name)]
+    elif account.strategy == "watcher":
+        # 조회 전용 근사치 - RS·시총·유동성만으로 좁힌다(지인 2단계 조건 전체와
+        # 눌림목 확인은 실제 매매 판정(run_watcher_daily_step)에서만 정확히
+        # 계산한다 - 캐시된 스냅샷 필드만으로는 52주 수익률/200일선이격도까지
+        # 재현할 수 없어 "다음 매수 후보"를 보여주는 이 목적에는 근사로 충분하다).
+        params = vcp.WATCHER_PARAMS
+        min_rs = (params.get("evan_params") or {}).get("min_rs", 70.0)
+        query = (
+            TrendScreenCache.query.filter_by(market=params["market"])
+            .filter(TrendScreenCache.rs_rating.isnot(None))
+            .filter(TrendScreenCache.rs_rating >= min_rs)
+        )
+        min_avg_trade_value = params.get("min_avg_trade_value", vcp.MIN_AVG_TRADE_VALUE)
+        if min_avg_trade_value:
+            query = query.filter(TrendScreenCache.avg_trade_value.isnot(None)) \
+                .filter(TrendScreenCache.avg_trade_value >= min_avg_trade_value)
+        min_market_cap = params.get("min_market_cap", vcp.MIN_MARKET_CAP)
+        if min_market_cap:
+            query = query.filter(TrendScreenCache.market_cap.isnot(None)) \
+                .filter(TrendScreenCache.market_cap >= min_market_cap)
+        rows = query.order_by(TrendScreenCache.rs_rating.desc()).limit((limit + len(held_codes)) * 3).all()
+        rows = [r for r in rows if not vcp.is_preferred_stock(r.name)]
     else:
         preset = STRATEGY_PRESETS.get(account.strategy)
         if not preset:
@@ -248,6 +270,8 @@ def run_daily_step(account):
     리프레셔가 중복 처리하지 않도록)."""
     if account.strategy in ("anonymous", "sweeper"):
         return run_anonymous_daily_step(account)
+    if account.strategy == "watcher":
+        return run_watcher_daily_step(account)
 
     preset = STRATEGY_PRESETS.get(account.strategy)
     if not preset:
@@ -737,42 +761,319 @@ def run_anonymous_daily_step(account):
     db.session.commit()
 
 
-# ─── "스위퍼" 매매 알림 메일 ──────────────────────────────────────────────────
+# ─── "와쳐"(vcp_strategy.WATCHER_PARAMS) 실시간 진행 로직 ──────────────────────
+# 지인 스크리너를 복제한 전략 - 진입이 "N일 신고가 돌파"가 아니라 "지인 2단계
+# 조건 통과 + 매출성장 + 고점 대비 3~15% 눌림목"이라 어나니머스/스위퍼와는
+# 후보 선정·진입 확인 방식이 완전히 다르다(entry_mode="pullback"). 포지션
+# 관리(손절/MA이탈/시간손절/본전/분할익절/트레일링/피라미딩)는
+# _process_anon_position_day를 그대로 재사용한다 - WATCHER_PARAMS가 그
+# 함수가 직접 참조하는 키를 전부 명시적으로 갖고 있어(vcp_strategy.py의
+# WATCHER_PARAMS 정의부 주석 참고) 안전하다.
+WATCHER_CANDIDATE_LOOKBACK_DAYS = ANON_HELD_LOOKBACK_DAYS  # evan_stage2 판정에 252거래일
+# (52주 수익률·200일선)이 필요해 어나니머스의 짧은 후보용 lookback(40일)으론
+# 부족하다 - 보유 종목과 같은 긴 구간을 받는다.
+
+
+def run_watcher_daily_step(account):
+    """"와쳐" 계좌를 최신 거래일까지 진행시킨다. run_daily_step/
+    run_anonymous_daily_step과 같은 "이미 처리된 상태면 조용히 반환" 규칙을
+    따른다."""
+    params = vcp.WATCHER_PARAMS
+    held_positions = list(account.positions)
+    held_codes = [p.code for p in held_positions]
+
+    candidate_rows = []
+    if len(held_codes) < params["max_positions"]:
+        min_rs = (params.get("evan_params") or {}).get("min_rs", 70.0)
+        query = (
+            TrendScreenCache.query.filter_by(market=params["market"])
+            .filter(TrendScreenCache.rs_rating.isnot(None))
+            .filter(TrendScreenCache.rs_rating >= min_rs)
+        )
+        min_avg_trade_value = params.get("min_avg_trade_value", vcp.MIN_AVG_TRADE_VALUE)
+        if min_avg_trade_value:
+            query = query.filter(TrendScreenCache.avg_trade_value.isnot(None)) \
+                .filter(TrendScreenCache.avg_trade_value >= min_avg_trade_value)
+        min_market_cap = params.get("min_market_cap", vcp.MIN_MARKET_CAP)
+        if min_market_cap:
+            query = query.filter(TrendScreenCache.market_cap.isnot(None)) \
+                .filter(TrendScreenCache.market_cap >= min_market_cap)
+        # RS로 이미 상위 종목만 남겼어도(evan_stage2가 시가총액 상위+RS85 상위
+        # 교집합이라 실제로는 매우 좁다) 후보를 넉넉히 받아 그 아래 조건
+        # (52주 고점 근접·수익률·200일선이격도·매출성장·눌림목)에서 추가로
+        # 걸러진 뒤에도 슬롯을 채울 여유를 둔다.
+        candidate_rows = query.order_by(TrendScreenCache.rs_rating.desc()) \
+            .limit(params["max_positions"] * 8).all()
+    candidate_rows = [r for r in candidate_rows if not vcp.is_preferred_stock(r.name)]
+    candidate_codes = [r.code for r in candidate_rows if r.code not in held_codes]
+
+    held_bars = fetch_recent_bars(held_codes, params["market"], lookback_days=ANON_HELD_LOOKBACK_DAYS)
+    candidate_bars = fetch_recent_bars(
+        candidate_codes, params["market"], lookback_days=WATCHER_CANDIDATE_LOOKBACK_DAYS)
+
+    # 14:30 실시간가 합성 - run_anonymous_daily_step과 동일한 이유(장마감 전에
+    # 오늘 신호를 알아야 실전 계좌에서 같은 매매를 그대로 따라 할 수 있다).
+    today_str = datetime.today().strftime("%Y-%m-%d")
+    realtime_codes = list(dict.fromkeys(held_codes + candidate_codes))
+    realtime_prices = fetch_realtime_prices(realtime_codes, params["market"])
+    _append_realtime_bar(held_bars, {c: p for c, p in realtime_prices.items() if c in held_codes}, today_str)
+    _append_realtime_bar(candidate_bars, {c: p for c, p in realtime_prices.items() if c in candidate_codes}, today_str)
+
+    latest_date = max(
+        [bars[-1]["date"] for bars in held_bars.values() if bars]
+        + [bars[-1]["date"] for bars in candidate_bars.values() if bars], default=None,
+    )
+    if latest_date is None or (account.last_processed_date and latest_date <= account.last_processed_date):
+        return
+
+    # 1) 보유 포지션 - run_anonymous_daily_step의 같은 블록과 완전히 동일한
+    #    규칙(손절 > MA이탈 > 시간손절 > 본전/분할익절/트레일링 갱신 > 피라미딩).
+    #    entry_mode가 달라도 포지션이 일단 생기고 난 뒤의 관리 규칙은 어나니머스/
+    #    스위퍼/와쳐 셋 다 vcp_strategy.run_vcp_backtest의 같은 코드 블록을 쓴다.
+    for pos_row in held_positions:
+        bars = held_bars.get(pos_row.code)
+        if not bars:
+            continue
+        closes = [b["close"] for b in bars]
+        highs = [b["high"] for b in bars]
+        lows = [b["low"] for b in bars]
+        dates = [b["date"] for b in bars]
+        pos = {
+            "avgEntryPrice": pos_row.entry_price, "shares": pos_row.shares, "entryAtr": pos_row.entry_atr,
+            "riskPerShare": pos_row.risk_per_share, "stopPrice": pos_row.stop_price,
+            "stopState": pos_row.stop_state, "highestHigh": pos_row.highest_high, "barsHeld": pos_row.bars_held,
+            "maBelowCount": 0, "totalCost": pos_row.total_cost or (pos_row.entry_price * pos_row.shares),
+            "lastEntryPrice": pos_row.last_entry_price or pos_row.entry_price, "pyramidCount": pos_row.pyramid_count,
+            "initialShares": pos_row.initial_shares or pos_row.shares, "partialTaken": pos_row.partial_taken,
+        }
+        closed = False
+        last_pyramid_date, last_pyramid_shares = None, None
+        for j, d in enumerate(dates):
+            if account.last_processed_date and d <= account.last_processed_date:
+                continue
+            if d > latest_date:
+                break
+            result = _process_anon_position_day(pos, closes, highs, lows, j, params)
+            if result:
+                exit_price, reason = result
+                proceeds = pos["shares"] * exit_price * (1 - (vcp.SLIPPAGE_EXIT_PCT + vcp.SELL_TAX_PCT) / 100)
+                pnl_pct = round((proceeds / pos["shares"] - pos["avgEntryPrice"]) / pos["avgEntryPrice"] * 100, 2)
+                account.cash += proceeds
+                db.session.add(PaperTrade(
+                    account_id=account.id, code=pos_row.code, name=pos_row.name,
+                    entry_date=pos_row.entry_date, entry_price=round(pos["avgEntryPrice"], 2),
+                    exit_date=d, exit_price=round(exit_price, 2), shares=pos["shares"], pnl_pct=pnl_pct,
+                    exit_reason=reason,
+                    hold_days=(datetime.fromisoformat(d) - datetime.fromisoformat(pos_row.entry_date)).days,
+                ))
+                db.session.delete(pos_row)
+                closed = True
+                break
+            close = closes[j]
+            partial_profit_fraction = params.get("partial_profit_fraction", 0.0)
+            if partial_profit_fraction > 0 and not pos["partialTaken"]:
+                partial_profit_r = params.get("partial_profit_r", vcp.PARTIAL_PROFIT_R)
+                r = pos["riskPerShare"]
+                r_reached = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
+                if r_reached >= partial_profit_r:
+                    target = pos["avgEntryPrice"] + partial_profit_r * r
+                    if close >= target:
+                        sell_shares = min(max(1, int(pos["shares"] * partial_profit_fraction)), pos["shares"] - 1)
+                        if sell_shares > 0:
+                            fill = close * (1 - (vcp.SLIPPAGE_EXIT_PCT + vcp.SELL_TAX_PCT) / 100)
+                            pnl_pct = round((fill - pos["avgEntryPrice"]) / pos["avgEntryPrice"] * 100, 2)
+                            account.cash += sell_shares * fill
+                            db.session.add(PaperTrade(
+                                account_id=account.id, code=pos_row.code, name=pos_row.name,
+                                entry_date=pos_row.entry_date, entry_price=round(pos["avgEntryPrice"], 2),
+                                exit_date=d, exit_price=round(close, 2), shares=sell_shares, pnl_pct=pnl_pct,
+                                exit_reason="partialProfit",
+                                hold_days=(datetime.fromisoformat(d) - datetime.fromisoformat(pos_row.entry_date)).days,
+                            ))
+                            pos["totalCost"] -= sell_shares * pos["avgEntryPrice"]
+                            pos["shares"] -= sell_shares
+                        pos["partialTaken"] = True
+            if pos["pyramidCount"] < params["pyramid_max_count"]:
+                target = pos["lastEntryPrice"] + vcp.PYRAMID_INTERVAL_R * pos["riskPerShare"]
+                if close >= target:
+                    add_shares = max(1, int(pos["initialShares"] * vcp.PYRAMID_SIZE_FRACTION))
+                    cost = add_shares * close * (1 + vcp.SLIPPAGE_ENTRY_PCT / 100)
+                    max_pos_value = account.seed * vcp.MAX_POSITION_WEIGHT_PCT / 100
+                    current_value = pos["shares"] * close
+                    if cost <= account.cash and (current_value + add_shares * close) <= max_pos_value:
+                        account.cash -= cost
+                        pos["totalCost"] += cost
+                        pos["shares"] += add_shares
+                        pos["avgEntryPrice"] = pos["totalCost"] / pos["shares"]
+                        pos["lastEntryPrice"] = close
+                        pos["pyramidCount"] += 1
+                        pos["stopPrice"] = max(pos["stopPrice"], close - params["initial_stop_atr_mult"] * pos["entryAtr"])
+                        last_pyramid_date, last_pyramid_shares = d, add_shares
+        if not closed:
+            pos_row.entry_price, pos_row.shares = pos["avgEntryPrice"], pos["shares"]
+            pos_row.total_cost, pos_row.last_entry_price = pos["totalCost"], pos["lastEntryPrice"]
+            pos_row.pyramid_count, pos_row.initial_shares = pos["pyramidCount"], pos["initialShares"]
+            pos_row.stop_price, pos_row.stop_state = pos["stopPrice"], pos["stopState"]
+            pos_row.highest_high, pos_row.bars_held = pos["highestHigh"], pos["barsHeld"]
+            pos_row.partial_taken = pos["partialTaken"]
+            if last_pyramid_date:
+                pos_row.last_pyramid_date, pos_row.last_pyramid_shares = last_pyramid_date, last_pyramid_shares
+
+    db.session.flush()
+
+    # 2) 이 시점 평가액. 와쳐는 cash_equitize=False·gate_entries_on_regime=False라
+    #    국면 판정 자체가 필요 없는 경우가 대부분이라, 필요할 때만(둘 중 하나라도
+    #    True일 때만) 지수 데이터를 조회한다 - 불필요한 야후 호출을 줄인다.
+    remaining = PaperPosition.query.filter_by(account_id=account.id).all()
+    held_value = 0.0
+    for pos_row in remaining:
+        bars = held_bars.get(pos_row.code)
+        price = bars[-1]["close"] if bars else pos_row.entry_price
+        held_value += pos_row.shares * price
+    index_price, regime_ok = None, True
+    if params.get("cash_equitize") or params.get("gate_entries_on_regime"):
+        index_price, regime_ok = _anon_market_index_and_regime()
+    index_value = account.index_units * index_price if (index_price and account.index_units) else 0.0
+    equity_now = account.cash + held_value + index_value
+    if not remaining and account.index_units <= 0:
+        account.peak_equity = equity_now
+    else:
+        account.peak_equity = max(account.peak_equity, equity_now)
+
+    # 3) 현금 유휴화 방지 - 와쳐는 cash_equitize=False라 index_units가 0에서
+    #    벗어날 일이 없어 사실상 항상 건너뛴다. 명시적으로 플래그를 확인한다
+    #    (run_anonymous_daily_step은 어나니머스/스위퍼 둘 다 cash_equitize=True라
+    #    이 확인이 없어도 됐지만, 와쳐는 그대로 재사용하면 꺼둔 설정을 어기게 된다).
+    if params.get("cash_equitize") and not regime_ok and account.index_units > 0 and index_price:
+        account.cash += account.index_units * index_price * (1 - ANON_INDEX_SLIPPAGE_PCT / 100)
+        account.index_units = 0.0
+
+    # 4) 재평가(신규진입) - 지인 2단계 조건(passes_evan_stage2) + 매출성장
+    #    (passes_financial_quality) + 눌림목(detect_pullback)이 전부 성립하는
+    #    후보만 진입한다. vcp_strategy.run_vcp_backtest 후보 필터링 순서와
+    #    동일한 순서로 확인한다.
+    should_rescan = account.last_rescan_date is None or (
+        datetime.fromisoformat(latest_date) - datetime.fromisoformat(account.last_rescan_date)
+    ).days >= params["rescan_interval_days"]
+    if should_rescan and (regime_ok or not params.get("gate_entries_on_regime", True)):
+        open_slots = params["max_positions"] - len(remaining)
+        if open_slots > 0:
+            from models import KrFundamental
+            fundamentals_rows_by_code = vcp.load_fundamentals_rows(KrFundamental)
+            evan_params = params.get("evan_params") or {}
+            for row in candidate_rows:
+                if open_slots <= 0:
+                    break
+                if row.code in held_codes:
+                    continue
+                bars = candidate_bars.get(row.code)
+                if not bars or len(bars) < 253:  # passes_evan_stage2가 i>=252를 요구
+                    continue
+                closes = [b["close"] for b in bars]
+                highs = [b["high"] for b in bars]
+                lows = [b["low"] for b in bars]
+                j = len(bars) - 1
+                if not vcp.passes_evan_stage2(closes, highs, j, row.rs_rating, **evan_params):
+                    continue
+                if not vcp.passes_financial_quality(
+                        fundamentals_rows_by_code.get(row.code, []), latest_date,
+                        min_revenue_growth=params.get("min_revenue_growth")):
+                    continue
+                pb = vcp.detect_pullback(
+                    highs, lows, closes, j, lookback=params["pullback_lookback"],
+                    min_pullback_pct=params["min_pullback_pct"], max_pullback_pct=params["max_pullback_pct"],
+                    ma_period=params["pullback_ma_period"])
+                if not pb:
+                    continue
+                atr20 = vcp._atr(highs, lows, closes, j)
+                price = closes[j]
+                if not atr20 or atr20 <= 0 or not price or price <= 0:
+                    continue
+                raw_risk = params["initial_stop_atr_mult"] * atr20
+                risk_per_share = min(raw_risk, price * params["max_initial_risk_pct"] / 100) \
+                    if params["risk_cap_mode"] == "shrink" else raw_risk
+                if params["risk_cap_mode"] != "shrink" and (risk_per_share / price * 100) > params["max_initial_risk_pct"]:
+                    continue
+                if risk_per_share <= 0:
+                    continue
+                entry_fill = price * (1 + vcp.SLIPPAGE_ENTRY_PCT / 100)
+                # position_sizing_mode="equal_weight" - 슬롯당 동일 금액(그 시점
+                # 총자산/max_positions) 배분. run_vcp_backtest·run_anonymous_daily_step과 동일.
+                target_value = equity_now / params["max_positions"]
+                max_position_value_abs = params.get("max_position_value_abs")
+                if max_position_value_abs is not None:
+                    target_value = min(target_value, max_position_value_abs)
+                shares = int(target_value // entry_fill)
+                max_pos_value = target_value
+                max_pct_of_avg_trade_value = params.get("max_pct_of_avg_trade_value")
+                if max_pct_of_avg_trade_value is not None and row.avg_trade_value:
+                    liquidity_cap_value = row.avg_trade_value * max_pct_of_avg_trade_value / 100
+                    shares = min(shares, int(liquidity_cap_value // entry_fill))
+                cap_shares = int(min(account.cash, max_pos_value) // entry_fill)
+                shares = min(shares, cap_shares)
+                if shares <= 0:
+                    continue
+                cost = shares * entry_fill
+                if cost > account.cash:
+                    continue
+                account.cash -= cost
+                db.session.add(PaperPosition(
+                    account_id=account.id, code=row.code, name=row.name,
+                    entry_date=latest_date, entry_price=entry_fill, shares=shares,
+                    entry_atr=atr20, risk_per_share=risk_per_share,
+                    stop_price=entry_fill - risk_per_share, stop_state="initialStop",
+                    highest_high=entry_fill, bars_held=0, pyramid_count=0,
+                    last_entry_price=entry_fill, total_cost=cost, initial_shares=shares,
+                ))
+                open_slots -= 1
+        account.last_rescan_date = latest_date
+
+    account.last_processed_date = latest_date
+    db.session.commit()
+
+
+# ─── 매매 알림 메일 ──────────────────────────────────────────────────────────
 # 사용자가 실전 계좌에서 같은 매매를 직접 따라 하려면 장 마감(15:30) 전에
 # 오늘 무엇을 사고팔지 알아야 한다 - app.py의 paper_trading_scheduler가 매일
 # 한국시간 14:30에 모든 전략을 run_all_accounts()로 먼저 계산한 뒤에야 이
-# send_sweeper_trade_alerts()를 호출한다(계산 -> 메일 순서를 그 시각에 보장하는
+# send_trade_alerts()를 호출한다(계산 -> 메일 순서를 그 시각에 보장하는
 # 것이 핵심). 신규진입/청산(분할익절 포함)은 PaperPosition.entry_date/
 # PaperTrade.exit_date로 "오늘 반영된 거래일"을 그대로 조회할 수 있지만,
 # 피라미딩(추가매수)은 기존 행을 갱신할 뿐이라 last_pyramid_date/
-# last_pyramid_shares(run_anonymous_daily_step에서 기록)가 없으면 "오늘 있었는지"를
-# 알 방법이 없다.
-
-_SWEEPER_ALERT_EXIT_REASON_LABEL = {
+# last_pyramid_shares(run_anonymous_daily_step/run_watcher_daily_step에서 기록)가
+# 없으면 "오늘 있었는지"를 알 방법이 없다.
+#
+# 원래 스위퍼 전용이었는데(_send_one_sweeper_alert) 와쳐 추가로 전략에 무관하게
+# 만들었다 - 알림 이메일이 설정된 활성 계좌라면 전략과 상관없이 전부 대상이다.
+_ALERT_EXIT_REASON_LABEL = {
     "initialStop": "초기손절", "breakevenStop": "본전손절", "trailingStop": "트레일링손절",
     "timeStop": "시간손절", "maBreak": "이평선이탈", "maxHold": "최대보유도달",
     "partialProfit": "분할익절", "periodEnd": "기간종료",
 }
+STRATEGY_LABEL_KO = {
+    "sweeper": "스위퍼", "anonymous": "어나니머스", "watcher": "와쳐",
+    "minervini_v2": "미너비니 v2", "minervini_v21": "미너비니 v2.1",
+}
 
 
-def send_sweeper_trade_alerts():
-    """알림 이메일이 설정된 활성 스위퍼 계좌를 전부 찾아 계좌별로 오늘의 매매를
-    보낸다. run_all_accounts와 같은 이유로 계좌 하나의 실패가 나머지를
+def send_trade_alerts():
+    """알림 이메일이 설정된 활성 계좌를 전략 무관하게 전부 찾아 계좌별로 오늘의
+    매매를 보낸다. run_all_accounts와 같은 이유로 계좌 하나의 실패가 나머지를
     막지 않도록 계좌별로 예외를 격리한다."""
     account_ids = [
-        row.id for row in PaperStrategyAccount.query.filter_by(strategy="sweeper", is_active=True)
+        row.id for row in PaperStrategyAccount.query.filter_by(is_active=True)
         .filter(PaperStrategyAccount.alert_email.isnot(None))
         .filter(PaperStrategyAccount.alert_email != "").all()
     ]
     for account_id in account_ids:
         try:
-            _send_one_sweeper_alert(account_id)
+            _send_one_trade_alert(account_id)
         except Exception as e:
             db.session.rollback()
-            print(f"[스위퍼 매매알림] 계좌 {account_id} 발송 오류: {e}")
+            print(f"[매매알림] 계좌 {account_id} 발송 오류: {e}")
 
 
-def _send_one_sweeper_alert(account_id):
+def _send_one_trade_alert(account_id):
     import email_utils
 
     # gunicorn 워커 2개가 같은 시각(14:30)에 동시에 깨어날 수 있어, 중복 발송을
@@ -786,6 +1087,7 @@ def _send_one_sweeper_alert(account_id):
     if not target_date or account.last_alert_sent_date == target_date:
         db.session.commit()
         return
+    label = STRATEGY_LABEL_KO.get(account.strategy, account.strategy)
 
     buys = PaperPosition.query.filter_by(account_id=account.id, entry_date=target_date).all()
     pyramids = PaperPosition.query.filter_by(account_id=account.id, last_pyramid_date=target_date).all()
@@ -809,20 +1111,20 @@ def _send_one_sweeper_alert(account_id):
         lines.append("[매도]")
         lines += [
             f"- {t.name}({t.code}): {t.shares:,}주 @ {round(t.exit_price):,}원 "
-            f"(사유: {_SWEEPER_ALERT_EXIT_REASON_LABEL.get(t.exit_reason, t.exit_reason)}, 손익 {t.pnl_pct:+.1f}%)"
+            f"(사유: {_ALERT_EXIT_REASON_LABEL.get(t.exit_reason, t.exit_reason)}, 손익 {t.pnl_pct:+.1f}%)"
             for t in sells
         ]
 
     if not lines:
-        body = f"{target_date} 기준, 스위퍼 전략에서 오늘 실행할 매매가 없습니다."
+        body = f"{target_date} 기준, {label} 전략에서 오늘 실행할 매매가 없습니다."
     else:
         body = (
-            f"{target_date} 확정 종가 기준, 스위퍼 전략의 오늘 매매 내역입니다.\n\n"
+            f"{target_date} 14:30 실시간가 기준, {label} 전략의 오늘 매매 내역입니다.\n\n"
             + "\n".join(lines)
             + "\n\n※ 위 가격은 계산 기준가이며, 실제 체결가는 다를 수 있습니다."
         )
 
-    subject = f"[JH-Trader] 스위퍼 오늘의 매매 ({target_date})"
+    subject = f"[JH-Trader] {label} 오늘의 매매 ({target_date})"
     if email_utils.send_email(account.alert_email, subject, body):
         account.last_alert_sent_date = target_date
         db.session.commit()

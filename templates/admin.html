@@ -23,12 +23,12 @@
 
     <div id="admin-content"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div></div>
 
-    <h2 style="font-size:15px;font-weight:700;margin:28px 0 4px;">🧹 스위퍼 매매 알림 메일 관리</h2>
+    <h2 style="font-size:15px;font-weight:700;margin:28px 0 4px;">📬 매매 알림 메일 관리</h2>
     <p style="font-size:12.5px;color:var(--text-muted,#888);margin:0 0 12px;">
-      매일 한국시간 14:30에 그날의 스위퍼 매매(신규진입/피라미딩/청산)를 요약해 이 주소로 보냅니다.
+      매일 한국시간 14:30에 그날의 모의투자 매매(신규진입/피라미딩/청산)를 전략별로 요약해 이 주소로 보냅니다.
       비워두면 그 계좌의 알림은 꺼진 상태입니다.
     </p>
-    <div id="admin-sweeper-content"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div></div>
+    <div id="admin-alerts-content"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div></div>
   </div>
 
   <script>
@@ -102,39 +102,40 @@
       }
     }
 
-    async function loadSweeperAlerts() {
-      const el = document.getElementById('admin-sweeper-content');
+    async function loadTradeAlerts() {
+      const el = document.getElementById('admin-alerts-content');
       try {
-        const accounts = await api('GET', '/api/admin/sweeper-alerts');
-        renderSweeperAlerts(accounts);
+        const accounts = await api('GET', '/api/admin/trade-alerts');
+        renderTradeAlerts(accounts);
       } catch (e) {
         el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
       }
     }
 
-    function renderSweeperAlerts(accounts) {
-      const el = document.getElementById('admin-sweeper-content');
+    function renderTradeAlerts(accounts) {
+      const el = document.getElementById('admin-alerts-content');
       if (!accounts.length) {
-        el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>스위퍼 모의투자를 시작한 사용자가 아직 없습니다.</p></div>`;
+        el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><p>모의투자를 시작한 사용자가 아직 없습니다.</p></div>`;
         return;
       }
       el.innerHTML = `
         <div class="pf-table-wrap">
           <table class="pf-table">
             <thead><tr>
-              <th>사용자</th><th>상태</th><th>알림 이메일</th><th>마지막 처리일</th><th>마지막 발송일</th><th></th>
+              <th>전략</th><th>사용자</th><th>상태</th><th>알림 이메일</th><th>마지막 처리일</th><th>마지막 발송일</th><th></th>
             </tr></thead>
             <tbody>
               ${accounts.map(a => `
                 <tr>
+                  <td>${escapeHtml(a.strategyLabel)}</td>
                   <td style="font-weight:600;">${escapeHtml(a.username)}</td>
                   <td>${a.isActive ? '활성' : '비활성'}</td>
-                  <td><input type="email" id="sw-alert-email-${a.accountId}" value="${escapeHtml(a.alertEmail || '')}" placeholder="you@example.com" style="width:220px;" /></td>
+                  <td><input type="email" id="alert-email-${a.accountId}" value="${escapeHtml(a.alertEmail || '')}" placeholder="you@example.com" style="width:220px;" /></td>
                   <td>${escapeHtml(a.lastProcessedDate || '-')}</td>
                   <td>${escapeHtml(a.lastAlertSentDate || '-')}</td>
                   <td style="white-space:nowrap;">
-                    <button class="btn-primary" onclick="saveSweeperAlertEmail(${a.accountId})" style="font-size:12.5px;padding:6px 12px;">저장</button>
-                    <button class="btn-secondary" onclick="testSweeperAlertEmail(${a.accountId})" style="font-size:12.5px;padding:6px 12px;">테스트 발송</button>
+                    <button class="btn-primary" onclick="saveTradeAlertEmail(${a.accountId})" style="font-size:12.5px;padding:6px 12px;">저장</button>
+                    <button class="btn-secondary" onclick="testTradeAlertEmail(${a.accountId})" style="font-size:12.5px;padding:6px 12px;">테스트 발송</button>
                   </td>
                 </tr>
               `).join('')}
@@ -143,20 +144,20 @@
         </div>`;
     }
 
-    async function saveSweeperAlertEmail(accountId) {
-      const email = document.getElementById(`sw-alert-email-${accountId}`).value.trim();
+    async function saveTradeAlertEmail(accountId) {
+      const email = document.getElementById(`alert-email-${accountId}`).value.trim();
       try {
-        await api('PATCH', `/api/admin/sweeper-alerts/${accountId}`, { email });
+        await api('PATCH', `/api/admin/trade-alerts/${accountId}`, { email });
         alert(email ? '알림 이메일이 저장되었습니다.' : '알림 이메일을 껐습니다.');
-        loadSweeperAlerts();
+        loadTradeAlerts();
       } catch (e) {
         alert(e.message);
       }
     }
 
-    async function testSweeperAlertEmail(accountId) {
+    async function testTradeAlertEmail(accountId) {
       try {
-        await api('POST', `/api/admin/sweeper-alerts/${accountId}/test`);
+        await api('POST', `/api/admin/trade-alerts/${accountId}/test`);
         alert('테스트 메일을 발송했습니다. 받은편지함(및 스팸함)을 확인하세요.');
       } catch (e) {
         alert(e.message);
@@ -164,7 +165,7 @@
     }
 
     loadUsers();
-    loadSweeperAlerts();
+    loadTradeAlerts();
   </script>
 </body>
 </html>

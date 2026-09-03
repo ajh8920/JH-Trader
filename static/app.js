@@ -526,6 +526,15 @@ const I18N = {
   stratMinerviniV21Title: { en: 'Minervini v2.1', ko: '미너비니 v2.1' },
   stratAnonymousTitle: { en: 'Anonymous', ko: '어나니머스' },
   stratSweeperTitle: { en: 'Sweeper', ko: '스위퍼' },
+  stratWatcherTitle: { en: 'Watcher', ko: '와쳐' },
+  stratWatcherNote: {
+    en: 'Trend Template stage-2 clone (RS/52wk-high proximity/returns/200MA extension, RS top-percentile) + '
+      + 'revenue growth ≥20% + pullback (3-15% off a recent high, above the 20-day MA) — the exact entry filter '
+      + 'used by the "Watcher" paper-trading strategy (a clone of a real screener a friend runs).',
+    ko: '지인 스크리너 2단계 판정식(RS·52주고점근접·수익률·200일선이격도, RS 상위순위) + 매출성장 20% 이상 + '
+      + '눌림목(고점 대비 3~15% 눌림, 20일선 위) — 모의투자 "와쳐" 전략(지인이 실제 쓰는 스크리너를 복제)이 '
+      + '신규 진입에 실제로 쓰는 조건과 동일합니다.',
+  },
   ptGroupMinerviniTitle: { en: 'Minervini', ko: '미너비니' },
   exitInitialStop: { en: 'Stop-loss (2×ATR)', ko: '초기 손절(2×ATR)' },
   exitBreakevenStop: { en: 'Breakeven stop', ko: '본전 손절' },
@@ -4241,12 +4250,16 @@ const PAPER_STRATEGY_LIST = [
   { key: 'anonymous', titleKey: 'stratAnonymousTitle', emoji: '🐢', defaultSeed: 50_000_000, group: 'anonymous' },
   { key: 'minervini_v2', titleKey: 'stratMinerviniV2Title', emoji: '🎯', defaultSeed: 10_000_000, group: 'minervini' },
   { key: 'minervini_v21', titleKey: 'stratMinerviniV21Title', emoji: '🎯', defaultSeed: 10_000_000, group: 'minervini' },
+  // vcp_strategy.WATCHER_PARAMS.default_seed(5천만원)와 동일 - 슬롯당 동일금액
+  // 배분(equal_weight)이 이 시드를 전제로 검증됐다.
+  { key: 'watcher', titleKey: 'stratWatcherTitle', emoji: '🔭', defaultSeed: 50_000_000, group: 'watcher' },
 ];
 
 const PAPER_TRADING_GROUPS = [
   { key: 'sweeper', icon: '🧹', titleKey: 'stratSweeperTitle' },
   { key: 'anonymous', icon: '🐢', titleKey: 'stratAnonymousTitle' },
   { key: 'minervini', icon: '🎯', titleKey: 'ptGroupMinerviniTitle' },
+  { key: 'watcher', icon: '🔭', titleKey: 'stratWatcherTitle' },
 ];
 
 let ptActiveGroup = PAPER_TRADING_GROUPS[0].key;

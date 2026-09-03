@@ -25,6 +25,7 @@ VCP/ADX/트렌드템플릿 판정은 전부 그 시점까지의 데이터만 사
 """
 import bisect
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import trend_screener as ts
 from screening_backtest import _fetch_benchmark_curve as _fetch_benchmark_curve_local
@@ -48,6 +49,13 @@ ADX_PERIOD = 14
 ADX_THRESHOLD = 25
 RISK_PCT_PER_TRADE = 1.5
 MAX_POSITION_WEIGHT_PCT = 20.0
+
+# fundamental_quality_score의 합격선. ROE 5%는 "자본을 최소한 예금 이상으로는
+# 굴리고 있는가", 부채비율 200%는 국내 상장사 통상 기준에서 재무구조가 위험
+# 수준인지를 가르는 선으로 잡았다(둘 다 널리 쓰이는 관행적 기준 - 백테스트
+# 성과에 맞춰 고른 값이 아니다. 성과로 튜닝하면 그 자체가 과최적화가 된다).
+QUALITY_MIN_ROE = 0.05
+QUALITY_MAX_DEBT_RATIO = 2.0
 MIN_MARKET_CAP = 100_000_000_000  # 1,000억원
 MIN_AVG_TRADE_VALUE = 500_000_000  # 5억원
 VOLUME_BREAKOUT_MULT = 1.5
@@ -206,6 +214,117 @@ SWEEPER_PARAMS = {
     "position_sizing_mode": "risk", "min_market_cap": 0, "min_avg_trade_value": 100_000_000,
     "gate_entries_on_regime": False, "default_seed": 10_000_000, "include_delisted": True,
     "require_profitable": True,
+}
+
+# "SEPA" - 마크 미너비니의 Specific Entry Point Analysis를 이 엔진이 표현할 수 있는
+# 범위에서 정석대로 구현한 프리셋. 앞선 스위퍼/어나니머스가 "성과가 좋은 조합"을
+# 자유 탐색해 만든 것과 달리, 이건 SEPA 규칙을 먼저 세우고 그대로 옮긴 것이다.
+#
+# ## 5단계 대응
+#  1단계 트렌드 템플릿: min_trend_pass_count=8 (8개 조건 전부 통과)
+#  2단계 펀더멘털:      min_eps_growth_pct/require_eps_acceleration(분기 EPS 성장·가속)
+#                       + min_quality_score(수익성·ROE·부채비율·매출성장 5개 항목)
+#  3단계 촉매:          require_catalyst(대형수주·증설·인수·자사주 공시)
+#  4단계 진입:          entry_mode="vcp"(변동성 수축 패턴 + 피벗 돌파 + 거래량 확인)
+#  5단계 청산:          초기손절 + 본전이동 + 챈들리어 트레일링 + 분할익절
+#
+# ## 이 엔진이 표현하지 못하는 것
+#  - 촉매 중 신제품·경영진 교체·업종 순환 같은 정성 정보(뉴스 데이터가 없다)
+#  - 기관 수급의 직접 관측(대량 매수 흔적은 거래량으로만 간접 추정)
+#
+# ## 규칙에서 유래한 값들(성과로 튜닝한 값이 아니다)
+#  - 시장 국면 상승 시에만 매수(gate_entries_on_regime=True): 미너비니의 핵심 규칙.
+#    실측에서 이걸 켜면 성과가 나빠지지만, 정석 구현이므로 그대로 둔다.
+#  - 손절 최대 8%: 미너비니가 반복해 말하는 상한.
+#  - 시총·유동성 하한: 기관이 들어올 수 있는 규모의 종목만 본다.
+SEPA_PARAMS = {
+    "market": "KR", "max_positions": 10, "default_seed": 10_000_000,
+    # 1단계
+    "min_trend_pass_count": 8,
+    # 4단계 - VCP 패턴(수축 구간 거래량 감소 요구는 VCP 원안)
+    "entry_mode": "vcp", "require_volume_decrease": True,
+    # 2단계
+    "min_quality_score": 0.4, "require_profitable": False,
+    "min_eps_growth_pct": 0.0, "require_eps_acceleration": True,
+    # 3단계
+    "require_catalyst": True, "catalyst_lookback_days": 60,
+    # 5단계
+    "initial_stop_atr_mult": 1.5, "max_initial_risk_pct": 8.0, "risk_cap_mode": "shrink",
+    "breakeven_r": 1.0, "trail_activate_r": 1.0, "chandelier_atr_mult": 3.0,
+    "partial_profit_fraction": 0.25,
+    # 시장 국면 / 유니버스
+    "gate_entries_on_regime": True,
+    "min_market_cap": 100_000_000_000, "min_avg_trade_value": 500_000_000,
+    # 운용
+    "rescan_interval_days": 3, "cash_equitize": True, "equitize_max_pct": 100.0,
+    "position_sizing_mode": "equal_weight", "position_cap_base": "equity",
+    "max_pct_of_avg_trade_value": 10, "include_delisted": True,
+}
+
+
+# "와쳐(Watcher)" - 지인 스크리너의 종목 선별 기준을 그대로 옮긴 전략.
+# 앞선 스위퍼/어나니머스가 백테스트 성과를 자유 탐색해 만든 것과 달리, 이건
+# 실제로 운용 중인 외부 스크리너를 복제하는 것이 목적이다.
+#
+# ## 2026-08-27 스냅샷(S1 361종목)에서 역산해 확정한 것
+#  - 단계(S1~S4) = minervini_stage 값. 숫자가 클수록 강한 상승추세다
+#    (와인스타인 원안의 1=바닥/2=상승/3=천장/4=하락과 방향이 다르다 -
+#     사용자가 "4단계 종목을 매수한다"고 한 것과 이 해석이 일치한다).
+#  - 2단계 판정식: 아래 6조건 AND. 361종목 중 정확히 12종목만 통과했다
+#    (오탐 0, 누락 0). passes_evan_stage2 참고.
+#  - 유니버스: 시가총액 3,000억원 이상. S1 361종목 중 3,000억 미만이 0종목이고
+#    최솟값이 3,020억으로 컷오프 바로 위였다.
+#
+# ## 아직 모르는 것
+#  - 3단계/4단계 판정식. 표본이 3단계 1종목(에이피알)뿐이고, 그 종목이 단독으로
+#    두드러지는 지표가 없다(1개월낙폭 0%는 2단계인 GS·한올바이오파마도 같다).
+#    스냅샷이 며칠 더 쌓여야 특정할 수 있다. 그래서 이 프리셋은 2단계까지만
+#    복제하고, 진입 타이밍은 우리 쪽 신호(눌림목)를 쓴다.
+#  - 지인 rs(연속값)와 우리 rsRating(1~99 백분위)은 척도가 달라 근사다.
+#
+# ## 성과 관련 주의
+# 26차 실측에서 이 선별 기준을 적용하면 우리 백테스트 성과가 오히려 떨어졌다
+# (CAGR 34.94%->24.93%). 시총 3,000억 하한이 중소형주를 걷어내는데, 우리
+# 백테스트 수익의 상당부분이 거기서 나왔기 때문이다. 즉 이 전략은 "백테스트
+# 최적"이 아니라 "실제 운용 중인 기준의 복제"라는 점을 분명히 해둔다.
+#
+# ## 29~37차(72개 변형) 파라미터 탐색 후 최종 확정 (슬롯 10개 고정 - 사용자 필수조건)
+# 매출성장 하한(min_revenue_growth=20%)·손절폭 축소(max_initial_risk_pct=3.5%)·
+# RS 상대순위(evan_params.min_rs=85, 지인 2단계식의 70.3보다 훨씬 엄격)가 CAGR·
+# 총수익·MDD를 지인 목표(CAGR 50.76%/총수익 +5,049%/MDD -44.45%) 근처 또는 그
+# 이상으로 끌어올린 유일한 조합이었다(2016-01-01~2026-09-02, 10.7년 실측:
+# CAGR 47.71%, 총수익 +6,319.2%, MDD -40.39%, 승률 23.1%, 평균수익 31.23%,
+# 평균손실 -6.0%, 손익비 5.20, 연 152.2건). 승률(목표 31.57%)과 평균수익(목표
+# 52.38%)은 진입/청산/기본적 분석 축을 폭넓게 시험해도(돌파 진입, 장기보유
+# 매도, 지인조건 이탈 청산, ROE 상대순위, PER 상한, 성장 연속성 등 - round32~37)
+# 못 좁혔다 - 룰 기반 백테스트로는 재현 못하는 재량적 판단이 섞여 있다고 보고
+# 이 지점을 최종 채택했다.
+WATCHER_PARAMS = {
+    "market": "KR", "max_positions": 10, "default_seed": 50_000_000,
+    # 유니버스 - 시총 3,000억 이상
+    "min_market_cap": 300_000_000_000, "min_avg_trade_value": 100_000_000,
+    # 종목 선별 - 지인 2단계 판정식 + RS 상대순위(33차 CE, 절대문턱보다 상대순위가
+    # 더 안정적으로 통했다) + 매출성장 하한(28~30차, 가장 강력한 단일 레버였다)
+    "require_evan_stage2": True, "evan_params": {"min_rs": 85.0},
+    "min_revenue_growth": 20.0,
+    # 진입 - 3·4단계 조건을 모를 때의 대체 신호(우리 쪽 최적)
+    "entry_mode": "pullback", "pullback_ma_period": 20,
+    "min_pullback_pct": 3.0, "max_pullback_pct": 15.0, "pullback_lookback": 20,
+    # 운용 조건 - 사용자가 확인해준 제약
+    "cash_equitize": False,             # 지수 투자 안 함
+    "partial_profit_fraction": 0.0,     # 분할익절 안 함
+    "position_sizing_mode": "equal_weight", "position_cap_base": "equity",
+    "max_pct_of_avg_trade_value": 10,
+    # 청산 - 손절폭만 30차 ZC(3.5%)로 좁혔고 나머지는 run_vcp_backtest 기본값과
+    # 같다. paper_trading.py가 이 딕셔너리 키를 직접 참조하므로(모듈 기본값
+    # fallback이 없다) 아래 항목들을 명시적으로 채워둔다.
+    "initial_stop_atr_mult": 1.5, "max_initial_risk_pct": 3.5, "risk_cap_mode": "shrink",
+    "breakeven_r": 2.0, "trail_activate_r": 2.0, "chandelier_atr_mult": 3.0,
+    "ma_break_period": 50, "ma_break_consec_days": MA_BREAK_CONSEC_DAYS,
+    "time_stop_days": TIME_STOP_DAYS, "time_stop_progress_r": TIME_STOP_PROGRESS_R,
+    "pyramid_max_count": PYRAMID_MAX_COUNT,
+    "rescan_interval_days": 3, "gate_entries_on_regime": False,
+    "include_delisted": True, "require_profitable": False,
 }
 
 
@@ -382,6 +501,39 @@ def detect_donchian_breakout(highs, closes, i, period=20):
     return None
 
 
+def detect_pullback(highs, lows, closes, i, lookback=20, min_pullback_pct=3.0,
+                    max_pullback_pct=15.0, ma_period=50):
+    """상승 추세 종목이 고점에서 눌린 뒤 되돌아서는 지점을 잡는다.
+
+    지금까지 쓴 진입 신호(돈치안 돌파·VCP)는 전부 "신고가를 뚫는 순간"을 노리는데,
+    지인 스크리너가 4단계로 잡았던 에이피알은 그 시점에 신고가가 아니라 직전 고점
+    대비 19% 눌린 조정 구간이었다(2026-08-19, 종가 383,500 vs 8/13 고가 424,250).
+    그래서 반대 성격의 진입도 측정해보려고 추가했다.
+
+    조건:
+      1) 최근 lookback일 고가 대비 min~max% 사이로 눌려 있다(너무 안 눌렸거나
+         추세가 꺾일 만큼 깊게 빠진 건 제외)
+      2) 그래도 ma_period 이동평균 위에 있다(추세 자체는 살아 있다)
+      3) 오늘 종가가 어제보다 높다(되돌림이 멈추고 방향을 튼 신호)
+
+    pivot은 손절 기준 계산 등에서 쓰는 값이라 다른 탐지기와 형식을 맞춰
+    "되돌리기 시작한 고점"을 돌려준다."""
+    if i < max(lookback, ma_period):
+        return None
+    recent_high = max(highs[i - lookback:i + 1])
+    if recent_high <= 0:
+        return None
+    pullback_pct = (recent_high - closes[i]) / recent_high * 100
+    if not (min_pullback_pct <= pullback_pct <= max_pullback_pct):
+        return None
+    ma = _sma(closes, ma_period, i)
+    if ma is None or closes[i] <= ma:
+        return None
+    if closes[i] <= closes[i - 1]:
+        return None
+    return {"pivot": recent_high, "pullbackPct": round(pullback_pct, 2)}
+
+
 def _profit_loss_ratio(trades):
     wins = [t["pnlPct"] for t in trades if t["pnlPct"] > 0]
     losses = [t["pnlPct"] for t in trades if t["pnlPct"] < 0]
@@ -468,11 +620,365 @@ def latest_is_profitable(rows_for_code, as_of_date):
     return (net_income or 0) > 0 or (operating_income or 0) > 0
 
 
+def latest_fundamentals_as_of(rows_for_code, as_of_date):
+    """as_of_date까지 실제 공시된 재무데이터 중 (가장 최근 결산연도 행, 그 직전
+    결산연도 행)을 돌려준다. 성장률처럼 두 개 연도가 필요한 지표 때문에 직전
+    연도까지 함께 준다(직전 연도가 없으면 두 번째 값은 None).
+
+    같은 결산연도에 대해 행이 여러 개일 수 있어(연결/별도 재무제표가 따로
+    들어오거나 정정공시가 붙는 경우) 연도별로 rcept_date가 가장 늦은 것 하나만
+    남긴다 - 같은 연도라면 나중에 공시된 쪽이 확정치에 가깝다."""
+    by_year = {}
+    for row in rows_for_code:
+        rd = row.get("rcept_date")
+        year = row.get("bsns_year")
+        if not rd or not year or rd > as_of_date:
+            continue
+        cur = by_year.get(year)
+        if cur is None or rd > cur["rcept_date"]:
+            by_year[year] = row
+    if not by_year:
+        return None, None
+    years = sorted(by_year)
+    prev = by_year[years[-2]] if len(years) >= 2 else None
+    return by_year[years[-1]], prev
+
+
+def fundamental_quality_score(rows_for_code, as_of_date):
+    """기본적 분석 점수(0.0~1.0). 수익성 2개(영업이익·순이익 흑자), 자본효율
+    1개(ROE 5% 이상), 안정성 1개(부채비율 200% 이하), 성장성 1개(매출 전년 대비
+    증가) - 총 5개 항목의 통과 비율이다.
+
+    "적자면 무조건 제외" 같은 이분법 하드 필터가 아니라 점수로 만든 이유:
+    그 방식을 실측해보니 24만 건을 걸러내면서 성과가 오히려 나빠졌다(제외된
+    종목 중에 나중에 크게 오른 것도 함께 버려졌다). 점수로 두면 후보 순위에
+    반영하거나(quality_rank_weight) 하위 구간만 잘라내는(min_quality_score)
+    식으로 강도를 조절할 수 있다.
+
+    판정에 필요한 값이 없는 항목은 분모에서 빼서, 데이터가 덜 채워진 종목이
+    그 이유만으로 낮은 점수를 받지 않게 한다(예: 상장 첫 해라 전년 매출이 없으면
+    성장성 항목은 아예 채점하지 않는다). 채점 가능한 항목이 하나도 없거나 공시
+    자체가 없으면 None - latest_is_profitable과 같은 이유로 필터를 적용하지 않는다."""
+    latest, prev = latest_fundamentals_as_of(rows_for_code, as_of_date)
+    if latest is None:
+        return None
+
+    passed = applicable = 0
+
+    operating_income = latest.get("operating_income")
+    if operating_income is not None:
+        applicable += 1
+        passed += operating_income > 0
+
+    net_income = latest.get("net_income")
+    if net_income is not None:
+        applicable += 1
+        passed += net_income > 0
+
+    total_equity = latest.get("total_equity")
+    if net_income is not None and total_equity is not None and total_equity > 0:
+        applicable += 1
+        passed += (net_income / total_equity) >= QUALITY_MIN_ROE
+
+    total_liabilities = latest.get("total_liabilities")
+    if total_liabilities is not None and total_equity is not None and total_equity > 0:
+        applicable += 1
+        passed += (total_liabilities / total_equity) <= QUALITY_MAX_DEBT_RATIO
+
+    revenue = latest.get("revenue")
+    prev_revenue = prev.get("revenue") if prev else None
+    if revenue is not None and prev_revenue is not None and prev_revenue > 0:
+        applicable += 1
+        passed += revenue > prev_revenue
+
+    if applicable == 0:
+        return None
+    return passed / applicable
+
+
+# ── SEPA 2단계: 분기 실적 성장(EPS 가속) ────────────────────────────────────
+# 미너비니 SEPA는 "직전 분기 EPS 증가율이 그 이전 분기보다 더 높아지는가"(가속)를
+# 핵심 조건으로 본다. 연간 결산만으로는 판정 자체가 불가능해 분기 데이터를 따로
+# 수집했다(data_pipeline/fetch_fundamentals_quarterly.py).
+#
+# 누적 EPS를 그대로 전년 동기 누적과 비교한다. DART 분기보고서는 그 사업연도
+# 1분기부터의 누적으로 저장돼 있어(models.KrFundamentalQuarter 참고), 같은 분기끼리
+# 비교하면 계절성이 자동으로 상쇄되고 4분기 차분 같은 조작이 필요 없다.
+
+
+def load_quarterly_rows(parquet_paths):
+    """분기 재무 parquet들을 {종목코드: {(연도, 분기): {...}}}로 묶는다.
+    fundamentals_rows처럼 백테스트 시작 전 한 번만 로드한다."""
+    import pandas as pd
+
+    by_code = {}
+    for path in parquet_paths:
+        if not Path(path).exists():
+            continue
+        df = pd.read_parquet(path)
+        for r in df.itertuples():
+            rcept = getattr(r, "rcept_no", "") or ""
+            if len(rcept) < 8:
+                continue
+            d = rcept[:8]
+            by_code.setdefault(r.stock_code, {})[(str(r.bsns_year), int(r.quarter))] = {
+                "rcept_date": f"{d[0:4]}-{d[4:6]}-{d[6:8]}",
+                "eps_cum": getattr(r, "eps_cum", None),
+                "revenue_cum": getattr(r, "revenue_cum", None),
+            }
+    return by_code
+
+
+def _yoy_growth(cur, prev):
+    """전년 동기 대비 증가율(%). 전년이 0이거나 없으면 판정 불가(None).
+    전년이 적자(음수)면 증가율 자체가 의미를 잃으므로(-100원->+10원이 몇 %인가)
+    '적자에서 흑자 전환'만 성장으로 인정하고 나머지는 None으로 둔다."""
+    if cur is None or prev is None:
+        return None
+    if prev > 0:
+        return (cur - prev) / prev * 100
+    if prev < 0:
+        return 100.0 if cur > 0 else None
+    return None
+
+
+def quarterly_eps_growth(quarters_for_code, as_of_date):
+    """as_of_date까지 공시된 분기 중 가장 최근 두 분기의 EPS 전년동기 증가율을
+    (최근분기 증가율, 그 직전분기 증가율)로 돌려준다. 계산 불가면 (None, None).
+
+    SEPA의 '가속' 판정은 이 둘을 비교해서 한다(최근 > 직전이면 가속).
+    공시일(rcept_date) 기준으로만 보므로 아직 발표 전인 실적은 쓰지 않는다."""
+    if not quarters_for_code:
+        return None, None
+    filed = sorted(
+        (k for k, v in quarters_for_code.items()
+         if v.get("rcept_date") and v["rcept_date"] <= as_of_date),
+        key=lambda k: (k[0], k[1]),
+    )
+    if not filed:
+        return None, None
+
+    def growth_at(key):
+        year, q = key
+        prev_key = (str(int(year) - 1), q)
+        prev = quarters_for_code.get(prev_key)
+        # 전년 동기 보고서도 그 시점에 이미 공시돼 있어야 한다(당연히 그렇지만
+        # 데이터가 뒤늦게 채워진 경우를 대비해 확인한다).
+        if not prev or not prev.get("rcept_date") or prev["rcept_date"] > as_of_date:
+            return None
+        return _yoy_growth(quarters_for_code[key].get("eps_cum"), prev.get("eps_cum"))
+
+    latest = growth_at(filed[-1])
+    prior = growth_at(filed[-2]) if len(filed) >= 2 else None
+    return latest, prior
+
+
+def eps_growth_ok(quarters_for_code, as_of_date, min_growth_pct=None, require_acceleration=False):
+    """SEPA 2단계 판정. 데이터가 없어 계산 불가면 True(필터 미적용) - 다른 필터와
+    같은 원칙이다(수집 범위 밖 구간을 통째로 배제하지 않기 위함)."""
+    latest, prior = quarterly_eps_growth(quarters_for_code, as_of_date)
+    if latest is None:
+        return True
+    if min_growth_pct is not None and latest < min_growth_pct:
+        return False
+    if require_acceleration:
+        if prior is None:
+            return True
+        if latest <= prior:
+            return False
+    return True
+
+
+# ── SEPA 3단계: 촉매(Catalyst) ──────────────────────────────────────────────
+# 미너비니는 기관 매수를 부르는 사건(신제품·대형계약·실적 서프라이즈 등)을 촉매로
+# 본다. 국내에서 그에 대응하는 건 DART 공시인데, 실측(2022~2026년 192,165건)에서
+# 방향이 명확한 것만 골랐다:
+#   - 단일판매ㆍ공급계약체결(15,415건): 대형 수주. 가장 많고 의미가 분명하다.
+#   - 신규시설투자등: 증설. 성장 신호.
+#   - 타법인주식및출자증권취득결정: 인수·지분투자.
+#   - 자기주식취득: 자사주 매입.
+# 뺀 것:
+#   - 매출액또는손익구조30%이상변경(8,298건): 실적 서프라이즈 성격이지만 제목에
+#     증가/감소가 안 적혀 있어(본문을 봐야 안다) 방향을 알 수 없다. 방향 모르는
+#     신호를 양의 촉매로 쓰면 급락 종목까지 사게 된다.
+#   - 현금ㆍ현물배당결정(5,895건): 계절성이 강해 촉매라기보다 노이즈다.
+POSITIVE_CATALYST_KEYWORDS = (
+    "단일판매", "공급계약", "신규시설투자", "타법인주식및출자증권취득", "자기주식취득",
+)
+# [기재정정]은 이미 낸 공시를 고쳐 다시 낸 것이라 새 사건이 아니다 - 원본이 이미
+# 수집돼 있으므로 정정본까지 세면 같은 촉매를 두 번 세게 된다.
+_AMENDED_PREFIX = "기재정정"
+
+
+def load_catalyst_dates(parquet_paths):
+    """공시 parquet들에서 양의 촉매만 골라 {종목코드: [접수일...]}(오름차순)로 만든다.
+    shareholder_rows처럼 백테스트 시작 전에 한 번만 로드해둔다."""
+    import pandas as pd
+
+    dates_by_code = {}
+    for path in parquet_paths:
+        if not Path(path).exists():
+            continue
+        df = pd.read_parquet(path)
+        for row in df.itertuples():
+            name = row.report_nm or ""
+            if _AMENDED_PREFIX in name:
+                continue
+            if not any(kw in name for kw in POSITIVE_CATALYST_KEYWORDS):
+                continue
+            code = row.stock_code
+            if not code:
+                continue
+            dates_by_code.setdefault(code, []).append(row.rcept_dt)
+    for code in dates_by_code:
+        dates_by_code[code].sort()
+    return dates_by_code
+
+
+def has_recent_catalyst(dates_sorted, as_of_date, lookback_days):
+    """as_of_date 기준 lookback_days 이내에 양의 촉매 공시가 있었는지.
+
+    공시 접수일(rcept_dt)이 곧 시장이 그 정보를 알게 된 날이라, as_of_date보다
+    나중 공시는 당연히 볼 수 없다(룩어헤드 방지). 날짜 문자열이 YYYY-MM-DD로
+    정렬 가능해 bisect로 구간만 잘라 본다."""
+    if not dates_sorted:
+        return False
+    start = (datetime.fromisoformat(as_of_date) - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    lo = bisect.bisect_left(dates_sorted, start)
+    hi = bisect.bisect_right(dates_sorted, as_of_date)
+    return hi > lo
+
+
+def financial_quality(rows_for_code, as_of_date):
+    """as_of_date까지 공시된 재무로 수익성·성장성 지표를 계산한다.
+
+    지인 스크리너에서 3단계로 올라간 에이피알이 2단계 11종목 대비 압도적으로
+    앞선 항목들을 그대로 옮겼다(2026-08-27 스냅샷 기준):
+        ROE 56.3% (2위 19.8%) / ROIC 65.5% (2위 15.0%) / ROA 33.1% (2위 9.9%)
+        매출증가율 134.2% (2위 83.6%) / 매출총이익률 79.2% (2위 56.0%)
+    2단계까지는 가격 지표로 거르고 그 위 단계에서 재무 품질로 다시 좁히는
+    구조로 보여, 이 지표들을 임계값으로 쓸 수 있게 만들었다.
+
+    ROIC는 투하자본(자기자본+총부채) 대비 영업이익으로 근사한다 - 정확한
+    ROIC는 세후영업이익÷(순운전자본+유형자산)이지만 그 계산에 필요한 항목이
+    DART 응답에 일관되게 오지 않는다. 값의 절대 수준보다 종목 간 서열이
+    유지되면 필터 용도로는 충분하다.
+
+    계산 불가한 항목은 None으로 둔다(필터에서 통과 처리 - 다른 필터와 같은 원칙)."""
+    latest, prev = latest_fundamentals_as_of(rows_for_code, as_of_date)
+    if latest is None:
+        return {}
+    out = {}
+    eq = latest.get("total_equity")
+    ni = latest.get("net_income")
+    oi = latest.get("operating_income")
+    rev = latest.get("revenue")
+    ta = latest.get("total_assets")
+    li = latest.get("total_liabilities")
+    gp = latest.get("gross_profit")
+    if ni is not None and eq and eq > 0:
+        out["roe"] = ni / eq * 100
+    if ni is not None and ta and ta > 0:
+        out["roa"] = ni / ta * 100
+    if oi is not None and eq and li is not None and (eq + li) > 0:
+        out["roic"] = oi / (eq + li) * 100
+    if oi is not None and rev and rev > 0:
+        out["operating_margin"] = oi / rev * 100
+    if gp is not None and rev and rev > 0:
+        out["gross_margin"] = gp / rev * 100
+    prev_rev = prev.get("revenue") if prev else None
+    if rev is not None and prev_rev and prev_rev > 0:
+        out["revenue_growth"] = (rev - prev_rev) / prev_rev * 100
+    return out
+
+
+def passes_financial_quality(rows_for_code, as_of_date, min_roe=None, min_roic=None,
+                             min_revenue_growth=None, min_operating_margin=None):
+    """financial_quality 결과에 하한을 적용한다. 값이 없으면 통과시킨다."""
+    m = financial_quality(rows_for_code, as_of_date)
+    for key, floor in (("roe", min_roe), ("roic", min_roic),
+                       ("revenue_growth", min_revenue_growth),
+                       ("operating_margin", min_operating_margin)):
+        if floor is None:
+            continue
+        v = m.get(key)
+        if v is not None and v < floor:
+            return False
+    return True
+
+
+def revenue_growth_streak(rows_for_code, as_of_date):
+    """as_of_date까지 공시된 결산연도를 최근 것부터 거꾸로 훑어, 매출이 전년보다
+    큰 해가 몇 년 연속 이어지는지 센다. financial_quality의 revenue_growth가
+    "성장의 크기"(예: 올해 +134%)만 보는 것과 달리 이건 "성장의 꾸준함"을 본다
+    - 지인 데이터의 revenue_growth_streak/operating_income_growth_streak 필드와
+    같은 개념이다. 한 해라도 역성장하면 그 이전 연속은 인정하지 않고 끊는다.
+    연도 데이터가 2개 미만이면 0(판정 불가가 아니라 '연속 없음'으로 취급 -
+    신규상장 종목을 데이터 없다는 이유로 통과시키면 이 필터의 취지와 어긋난다)."""
+    by_year = {}
+    for row in rows_for_code:
+        rd = row.get("rcept_date")
+        year = row.get("bsns_year")
+        if not rd or not year or rd > as_of_date:
+            continue
+        cur = by_year.get(year)
+        if cur is None or rd > cur["rcept_date"]:
+            by_year[year] = row
+    years = sorted(by_year)
+    if len(years) < 2:
+        return 0
+    streak = 0
+    for idx in range(len(years) - 1, 0, -1):
+        rev = by_year[years[idx]].get("revenue")
+        prev_rev = by_year[years[idx - 1]].get("revenue")
+        if rev is None or prev_rev is None or prev_rev <= 0:
+            break
+        if rev > prev_rev:
+            streak += 1
+        else:
+            break
+    return streak
+
+
+def operating_margin_trend(rows_for_code, as_of_date):
+    """최근 결산연도 영업이익률에서 그 직전 결산연도 영업이익률을 뺀 값(%p) -
+    수익성 "수준"이 아니라 "개선 방향"을 본다. 지인 데이터의 operating_margin_trend
+    필드와 같은 개념. 계산 불가(연도 2개 미만, 매출이 0 이하 등)면 None(필터
+    미적용 - 다른 필터와 같은 원칙)."""
+    latest, prev = latest_fundamentals_as_of(rows_for_code, as_of_date)
+    if latest is None or prev is None:
+        return None
+    lrev, loi = latest.get("revenue"), latest.get("operating_income")
+    prev_rev, prev_oi = prev.get("revenue"), prev.get("operating_income")
+    if not lrev or lrev <= 0 or not prev_rev or prev_rev <= 0 or loi is None or prev_oi is None:
+        return None
+    return (loi / lrev * 100) - (prev_oi / prev_rev * 100)
+
+
+def estimate_per(price, shares_out, rows_for_code, as_of_date):
+    """PER 근사(주가/주당순이익) = 시가총액 / 최근 결산연도 순이익. 지인 데이터는
+    분기 EPS(eps_forward 등)까지 쓰지만 우리는 연간 순이익만 있어 연 단위로
+    근사한다. 순이익이 적자거나 계산 불가면 None(필터 미적용)."""
+    if not price or not shares_out:
+        return None
+    latest, _ = latest_fundamentals_as_of(rows_for_code, as_of_date)
+    if latest is None:
+        return None
+    ni = latest.get("net_income")
+    if ni is None or ni <= 0:
+        return None
+    market_cap = price * shares_out
+    return market_cap / ni
+
+
 def load_fundamentals_rows(KrFundamental):
-    """KrFundamental 테이블 전체를 읽어 {stock_code: [{"rcept_date","bsns_year",
-    "net_income","operating_income"}, ...]}로 묶는다. shareholder_rows처럼
-    백테스트 시작 전에 한 번만 로드해둔다(일별 루프 안에서 매번 DB 조회하면
-    느리다). 호출부가 이미 Flask app context 안에 있어야 한다."""
+    """KrFundamental 테이블 전체를 읽어 {stock_code: [{...}, ...]}로 묶는다.
+    shareholder_rows처럼 백테스트 시작 전에 한 번만 로드해둔다(일별 루프 안에서
+    매번 DB 조회하면 느리다). 호출부가 이미 Flask app context 안에 있어야 한다.
+
+    net_income/operating_income만 읽던 것을 fundamental_quality_score가 쓰는
+    항목(자기자본·부채·매출)까지 넓혔다 - 기존 latest_is_profitable도 같은 dict를
+    그대로 쓰므로 호환된다."""
     rows = KrFundamental.query.filter(KrFundamental.rcept_no != "").all()
     rows_by_code = {}
     for r in rows:
@@ -482,8 +988,88 @@ def load_fundamentals_rows(KrFundamental):
         rows_by_code.setdefault(r.stock_code, []).append({
             "rcept_date": rd, "bsns_year": r.bsns_year,
             "net_income": r.net_income, "operating_income": r.operating_income,
+            "total_equity": r.total_equity, "total_liabilities": r.total_liabilities,
+            "revenue": r.revenue, "total_assets": r.total_assets,
+            "gross_profit": r.gross_profit,
         })
     return rows_by_code
+
+
+def _return_pct(closes, i, days):
+    """i번 인덱스 기준 days거래일 전 대비 수익률(%). 데이터가 모자라면 None."""
+    j = i - days
+    if j < 0 or not closes[j]:
+        return None
+    return (closes[i] / closes[j] - 1) * 100
+
+
+def passes_evan_stage2(closes, highs, i, rs_rating,
+                       min_rs=70.0, min_high_52w_pct=75.0,
+                       min_return_3m=-6.0, min_return_6m=-10.0, min_return_12m=40.0,
+                       min_ma200_gap_pct=8.0, max_ma200_gap_pct=None):
+    """지인 스크리너의 "2단계" 판정식을 옮긴 것.
+
+    2026-08-27 실측 스냅샷(1단계 361종목)에서 역산했다. 아래 6개 조건을 모두
+    만족하는 종목이 정확히 그날의 2단계 12종목과 일치했다(오탐·누락 0).
+
+    주의: 역산에 쓴 임계값은 통과 종목 12개의 '최솟값'이라 실제 기준선은 이보다
+    낮을 수 있다(예: 실제가 RS>=65여도 최저 종목이 70.3이면 같은 결과가 나온다).
+    그래서 여기서는 최솟값보다 살짝 여유를 둔 값을 기본값으로 쓴다 - 경계를
+    정확히 좁히려면 며칠치 스냅샷이 더 필요하다.
+
+    우리 rsRating(1~99 백분위)과 지인 rs(70.3 등)는 척도가 달라 직접 비교가
+    아니라 근사다. 나머지 5개는 가격만으로 계산되므로 정의가 같다.
+
+    max_ma200_gap_pct: 3·4단계 근사용 상한. 2026-08-27~09-01 5개 관측(에이피알
+    하나를 반복 추적)에서, 200일선 이격도가 좁을 때(30.17%/31.93%)만 4단계였고
+    넓을 때(34.54%/39.74%/40.22%)는 3단계였다 - RS·시총 등 다른 지표는 단조
+    증가(1→2→4단계)했는데 이 값만 4단계에서 오히려 꺾였다. 즉 2단계 필터를
+    통과한 종목 중 "너무 많이 오른 게 아니라 눌림이 와서 이격이 다시 좁혀진"
+    경우로 좁히면 4단계에 가까워진다는 가설이다. 표본이 종목 1개뿐이라 임계값
+    (32~34% 사이로 추정)은 확정이 아니라 근사치다."""
+    if rs_rating is None or rs_rating < min_rs:
+        return False
+    if i < 252:
+        return False
+    week52_high = max(highs[i - 251:i + 1])
+    if week52_high <= 0 or closes[i] / week52_high * 100 < min_high_52w_pct:
+        return False
+    ma200 = _sma(closes, 200, i)
+    if ma200 is None or ma200 <= 0:
+        return False
+    ma200_gap = (closes[i] / ma200 - 1) * 100
+    if ma200_gap < min_ma200_gap_pct:
+        return False
+    if max_ma200_gap_pct is not None and ma200_gap > max_ma200_gap_pct:
+        return False
+    for days, floor in ((63, min_return_3m), (126, min_return_6m), (252, min_return_12m)):
+        r = _return_pct(closes, i, days)
+        if r is None or r < floor:
+            return False
+    return True
+
+
+def _realized_vol(closes, i, window=60):
+    """i번 인덱스까지 최근 window거래일 일간수익률의 연환산 변동성(%).
+
+    종가 기준 손절은 손절선을 그대로 지키지 못한다 - 장 마감 뒤에야 판정하므로
+    그날 하락분을 다 뒤집어쓴다. 그래서 변동성이 큰 종목일수록 실제 손실이
+    손절폭보다 크게 벌어진다(우리 평균손실 -7.64%가 손절선 6%를 넘는 이유).
+    이 값으로 상한을 걸어 그런 종목을 애초에 후보에서 빼기 위한 지표다.
+    screening_backtest._realized_vol과 같은 정의를 쓴다(두 엔진이 다른 값을
+    쓰면 같은 종목을 다르게 판정하게 된다)."""
+    if i < window:
+        return None
+    rets = []
+    for k in range(i - window + 1, i + 1):
+        prev = closes[k - 1]
+        if prev and prev > 0 and closes[k] is not None:
+            rets.append(closes[k] / prev - 1)
+    if len(rets) < window // 2:
+        return None
+    mean = sum(rets) / len(rets)
+    var = sum((x - mean) ** 2 for x in rets) / len(rets)
+    return (var ** 0.5) * (252 ** 0.5) * 100
 
 
 def _avg_trade_value(closes, volumes, i, window=20):
@@ -529,7 +1115,20 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       time_stop_days=TIME_STOP_DAYS, time_stop_progress_r=TIME_STOP_PROGRESS_R,
                       entry_mode="vcp", donchian_period=20, initial_stop_atr_mult=INITIAL_STOP_ATR_MULT,
                       position_sizing_mode="risk", max_hold_days=None, gate_entries_on_regime=True,
-                      max_pct_of_avg_trade_value=None, max_position_value_abs=None, include_delisted=False):
+                      max_pct_of_avg_trade_value=None, max_position_value_abs=None, include_delisted=False,
+                      min_quality_score=None, quality_rank_weight=0.0, require_profitable=True,
+                      position_cap_base="seed",
+                      catalyst_dates_by_code=None, require_catalyst=False, catalyst_lookback_days=60,
+                      quarterly_rows_by_code=None, min_eps_growth_pct=None,
+                      require_eps_acceleration=False,
+                      pullback_lookback=20, min_pullback_pct=3.0, max_pullback_pct=15.0,
+                      pullback_ma_period=50, pullback_min_volume_mult=None, max_volatility_pct=None,
+                      require_evan_stage2=False, evan_params=None,
+                      stage_exit=False, stage_exit_params=None,
+                      min_roe=None, min_roic=None, min_revenue_growth=None,
+                      min_operating_margin=None,
+                      min_revenue_growth_streak=None, min_operating_margin_trend=None,
+                      min_roe_percentile=None, max_per=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -643,10 +1242,31 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     trades = []
     equity_curve = []
     peak_equity = float(seed)
+    # 재평가 루프 안에서 갱신되지만, 보유 포지션 처리(피라미딩 상한 계산)가 그
+    # 갱신보다 먼저 돌기 때문에 첫 회차용 초기값이 필요하다. 두 번째 회차부터는
+    # 직전 재평가 시점의 평가액을 쓰게 된다(그 시점에 알 수 있는 최신 값이라
+    # 룩어헤드가 아니다).
+    equity_now = float(seed)
     prev_rd = None
     excluded_preferred = excluded_cap = excluded_liquidity = excluded_shareholder = excluded_unprofitable = 0
+    excluded_low_quality = excluded_no_catalyst = excluded_eps_growth = 0
+    excluded_volatility = excluded_evan = excluded_fin_quality = 0
     shareholder_rows_by_code = shareholder_rows_by_code or {}
     fundamentals_rows_by_code = fundamentals_rows_by_code or {}
+
+    def _position_cap(seed_value, equity_value):
+        """종목당 투입 상한. position_cap_base="seed"면 최초 시드 기준으로 고정하고,
+        "equity"면 그 시점 평가액 기준으로 잡는다.
+
+        기본값이 seed인 건 기존 동작을 그대로 두기 위함이지만, 복리를 보려면
+        equity가 맞다 - 시드 기준으로 고정하면 계좌가 커질수록 투입 가능 비중이
+        계속 줄어들어(시드 1천만/상한 50%면 계좌가 1억이 돼도 종목당 500만원)
+        복리가 구조적으로 막힌다. 실제로 이것 때문에 거래당 기대값이 플러스인데도
+        CAGR이 낮게 나오고 있었다. equity로 두면 대신 계좌가 커질수록 매수 금액이
+        그 종목의 하루 거래대금을 넘어설 수 있으니, max_pct_of_avg_trade_value를
+        함께 걸어야 현실적인 결과가 된다."""
+        base = equity_value if position_cap_base == "equity" else seed_value
+        return base * MAX_POSITION_WEIGHT_PCT / 100
 
     for rd in rebalance_dates:
         idx_at_rd = {}
@@ -685,6 +1305,28 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             trend_ok_set = set(by_ticker.keys())
         else:
             trend_ok_set = {t for t, e in by_ticker.items() if e.get("allPass")}
+
+        # ROE 백분위 문턱 - min_roe(절대값) 대신 그날 후보군 안에서의 상대 순위를
+        # 본다. RS85(RS등급 상위 백분위)는 순수 개선이었는데 min_roe/min_roic(절대
+        # 문턱)는 효과가 미미하거나 해로웠다(round 27-28) - "얼마나 벌었나"보다
+        # "그 시점 다른 후보들과 비교해 얼마나 잘 버나"가 더 안정적인 신호일
+        # 수 있다는 가설. 매 재평가일마다 그날의 trend_ok_set 안에서만 백분위를
+        # 새로 계산한다(전체 유니버스가 아니라 이미 기술적 조건을 통과한 후보군
+        # 기준 - 그래야 "약세장에도 상대적으로 낫다"가 아니라 "이미 좋은 후보들
+        # 중에서도 특히 좋다"를 걸러낸다).
+        roe_percentile_cutoff = None
+        if min_roe_percentile is not None:
+            roe_vals = []
+            for t in trend_ok_set:
+                code_t, *_ = info_by_ticker.get(t, (t,))
+                fq = financial_quality(fundamentals_rows_by_code.get(code_t, []), rd)
+                v = fq.get("roe")
+                if v is not None:
+                    roe_vals.append(v)
+            if roe_vals:
+                roe_vals.sort()
+                idx = min(int(len(roe_vals) * min_roe_percentile / 100), len(roe_vals) - 1)
+                roe_percentile_cutoff = roe_vals[idx]
 
         # 1) 보유 포지션 처리 - 하루씩 순서대로(손절/트레일링 히트 > MA50이탈 > 시간손절 > 본전/분할익절/트레일링갱신 > 피라미딩)
         for ticker in list(positions.keys()):
@@ -792,7 +1434,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     if close >= target:
                         add_shares = max(1, int(pos["initialShares"] * PYRAMID_SIZE_FRACTION))
                         cost = add_shares * close * (1 + SLIPPAGE_ENTRY_PCT / 100)
-                        max_pos_value = seed * MAX_POSITION_WEIGHT_PCT / 100
+                        max_pos_value = _position_cap(seed, equity_now)
                         current_value = pos["shares"] * close
                         if cost <= cash and (current_value + add_shares * close) <= max_pos_value:
                             cash -= cost
@@ -804,6 +1446,25 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             pos["stopPrice"] = max(pos["stopPrice"], close - initial_stop_atr_mult * pos["entryAtr"])
             if closed:
                 continue
+            # 지인 조건(2단계) 이탈 시 청산 - ATR 트레일링은 "가격이 얼마나 빠졌는가"만
+            # 보고, 그 종목이 여전히 지인 스크리너 기준 "강한 종목"인지는 안 본다.
+            # 반대로 이 규칙은 진입 때 썼던 것과 같은(또는 완화한) 판정식을 매
+            # 재평가일마다 다시 걸어, 조건 자체가 깨지면(RS 급락·눌림이 추세이탈
+            # 수준으로 깊어짐 등) 가격이 손절선에 안 닿았어도 청산한다. 목표는 승률/
+            # 평균수익을 동시에 못 올리는 문제 - ATR 트레일링의 잦은 조기 손절(승률
+            # 저하)과 추세 계속 종목의 조기 익절(평균수익 저하)을 둘 다 줄이려는 시도.
+            # 재평가가 주 단위라 이 판정도 주 단위로만 이뤄진다(당일 확인 불가).
+            if stage_exit and require_evan_stage2:
+                e_hold = by_ticker.get(ticker)
+                rs_hold = e_hold.get("rsRating") if e_hold else None
+                if not passes_evan_stage2(closes, highs, i, rs_hold,
+                                          **(stage_exit_params if stage_exit_params is not None
+                                             else (evan_params or {}))):
+                    trade, proceeds = _full_exit(pos, closes[i], dates[i], "stageExit")
+                    trades.append(trade)
+                    cash += proceeds
+                    del positions[ticker]
+                    continue
             # 상장폐지 종목(.DL)의 마지막 거래일에 도달했는데 손절/이탈 조건에 걸리지
             # 않고 "살아남은" 경우(급락 없이 합병·자회사화 등으로 조용히 상장폐지된
             # 경우 등) - series[ticker]에 더 이상 데이터가 없으므로 실제로는 더 이상
@@ -879,23 +1540,106 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     if avg_val is not None and avg_val < min_avg_trade_value:
                         excluded_liquidity += 1
                         continue
+                    # 변동성 상한 - 종가 기준 손절은 변동성이 큰 종목에서 손절선을
+                    # 크게 벗어나 체결된다(장 마감 뒤 판정이라 그날 하락분을 다
+                    # 뒤집어쓴다). 계산 불가면(데이터 부족) 거르지 않는다.
+                    if max_volatility_pct is not None:
+                        vol60 = _realized_vol(closes, i)
+                        if vol60 is not None and vol60 > max_volatility_pct:
+                            excluded_volatility += 1
+                            continue
+                    # 지인 스크리너 2단계 판정식(passes_evan_stage2 docstring 참고).
+                    # 트렌드템플릿보다 훨씬 엄격하다 - 특히 12개월 수익률 하한이
+                    # "이미 크게 오른 종목"만 남긴다.
+                    if require_evan_stage2:
+                        if not passes_evan_stage2(closes, highs, i, e.get("rsRating"),
+                                                  **(evan_params or {})):
+                            excluded_evan += 1
+                            continue
+                    # 재무 품질 하한 - 지인 스크리너의 3단계 이상 종목이 보인
+                    # 수익성/성장성 우위를 옮긴 것(financial_quality docstring 참고).
+                    if any(v is not None for v in (min_roe, min_roic, min_revenue_growth,
+                                                   min_operating_margin)):
+                        if not passes_financial_quality(
+                                fundamentals_rows_by_code.get(code, []), rd,
+                                min_roe=min_roe, min_roic=min_roic,
+                                min_revenue_growth=min_revenue_growth,
+                                min_operating_margin=min_operating_margin):
+                            excluded_fin_quality += 1
+                            continue
+                    # 성장의 꾸준함(연속 증가 연수) - revenue_growth(크기)와는 다른 축.
+                    if min_revenue_growth_streak is not None:
+                        if revenue_growth_streak(fundamentals_rows_by_code.get(code, []), rd) < min_revenue_growth_streak:
+                            excluded_fin_quality += 1
+                            continue
+                    # 수익성 개선 추세(영업이익률 전년 대비 변화, %p) - 수준이 아니라 방향.
+                    if min_operating_margin_trend is not None:
+                        trend = operating_margin_trend(fundamentals_rows_by_code.get(code, []), rd)
+                        if trend is None or trend < min_operating_margin_trend:
+                            excluded_fin_quality += 1
+                            continue
+                    # ROE 상대 순위(그날 후보군 백분위) - roe_percentile_cutoff 산출 로직 참고.
+                    if roe_percentile_cutoff is not None:
+                        fq_roe = financial_quality(fundamentals_rows_by_code.get(code, []), rd).get("roe")
+                        if fq_roe is None or fq_roe < roe_percentile_cutoff:
+                            excluded_fin_quality += 1
+                            continue
+                    # 밸류에이션 상한(PER 근사) - 이미 많이 오른 뒤 비싸게 사는 걸 거른다.
+                    if max_per is not None:
+                        per_v = estimate_per(price_now, shares_out, fundamentals_rows_by_code.get(code, []), rd)
+                        if per_v is not None and per_v > max_per:
+                            excluded_fin_quality += 1
+                            continue
                     max_holder_pct = latest_max_shareholder_pct(shareholder_rows_by_code.get(code, []), rd)
                     if max_holder_pct is not None and max_holder_pct > MAX_SHAREHOLDER_PCT:
                         excluded_shareholder += 1
                         continue
-                    # 기본적 분석(수익성) 필터 - 가장 최근 공시된 결산 기준 영업이익·
-                    # 순이익이 둘 다 적자인 기업은 후보에서 제외한다(기술적 신호만으로는
-                    # 과최적화 위험이 있다는 피드백 반영). 데이터가 없으면(신규상장 등)
-                    # 필터를 적용하지 않는다 - latest_max_shareholder_pct와 같은 이유.
-                    profitable = latest_is_profitable(fundamentals_rows_by_code.get(code, []), rd)
-                    if profitable is False:
+                    # ── 기본적 분석 ──────────────────────────────────────────
+                    # 두 단계로 쓴다. (1) require_profitable: 영업이익·순이익이 둘 다
+                    # 적자면 제외하는 이분법 하드 필터. (2) min_quality_score/
+                    # quality_rank_weight: 5개 항목 통과율(0~1)을 점수로 매겨 하위
+                    # 구간만 잘라내거나 후보 순위에 섞는 방식.
+                    # 하드 필터를 기본값으로 두되 끌 수 있게 한 이유는, 실측에서
+                    # 이 필터가 24만 건을 걸러내면서 성과를 오히려 깎았기 때문이다
+                    # (좋은 기회까지 함께 버려졌다). 데이터가 없으면(신규상장 등)
+                    # 어느 쪽도 적용하지 않는다 - latest_max_shareholder_pct와 같은 이유.
+                    fund_rows = fundamentals_rows_by_code.get(code, [])
+                    if require_profitable and latest_is_profitable(fund_rows, rd) is False:
                         excluded_unprofitable += 1
                         continue
+                    quality = fundamental_quality_score(fund_rows, rd)
+                    if min_quality_score is not None and quality is not None and quality < min_quality_score:
+                        excluded_low_quality += 1
+                        continue
+                    # SEPA 3단계: 최근 catalyst_lookback_days 안에 양의 촉매 공시가
+                    # 있었던 종목만 진입한다. 공시 데이터가 아예 없는 기간/종목은
+                    # 거르지 않는다 - 수집 범위 밖(2022년 이전)까지 무조건 배제하면
+                    # 그 기간 백테스트가 통째로 비어버린다.
+                    if require_catalyst and catalyst_dates_by_code:
+                        if not has_recent_catalyst(catalyst_dates_by_code.get(code, []),
+                                                   rd, catalyst_lookback_days):
+                            excluded_no_catalyst += 1
+                            continue
+                    # SEPA 2단계: 분기 EPS 성장률/가속. 분기 데이터가 없는 종목이나
+                    # 구간에서는 판정을 건너뛴다(eps_growth_ok가 True를 돌려준다).
+                    if quarterly_rows_by_code and (min_eps_growth_pct is not None or require_eps_acceleration):
+                        if not eps_growth_ok(quarterly_rows_by_code.get(code, {}), rd,
+                                             min_eps_growth_pct, require_eps_acceleration):
+                            excluded_eps_growth += 1
+                            continue
                     if entry_mode == "donchian":
                         brk = detect_donchian_breakout(highs, closes, i, period=donchian_period)
                         if not brk:
                             continue
                         pivot = brk["pivot"]
+                    elif entry_mode == "pullback":
+                        pb = detect_pullback(highs, lows, closes, i, lookback=pullback_lookback,
+                                             min_pullback_pct=min_pullback_pct,
+                                             max_pullback_pct=max_pullback_pct,
+                                             ma_period=pullback_ma_period)
+                        if not pb:
+                            continue
+                        pivot = pb["pivot"]
                     else:
                         adx = _adx(highs, lows, closes, i)
                         if not adx or adx < adx_threshold:
@@ -911,10 +1655,21 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     avg_vol50 = _avg_volume(volumes, i)
                     if not avg_vol50:
                         continue
-                    candidates.append((ticker, e, pivot, avg_vol50, avg_val))
+                    candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality))
 
-                candidates.sort(key=lambda c: (-(c[1].get("rsRating") or 0), c[0]))
-                for ticker, e, pivot, avg_vol50, avg_trade_val in candidates:
+                # 슬롯보다 후보가 많을 때 누구를 먼저 담을지 정하는 순위.
+                # quality_rank_weight=0이면 기존대로 RS등급(기술적 상대강도)만 본다.
+                # 0보다 크면 그 비중만큼 기본적 분석 점수를 섞는다 - 둘 다 0~1로
+                # 정규화해서 더한다(RS는 1~99라 99로 나눔). 재무데이터가 없는 종목은
+                # 점수를 0.5(중립)로 둔다 - 없다는 이유로 뒤로 밀지 않기 위함.
+                # 동점일 때는 티커 순으로 잘라 실행할 때마다 결과가 달라지지 않게 한다.
+                def _rank_key(c):
+                    rs = (c[1].get("rsRating") or 0) / 99
+                    q = c[5] if c[5] is not None else 0.5
+                    return (-(rs * (1 - quality_rank_weight) + q * quality_rank_weight), c[0])
+
+                candidates.sort(key=_rank_key)
+                for ticker, e, pivot, avg_vol50, avg_trade_val, quality in candidates:
                     if open_slots <= 0:
                         break
                     dates, closes, highs, lows, volumes, opens = series[ticker]
@@ -923,14 +1678,37 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     # 피벗가+0.5% 지정가로 장중 저가 터치를 기다리지 않는다 - 그날 종가가
                     # 피벗을 넘었고 거래량 조건도 맞으면 그날 종가로 곧바로 체결한다.
                     fill_date = fill_price = fj = None
-                    for j in range(s_i, i + 1):
-                        if closes[j] <= pivot:
-                            continue
-                        vol = volumes[j]
-                        if vol is None or vol < avg_vol50 * volume_breakout_mult:
-                            continue
-                        fill_date, fill_price, fj = dates[j], closes[j], j
-                        break
+                    if entry_mode == "pullback":
+                        # 눌림목은 피벗(직전 고점) '아래'에서 사는 것이라 돌파형처럼
+                        # "종가가 피벗을 넘은 날"을 기다릴 수 없다. 조건이 성립한
+                        # 첫날 종가로 바로 체결한다. 거래량 급증도 요구하지 않는다 -
+                        # 눌림 구간은 오히려 거래량이 줄어드는 게 정상이다.
+                        for j in range(s_i, i + 1):
+                            if not detect_pullback(highs, lows, closes, j, lookback=pullback_lookback,
+                                                   min_pullback_pct=min_pullback_pct,
+                                                   max_pullback_pct=max_pullback_pct,
+                                                   ma_period=pullback_ma_period):
+                                continue
+                            # 되돌림 재개일 거래량 확인(선택) - SEPA/오닐 식 "발자국"
+                            # 논리: 눌림 구간 자체는 거래량이 줄어드는 게 정상이지만,
+                            # 방향을 튼 당일에는 기관 매수가 들어왔다면 거래량이
+                            # 평균을 웃돌아야 한다는 가설. 데이터 없으면 거르지 않는다.
+                            if pullback_min_volume_mult is not None:
+                                vol50 = _avg_volume(volumes, j)
+                                vol_j = volumes[j]
+                                if vol50 and vol_j is not None and vol_j < vol50 * pullback_min_volume_mult:
+                                    continue
+                            fill_date, fill_price, fj = dates[j], closes[j], j
+                            break
+                    else:
+                        for j in range(s_i, i + 1):
+                            if closes[j] <= pivot:
+                                continue
+                            vol = volumes[j]
+                            if vol is None or vol < avg_vol50 * volume_breakout_mult:
+                                continue
+                            fill_date, fill_price, fj = dates[j], closes[j], j
+                            break
                     if fill_date is None:
                         continue
                     atr20 = _atr(highs, lows, closes, fj)
@@ -963,7 +1741,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     else:
                         risk_amount = equity_now * RISK_PCT_PER_TRADE / 100
                         shares = int(risk_amount // risk_per_share)
-                        max_pos_value = seed * MAX_POSITION_WEIGHT_PCT / 100
+                        max_pos_value = _position_cap(seed, equity_now)
                     if max_pct_of_avg_trade_value is not None and avg_trade_val:
                         # 유동성 필터(min_avg_trade_value)는 "이 종목을 후보로 볼지"만
                         # 걸러낼 뿐, 실제로 그 종목에 얼마를 태울지는 제한하지 않는다 -
@@ -1073,6 +1851,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         "excludedPreferred": excluded_preferred, "excludedMarketCap": excluded_cap,
         "excludedLiquidity": excluded_liquidity, "excludedShareholder": excluded_shareholder,
         "excludedUnprofitable": excluded_unprofitable,
+        "excludedLowQuality": excluded_low_quality,
+        "excludedNoCatalyst": excluded_no_catalyst,
+        "excludedEpsGrowth": excluded_eps_growth,
+        "excludedVolatility": excluded_volatility,
+        "excludedEvanStage2": excluded_evan,
+        "excludedFinQuality": excluded_fin_quality,
         "benchmark": {"label": BENCHMARK_LABEL.get(market, "Benchmark"), "returnPct": benchmark_return_pct,
                       "equityCurve": benchmark_curve},
         "equityCurve": equity_curve, "trades": trades,

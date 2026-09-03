@@ -1360,7 +1360,11 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
                     p["market"], start_date, end_date, seed=seed, max_positions=max_positions,
                     fetch_fn=_screening_backtest_fetch_fn(p["market"], include_delisted=p.get("include_delisted", False)),
                     shares_map=_vcp_shares_map(), shareholder_rows_by_code=_vcp_shareholder_rows(),
-                    fundamentals_rows_by_code=_vcp_fundamentals_rows() if p.get("require_profitable") else None,
+                    # 수익성 하드필터(require_profitable)든 품질점수(min_quality_score/
+                    # quality_rank_weight)든 하나라도 쓰면 재무데이터가 필요하다.
+                    fundamentals_rows_by_code=_vcp_fundamentals_rows() if (
+                        p.get("require_profitable") or p.get("min_quality_score") is not None
+                        or p.get("quality_rank_weight")) else None,
                     adx_threshold=p.get("adx_threshold", vcp.ADX_THRESHOLD),
                     final_contraction_ratio=p.get("final_contraction_ratio", 0.5),
                     min_final_duration=p.get("min_final_duration", 5),
@@ -1390,6 +1394,9 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
                     max_pct_of_avg_trade_value=p.get("max_pct_of_avg_trade_value"),
                     max_position_value_abs=p.get("max_position_value_abs"),
                     include_delisted=p.get("include_delisted", False),
+                    require_profitable=p.get("require_profitable", True),
+                    min_quality_score=p.get("min_quality_score"),
+                    quality_rank_weight=p.get("quality_rank_weight", 0.0),
                 )
                 job = db.session.get(ScreeningBacktestJob, job_id)
                 if "error" in result:
@@ -1558,7 +1565,7 @@ def paper_trading_start():
 
     body = request.json or {}
     strategy = str(body.get("strategy", "minervini_v2"))
-    if strategy not in ("anonymous", "sweeper") and strategy not in pt.STRATEGY_PRESETS:
+    if strategy not in ("anonymous", "sweeper", "watcher") and strategy not in pt.STRATEGY_PRESETS:
         return jsonify({"error": "알 수 없는 전략입니다"}), 400
     if strategy == "sweeper":
         # 익일 시가 체결 기준으로 재검증한 결과 손절폭을 넓혀도 CAGR -18%~-30%,
@@ -1573,9 +1580,10 @@ def paper_trading_start():
     if seed <= 0:
         return jsonify({"error": "시드는 0보다 커야 합니다"}), 400
 
-    if strategy in ("anonymous", "sweeper"):
+    if strategy in ("anonymous", "sweeper", "watcher"):
         import vcp_strategy as vcp
-        preset = vcp.ANONYMOUS_PARAMS if strategy == "anonymous" else vcp.SWEEPER_PARAMS
+        preset = {"anonymous": vcp.ANONYMOUS_PARAMS, "sweeper": vcp.SWEEPER_PARAMS,
+                  "watcher": vcp.WATCHER_PARAMS}[strategy]
     else:
         preset = pt.STRATEGY_PRESETS[strategy]
     account = PaperStrategyAccount.query.filter_by(user_id=current_user.id, strategy=strategy).first()
@@ -1677,8 +1685,10 @@ def paper_trading_watchlist():
     if not account:
         return jsonify({"exists": False})
 
-    if strategy in ("anonymous", "sweeper"):
-        max_positions = (vcp.ANONYMOUS_PARAMS if strategy == "anonymous" else vcp.SWEEPER_PARAMS)["max_positions"]
+    if strategy in ("anonymous", "sweeper", "watcher"):
+        preset = {"anonymous": vcp.ANONYMOUS_PARAMS, "sweeper": vcp.SWEEPER_PARAMS,
+                  "watcher": vcp.WATCHER_PARAMS}[strategy]
+        max_positions = preset["max_positions"]
     else:
         max_positions = pt.STRATEGY_PRESETS.get(strategy, {}).get("max_positions", 10)
     held_count = len(account.positions)
@@ -1690,21 +1700,24 @@ def paper_trading_watchlist():
     }))
 
 
-@app.route("/api/admin/sweeper-alerts")
+@app.route("/api/admin/trade-alerts")
 @admin_required
-def admin_list_sweeper_alerts():
-    """스위퍼 계좌 전부(사용자 무관)를 관리자에게 보여준다 - 매매 알림 이메일은
-    각 사용자가 아니라 관리자 계정(/admin)에서만 설정하도록 바꿨다(자가설정
-    UI는 제거)."""
+def admin_list_trade_alerts():
+    """매매 알림 메일 대상이 될 수 있는 모의투자 계좌 전부(사용자·전략 무관)를
+    관리자에게 보여준다 - 매매 알림 이메일은 각 사용자가 아니라 관리자 계정
+    (/admin)에서만 설정하도록 되어 있다(자가설정 UI는 없음). 원래 스위퍼
+    전용이었는데 와쳐 추가로 전략 무관하게 일반화했다."""
     from models import PaperStrategyAccount
+    import paper_trading as pt
 
     rows = db.session.query(PaperStrategyAccount, User.username) \
         .join(User, User.id == PaperStrategyAccount.user_id) \
-        .filter(PaperStrategyAccount.strategy == "sweeper") \
-        .order_by(User.username).all()
+        .order_by(PaperStrategyAccount.strategy, User.username).all()
     return jsonify([
         {
-            "accountId": a.id, "username": username, "isActive": a.is_active,
+            "accountId": a.id, "username": username, "strategy": a.strategy,
+            "strategyLabel": pt.STRATEGY_LABEL_KO.get(a.strategy, a.strategy),
+            "isActive": a.is_active,
             "alertEmail": a.alert_email, "lastProcessedDate": a.last_processed_date,
             "lastAlertSentDate": a.last_alert_sent_date,
         }
@@ -1712,15 +1725,15 @@ def admin_list_sweeper_alerts():
     ])
 
 
-@app.route("/api/admin/sweeper-alerts/<int:account_id>", methods=["PATCH"])
+@app.route("/api/admin/trade-alerts/<int:account_id>", methods=["PATCH"])
 @admin_required
-def admin_set_sweeper_alert_email(account_id):
+def admin_set_trade_alert_email(account_id):
     from models import PaperStrategyAccount
     import email_utils
 
-    account = PaperStrategyAccount.query.filter_by(id=account_id, strategy="sweeper").first()
+    account = PaperStrategyAccount.query.filter_by(id=account_id).first()
     if not account:
-        return jsonify({"error": "스위퍼 계좌를 찾을 수 없습니다"}), 404
+        return jsonify({"error": "계좌를 찾을 수 없습니다"}), 404
     email = str((request.json or {}).get("email", "")).strip()
     if email and not email_utils.is_valid_email(email):
         return jsonify({"error": "이메일 형식이 올바르지 않습니다"}), 400
@@ -1729,23 +1742,25 @@ def admin_set_sweeper_alert_email(account_id):
     return jsonify({"ok": True, "alertEmail": account.alert_email})
 
 
-@app.route("/api/admin/sweeper-alerts/<int:account_id>/test", methods=["POST"])
+@app.route("/api/admin/trade-alerts/<int:account_id>/test", methods=["POST"])
 @admin_required
 @limiter.limit("5 per minute")
-def admin_test_sweeper_alert_email(account_id):
+def admin_test_trade_alert_email(account_id):
     """SMTP 설정이 실제로 동작하는지 그 자리에서 바로 확인하기 위한 테스트 발송 -
     14:30까지 기다리지 않고도 Render 환경변수 등록이 맞게 됐는지 검증할 수 있다."""
     from models import PaperStrategyAccount
     import email_utils
+    import paper_trading as pt
 
-    account = PaperStrategyAccount.query.filter_by(id=account_id, strategy="sweeper").first()
+    account = PaperStrategyAccount.query.filter_by(id=account_id).first()
     if not account:
-        return jsonify({"error": "스위퍼 계좌를 찾을 수 없습니다"}), 404
+        return jsonify({"error": "계좌를 찾을 수 없습니다"}), 404
     if not account.alert_email:
         return jsonify({"error": "먼저 알림 이메일을 저장하세요"}), 400
+    label = pt.STRATEGY_LABEL_KO.get(account.strategy, account.strategy)
     ok, message = email_utils.send_email_verbose(
-        account.alert_email, "[JH-Trader] 스위퍼 알림 테스트 메일",
-        "이 메일은 스위퍼 매매 알림 설정이 정상적으로 동작하는지 확인하기 위한 테스트 메일입니다.",
+        account.alert_email, f"[JH-Trader] {label} 알림 테스트 메일",
+        f"이 메일은 {label} 매매 알림 설정이 정상적으로 동작하는지 확인하기 위한 테스트 메일입니다.",
     )
     if not ok:
         return jsonify({"error": f"발송 실패: {message}"}), 502
@@ -1956,7 +1971,7 @@ for _view in (
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
-    admin_set_sweeper_alert_email, admin_test_sweeper_alert_email,
+    admin_set_trade_alert_email, admin_test_trade_alert_email,
 ):
     csrf.exempt(_view)
 
@@ -2001,7 +2016,7 @@ def alert_checker():
 # 채워두고, /api/kr-quant/screen은 그 캐시만 읽는다.
 
 def paper_trading_scheduler():
-    """모든 모의투자 전략(미너비니 v2/v2.1, 어나니머스, 스위퍼)을 매일 한국시간
+    """모든 모의투자 전략(미너비니 v2/v2.1, 어나니머스, 스위퍼, 와쳐)을 매일 한국시간
     14:30 "이 시각을 기점으로만" 계산한다 - 예전에는 30분마다 하루 종일 깨어나
     처리해서 장중에도 이미 매매가 반영되는 문제가 있었다(사용자 지적: "2시 30분이
     지나지 않았는데 벌써 포지션을 보유/매도한 내역이 있다"). 실제로 이 시각에
@@ -2028,7 +2043,7 @@ def paper_trading_scheduler():
         with app.app_context():
             try:
                 paper_trading.run_all_accounts()
-                paper_trading.send_sweeper_trade_alerts()
+                paper_trading.send_trade_alerts()
             except Exception:
                 app.logger.exception("모의투자 일별 처리/알림 오류")
                 try:
