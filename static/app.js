@@ -3863,7 +3863,7 @@ async function loadRelaxedVcpReferenceTrades() {
 // 47.89%로 오히려 소폭 개선(총수익 +6319%->+6419%, 손익비 5.2->5.48,
 // 거래는 1,624->1,585건으로 감소 - 갭 보정으로 조기 손절이 줄어든 만큼).
 const WATCHER_REFERENCE = {
-  start: '2016-01-01', end: '2026-09-04', seed: 50000000, finalValue: 3259461579.03,
+  start: '2016-01-01', end: '2026-09-05', seed: 50000000, finalValue: 3259461579.03,
   returnPct: 6418.92, cagrPct: 47.89, mddPct: 40.89, tradeCount: 1585, winCount: 359, winRatePct: 22.6,
   avgHoldDays: 17.0, profitLossRatio: 5.48, alphaPct: 6169.89,
   benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 249.03,
