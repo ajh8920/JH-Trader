@@ -461,6 +461,12 @@ input[type="date"]:hover { border-color: var(--border-strong); }
    한없이 길어지는 대신, 이 안에서만 세로 스크롤되게 높이를 제한한다. */
 .pf-table-wrap-scroll { max-height: 520px; overflow-y: auto; }
 .pf-table-wrap-scroll thead th { position: sticky; top: 0; z-index: 1; }
+/* 위 .pf-table-wrap 스크롤바는 기본 투명(hover해야 보임)인데, 세로 스크롤이
+   있는 표는 "아래에 내용이 더 있다"는 게 hover 없이도 바로 보여야 한다
+   (사용자 요청) - 이 변형에서만 막대를 기본으로 옅게 켜둔다. */
+.pf-table-wrap-scroll { scrollbar-color: var(--border) transparent; }
+.pf-table-wrap-scroll::-webkit-scrollbar-thumb { background-color: var(--border); }
+.pf-table-wrap-scroll:hover::-webkit-scrollbar-thumb { background-color: var(--border-strong); }
 .pf-table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 13px; }
 .pf-table th { font-weight: 600; font-size: 11px; color: var(--text-secondary); text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--bg-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
 .pf-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
