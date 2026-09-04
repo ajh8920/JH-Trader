@@ -1168,7 +1168,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       min_roe_percentile=None, max_per=None,
                       max_position_weight_pct=MAX_POSITION_WEIGHT_PCT,
                       dividend_dates_by_code=None, dividend_gap_threshold_pct=-6.0,
-                      dividend_gap_max_pct=-20.0, dividend_gap_lookback_days=30):
+                      dividend_gap_max_pct=-20.0, dividend_gap_lookback_days=30,
+                      stop_cooldown_days=None, min_ret12m_percentile=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -1288,9 +1289,28 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     # 룩어헤드가 아니다).
     equity_now = float(seed)
     prev_rd = None
+    # 손절/추세이탈로 청산된 종목의 "냉각 기간" - 같은 종목이 짧은 간격으로
+    # 다시 눌림목 신호를 내고 또 손절당하는 것(초퍼/횡보 구간에서 반복 손실)을
+    # 줄여 승률을 올릴 수 있는지 보는 신규 레버(38차). {종목코드: 마지막
+    # 실패 청산일} - initialStop/maBreak만 기록한다(트레일링/본전/분할익절은
+    # "실패"가 아니라 정상 청산이라 냉각시킬 이유가 없다).
+    #
+    # 38차 실측(냉각 10/20/30일 + 12개월수익률 상대백분위 60/70/80 + 조합,
+    # 총 8개 변형): 이번에도 동일한 트레이드오프가 그대로 나타났다 - 승률은
+    # 22.6%->22.0~23.8%로 소폭 오르지만 CAGR이 47.89%->34~46%로 크게
+    # 빠진다(가장 균형 잡힌 HG_12개월백분위80조차 CAGR 77% 수준). 29~38차
+    # (10라운드, 80개 변형) 동안 승률 22~25% 근방이 반복적으로 상한으로
+    # 나타나는 걸 보면 이건 조건을 더 찾으면 풀리는 문제가 아니라 이
+    # 룰 기반 백테스트의 구조적 한계로 보인다 - 이 두 파라미터
+    # (stop_cooldown_days/min_ret12m_percentile)는 코드에는 남겨두되
+    # WATCHER_PARAMS에는 반영하지 않는다(기본값 None이라 기존 동작에
+    # 영향 없음 - round32의 max_ma200_gap_pct/round33의
+    # pullback_min_volume_mult와 같은 처리).
+    stopped_recently = {}
     excluded_preferred = excluded_cap = excluded_liquidity = excluded_shareholder = excluded_unprofitable = 0
     excluded_low_quality = excluded_no_catalyst = excluded_eps_growth = 0
     excluded_volatility = excluded_evan = excluded_fin_quality = 0
+    excluded_cooldown = 0
     shareholder_rows_by_code = shareholder_rows_by_code or {}
     fundamentals_rows_by_code = fundamentals_rows_by_code or {}
 
@@ -1375,6 +1395,25 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 idx = min(int(len(roe_vals) * min_roe_percentile / 100), len(roe_vals) - 1)
                 roe_percentile_cutoff = roe_vals[idx]
 
+        # 12개월 수익률 백분위 - 위 ROE 백분위와 같은 논리를 가격 모멘텀에
+        # 적용한 것(38차 신규). evan_stage2의 min_return_12m(절대 문턱, 40%)은
+        # 이미 있지만, RS85가 "절대 문턱보다 상대 순위가 더 안정적으로 통했다"는
+        # 패턴이 다른 지표에도 적용되는지 보는 가설.
+        ret12m_percentile_cutoff = None
+        if min_ret12m_percentile is not None:
+            ret_vals = []
+            for t in trend_ok_set:
+                idx_t = idx_at_rd.get(t)
+                if idx_t is None:
+                    continue
+                r12 = _return_pct(series[t][1], idx_t, 252)
+                if r12 is not None:
+                    ret_vals.append(r12)
+            if ret_vals:
+                ret_vals.sort()
+                idx = min(int(len(ret_vals) * min_ret12m_percentile / 100), len(ret_vals) - 1)
+                ret12m_percentile_cutoff = ret_vals[idx]
+
         # 1) 보유 포지션 처리 - 하루씩 순서대로(손절/트레일링 히트 > MA50이탈 > 시간손절 > 본전/분할익절/트레일링갱신 > 피라미딩)
         for ticker in list(positions.keys()):
             pos = positions[ticker]
@@ -1434,6 +1473,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     trade, proceeds = _full_exit(pos, close, dates[j], pos["stopState"])
                     trades.append(trade)
                     cash += proceeds
+                    if pos["stopState"] == "initialStop":
+                        stopped_recently[pos["code"]] = dates[j]
                     del positions[ticker]
                     closed = True
                     break
@@ -1448,6 +1489,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     trade, proceeds = _full_exit(pos, close, dates[j], "maBreak")
                     trades.append(trade)
                     cash += proceeds
+                    stopped_recently[pos["code"]] = dates[j]
                     del positions[ticker]
                     closed = True
                     break
@@ -1669,6 +1711,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         if fq_roe is None or fq_roe < roe_percentile_cutoff:
                             excluded_fin_quality += 1
                             continue
+                    # 12개월 수익률 상대 순위 - ret12m_percentile_cutoff 산출 로직 참고.
+                    if ret12m_percentile_cutoff is not None:
+                        r12 = _return_pct(closes, i, 252)
+                        if r12 is None or r12 < ret12m_percentile_cutoff:
+                            excluded_fin_quality += 1
+                            continue
                     # 밸류에이션 상한(PER 근사) - 이미 많이 오른 뒤 비싸게 사는 걸 거른다.
                     if max_per is not None:
                         per_v = estimate_per(price_now, shares_out, fundamentals_rows_by_code.get(code, []), rd)
@@ -1679,6 +1727,17 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     if max_holder_pct is not None and max_holder_pct > MAX_SHAREHOLDER_PCT:
                         excluded_shareholder += 1
                         continue
+                    # 냉각 기간(38차 신규) - 최근 초기손절/MA이탈로 실패한 종목은
+                    # stop_cooldown_days 동안 재진입 후보에서 뺀다. 같은 눌림목
+                    # 신호가 짧은 간격으로 반복 실패하는(초퍼/횡보) 패턴을 걸러
+                    # 승률을 올릴 수 있는지 보는 가설.
+                    if stop_cooldown_days is not None:
+                        last_fail = stopped_recently.get(code)
+                        if last_fail is not None:
+                            days_since = (datetime.fromisoformat(rd) - datetime.fromisoformat(last_fail)).days
+                            if days_since < stop_cooldown_days:
+                                excluded_cooldown += 1
+                                continue
                     # ── 기본적 분석 ──────────────────────────────────────────
                     # 두 단계로 쓴다. (1) require_profitable: 영업이익·순이익이 둘 다
                     # 적자면 제외하는 이분법 하드 필터. (2) min_quality_score/
@@ -1942,6 +2001,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         "excludedVolatility": excluded_volatility,
         "excludedEvanStage2": excluded_evan,
         "excludedFinQuality": excluded_fin_quality,
+        "excludedCooldown": excluded_cooldown,
         "benchmark": {"label": BENCHMARK_LABEL.get(market, "Benchmark"), "returnPct": benchmark_return_pct,
                       "equityCurve": benchmark_curve},
         "equityCurve": equity_curve, "trades": trades,
