@@ -855,6 +855,37 @@ def has_recent_catalyst(dates_sorted, as_of_date, lookback_days):
     return hi > lo
 
 
+# ── 배당락 갭 보정용 배당 공시 ────────────────────────────────────────────────
+# 위 촉매 판정에서는 "현금ㆍ현물배당결정"을 계절성 노이즈라 일부러 뺐지만
+# (POSITIVE_CATALYST_KEYWORDS 위 주석 참고), 여기서는 반대 목적으로 정확히
+# 그 배당 공시가 필요하다 - "이 종목이 최근에 배당을 결정했는가"만 알면
+# 되므로 [기재정정]도 그대로 포함한다(중복 카운트 걱정 없음 - 존재 여부만
+# 본다). 실측(2016~2026, 44만 건 중 19,740건)에서 "배당" 한 글자로 현금ㆍ
+# 현물배당결정/부동산투자회사금전배당결정(리츠)/주식배당결정/배당락/배당
+# 기준일 관련 공시가 전부 잡혔다.
+def load_dividend_dates(parquet_paths):
+    """공시 parquet들에서 배당 관련 공시만 골라 {종목코드: [접수일...]}(오름차순)로
+    만든다. load_catalyst_dates와 같은 패턴, 백테스트 시작 전 한 번만 로드."""
+    import pandas as pd
+
+    dates_by_code = {}
+    for path in parquet_paths:
+        if not Path(path).exists():
+            continue
+        df = pd.read_parquet(path)
+        for row in df.itertuples():
+            name = row.report_nm or ""
+            if "배당" not in name:
+                continue
+            code = row.stock_code
+            if not code:
+                continue
+            dates_by_code.setdefault(code, []).append(row.rcept_dt)
+    for code in dates_by_code:
+        dates_by_code[code].sort()
+    return dates_by_code
+
+
 def financial_quality(rows_for_code, as_of_date):
     """as_of_date까지 공시된 재무로 수익성·성장성 지표를 계산한다.
 
@@ -1135,7 +1166,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       min_operating_margin=None,
                       min_revenue_growth_streak=None, min_operating_margin_trend=None,
                       min_roe_percentile=None, max_per=None,
-                      max_position_weight_pct=MAX_POSITION_WEIGHT_PCT):
+                      max_position_weight_pct=MAX_POSITION_WEIGHT_PCT,
+                      dividend_dates_by_code=None, dividend_gap_threshold_pct=-6.0,
+                      dividend_gap_max_pct=-20.0, dividend_gap_lookback_days=30):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -1354,6 +1387,44 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             closed = False
             for j in range(start_i, i + 1):
                 close = closes[j]
+                # 배당락(권리락) 갭 보정 - 특별배당 등으로 배당액만큼 주가가 기계적으로
+                # 빠지는 날을 실제 하락으로 오인해 손절되는 걸 막는다(사용자 지적:
+                # "코람코더원리츠 같이 특별배당으로 주가가 급변하면?"). 이 종목에
+                # 최근 DART 배당결정 공시(dividend_dates_by_code)가 있고, 전일 대비
+                # 낙폭이 dividend_gap_threshold_pct(기본 -6%, 와쳐 손절폭 -3.5%보다
+                # 훨씬 커야 "그냥 나쁜 소식"이 아니라 "배당만큼 빠진 것"으로 의심할
+                # 근거가 된다)를 넘으면, 손절선과 최고가 추적치를 낙폭만큼 함께
+                # 내려서 그날부터는 "새 기준가" 위에서 손절 거리를 그대로 재적용한다
+                # - 배당 당일의 갭 자체는 무시하면서, 배당과 무관하게 그 뒤로도
+                # 계속 빠지면(새 기준가 대비) 정상적으로 손절되도록 한다. 배당소득
+                # 자체를 계좌 현금에 반영하지는 않는다(이 엔진은 배당 현금흐름을
+                # 아예 모델링하지 않는다 - 별도의 더 큰 개선 과제로 남겨둔다).
+                if dividend_dates_by_code and j > 0 and closes[j - 1]:
+                    day_return = (close / closes[j - 1] - 1) * 100
+                    # 상한(dividend_gap_max_pct)을 반드시 함께 둔다 - 실측(2023-04
+                    # 하림지주 사례)에서 상한 없이 "낙폭 하한 + 최근 배당공시"만
+                    # 조건으로 두니, 배당과 무관한 진짜 폭락(SG증권발 무더기
+                    # 하한가 사태, 하루 -30%)까지 우연히 근처 시점의 정기배당
+                    # 공시와 엮여 손절이 봐지면서 손실이 더 커졌다(CAGR 47.68%->
+                    # 36.76%로 오히려 악화). 배당락은 보통 하루 -6~15% 수준이지
+                    # -20%를 넘게 빠지지 않는다 - 그 이상은 배당이 아니라 진짜
+                    # 하락으로 보고 정상적으로 손절한다.
+                    #
+                    # 남은 한계: 상한을 둬도 완벽하지 않다 - 12월 결산법인은
+                    # 매년 2월에 정기배당을 결정하는데, 2020년 2월 코로나 폭락
+                    # (심텍 -16.2%, 상한 -20% 이내)처럼 "우연히 같은 시기의
+                    # 시장 전체 급락"과 겹치면 여전히 잘못 봐줄 수 있다(실측
+                    # 확인됨). 이 배당 공시 자체가 실제 배당락일을 특정하지
+                    # 못해(접수일만 있고 기준일은 DART 원문을 파싱해야 나옴)
+                    # 생기는 근본적 한계 - 전체 성과 지표(CAGR 등)에는 순
+                    # 개선으로 나타났지만(47.68%->47.89%), 개별 종목 단위로는
+                    # 이런 오탐이 완전히 없다고 보장하지 못한다.
+                    if dividend_gap_max_pct <= day_return <= dividend_gap_threshold_pct and has_recent_catalyst(
+                            dividend_dates_by_code.get(pos["code"], []), dates[j], dividend_gap_lookback_days):
+                        gap = closes[j - 1] - close
+                        if gap > 0:
+                            pos["stopPrice"] -= gap
+                            pos["highestHigh"] = max(0.0, pos["highestHigh"] - gap)
                 # 손절/트레일링/분할익절/피라미딩 전부 종가 기준으로만 판정하고 종가로
                 # 체결한다 - 장중 저가/고가가 손절가·목표가를 스쳤다고 그 가격에 정확히
                 # 체결됐다고 가정하지 않는다(그날 종가가 확정돼야 실제로 알 수 있는

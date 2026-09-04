@@ -3849,12 +3849,21 @@ async function loadRelaxedVcpReferenceTrades() {
 // 판단해 이 지점을 최종 채택했다. 매일 한국시간 14:30에 실시간가 기준으로
 // 자동 계산되며(모의투자 "와쳐"와 동일 로직), 매매할 종목이 있으면 알림
 // 메일이 발송된다.
+//
+// 배당락(권리락) 갭 보정 반영(사용자 지적 - 코람코더원리츠류 특별배당으로
+// 주가가 급변하면 ATR 손절이 오탐하지 않는지) - DART 배당 공시가 최근에
+// 있었고 전일 대비 낙폭이 -6~-20% 사이면 배당락으로 보고 손절선/최고가
+// 추적치를 낙폭만큼 함께 내린다(상한 -20% 없이는 배당과 무관한 진짜 폭락
+// (2023-04 SG증권발 무더기 하한가 사태 등)까지 잘못 봐줘 CAGR이 오히려
+// 47.68%->36.76%로 악화됐다 - 상한을 추가해 해결). 반영 후 CAGR 47.68%->
+// 47.89%로 오히려 소폭 개선(총수익 +6319%->+6419%, 손익비 5.2->5.48,
+// 거래는 1,624->1,585건으로 감소 - 갭 보정으로 조기 손절이 줄어든 만큼).
 const WATCHER_REFERENCE = {
-  start: '2016-01-01', end: '2026-09-04', seed: 50000000, finalValue: 3209622197.51,
-  returnPct: 6319.24, cagrPct: 47.68, mddPct: 40.39, tradeCount: 1624, winCount: 375, winRatePct: 23.1,
-  avgHoldDays: 16.6, profitLossRatio: 5.2, alphaPct: 6070.21,
+  start: '2016-01-01', end: '2026-09-04', seed: 50000000, finalValue: 3259461579.03,
+  returnPct: 6418.92, cagrPct: 47.89, mddPct: 40.89, tradeCount: 1585, winCount: 359, winRatePct: 22.6,
+  avgHoldDays: 17.0, profitLossRatio: 5.48, alphaPct: 6169.89,
   benchmarkLabel: 'KOSPI Buy & Hold', benchmarkReturnPct: 249.03,
-  exitReasonCounts: { trailingStop: 387, initialStop: 872, breakevenStop: 280, delisted: 7, maBreak: 55, timeStop: 16, periodEnd: 7 },
+  exitReasonCounts: { trailingStop: 370, initialStop: 858, breakevenStop: 262, delisted: 8, maBreak: 60, timeStop: 20, periodEnd: 7 },
 };
 
 function renderWatcherReference(el) {

@@ -442,14 +442,31 @@ def _anon_market_index_and_regime():
     return price, regime_ok
 
 
-def _process_anon_position_day(pos, closes, highs, lows, j, params):
-    """"어나니머스"/"스위퍼" 포지션 하루치(인덱스 j)를 반영한다 - vcp_strategy.
-    run_vcp_backtest의 포지션 관리 블록과 동일한 규칙(손절 > MA이탈 > 시간손절 >
-    트레일링 갱신 순), 동일하게 전부 종가(스위퍼의 경우 14:30 실시간가로 만든
-    합성 "오늘 봉") 기준으로만 판정·체결한다 - 장중 저가/고가를 그 가격에
-    정확히 체결됐다고 가정하지 않는다. 청산되면 (청산가, 사유)를, 아니면 None을
-    돌려주며 pos를 그 자리에서 갱신한다."""
+def _process_anon_position_day(pos, closes, highs, lows, j, params, dates=None, code=None,
+                                dividend_dates_by_code=None, dividend_gap_threshold_pct=-6.0,
+                                dividend_gap_max_pct=-20.0, dividend_gap_lookback_days=30):
+    """"어나니머스"/"스위퍼"/"와쳐" 포지션 하루치(인덱스 j)를 반영한다 - vcp_strategy.
+    run_vcp_backtest의 포지션 관리 블록과 동일한 규칙(배당락 갭 보정 > 손절 >
+    MA이탈 > 시간손절 > 트레일링 갱신 순), 동일하게 전부 종가(스위퍼/와쳐의
+    경우 14:30 실시간가로 만든 합성 "오늘 봉") 기준으로만 판정·체결한다 -
+    장중 저가/고가를 그 가격에 정확히 체결됐다고 가정하지 않는다. 청산되면
+    (청산가, 사유)를, 아니면 None을 돌려주며 pos를 그 자리에서 갱신한다.
+
+    dividend_dates_by_code/dates/code는 와쳐만 넘긴다(어나니머스/스위퍼는
+    호출부에서 안 넘기므로 이 인자들이 전부 None이라 기존 동작 그대로다) -
+    vcp_strategy.run_vcp_backtest의 배당락 갭 보정과 같은 로직."""
     close = closes[j]
+    if dividend_dates_by_code and dates is not None and code is not None and j > 0 and closes[j - 1]:
+        day_return = (close / closes[j - 1] - 1) * 100
+        # 상한(dividend_gap_max_pct) 없이 하한만 두면 배당과 무관한 진짜 폭락까지
+        # 봐줄 수 있다(vcp_strategy.run_vcp_backtest의 같은 로직 주석 - 2023-04
+        # 하림지주/SG증권발 사태 실측으로 확인) - 반드시 함께 둔다.
+        if dividend_gap_max_pct <= day_return <= dividend_gap_threshold_pct and vcp.has_recent_catalyst(
+                dividend_dates_by_code.get(code, []), dates[j], dividend_gap_lookback_days):
+            gap = closes[j - 1] - close
+            if gap > 0:
+                pos["stopPrice"] -= gap
+                pos["highestHigh"] = max(0.0, pos["highestHigh"] - gap)
     if close <= pos["stopPrice"]:
         return close, pos["stopState"]
 
@@ -837,6 +854,17 @@ def run_watcher_daily_step(account):
         for p in held_positions
     )
 
+    # 배당락 갭 보정용 배당 공시 - 보유 종목이 있을 때만 불러온다(신규 진입
+    # 판정에는 안 쓴다 - vcp_strategy.load_dividend_dates/_process_anon_position_day
+    # 참고). 매 실행마다 새로 읽는다(계좌가 하나뿐인 지금 규모에선 캐싱까지는
+    # 과할 정도로 빠르다 - kr_quant_price_cache_refresher류의 DB 캐시와 달리
+    # 이건 이미 로컬 parquet라 디스크 I/O만 있다).
+    dividend_dates_by_code = {}
+    if held_positions:
+        from data_pipeline.common import FUND_KR_DIR
+        dividend_dates_by_code = vcp.load_dividend_dates(
+            sorted((FUND_KR_DIR.parent / "disclosures_kr").glob("*.parquet")))
+
     # 1) 보유 포지션 - run_anonymous_daily_step의 같은 블록과 완전히 동일한
     #    규칙(손절 > MA이탈 > 시간손절 > 본전/분할익절/트레일링 갱신 > 피라미딩).
     #    entry_mode가 달라도 포지션이 일단 생기고 난 뒤의 관리 규칙은 어나니머스/
@@ -864,7 +892,9 @@ def run_watcher_daily_step(account):
                 continue
             if d > latest_date:
                 break
-            result = _process_anon_position_day(pos, closes, highs, lows, j, params)
+            result = _process_anon_position_day(
+                pos, closes, highs, lows, j, params, dates=dates, code=pos_row.code,
+                dividend_dates_by_code=dividend_dates_by_code)
             if result:
                 exit_price, reason = result
                 proceeds = pos["shares"] * exit_price * (1 - (vcp.SLIPPAGE_EXIT_PCT + vcp.SELL_TAX_PCT) / 100)
