@@ -431,6 +431,10 @@ const I18N = {
   conditionExit: { en: 'Condition Exit', ko: '조건 이탈' },
   periodEnd: { en: 'Period End', ko: '기간 종료' },
   tradeLog: { en: 'Trade Log', ko: '매매 내역' },
+  yearlyReturns: { en: 'Yearly Returns', ko: '연도별 수익률' },
+  year: { en: 'Year', ko: '연도' },
+  yearlyReturnsUnavailable: { en: 'No equity-curve data to break down by year for this result.',
+    ko: '이 결과는 연도별로 나눠 볼 자산 곡선 데이터가 없습니다.' },
   buyDate: { en: 'Buy Date', ko: '매수일' },
   buyPrice: { en: 'Buy Price', ko: '매수가' },
   quantity: { en: 'Qty', ko: '수량' },
@@ -3894,6 +3898,7 @@ function renderWatcherReference(el) {
         ${t('referenceResultNote')}
       </div>
     </div>
+    <div id="sbt-refwatcher-yearly"></div>
     <div class="card">
       <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('tradeLog')} (${d.tradeCount})</div>
       <div id="sbt-refwatcher-trades-body"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i></div></div>
@@ -3908,6 +3913,11 @@ async function loadWatcherReferenceTrades() {
     const res = await fetch('/static/watcher_reference.json');
     if (!res.ok) throw new Error('fetch failed');
     const data = await res.json();
+    const yearlyEl = document.getElementById('sbt-refwatcher-yearly');
+    if (yearlyEl) {
+      yearlyEl.innerHTML = renderYearlyReturnsCard(
+        data.equityCurve, WATCHER_REFERENCE.seed, v => `₩${Math.round(v).toLocaleString('en-US')}`);
+    }
     const fmtPrice = v => `₩${Math.round(v).toLocaleString('en-US')}`;
     body.innerHTML = `
       <div class="pf-table-wrap pf-table-wrap-scroll">
@@ -4203,6 +4213,61 @@ async function pollScreeningBacktestJob(jobId, el) {
   el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${t('backtestTakingLong') || '백테스트가 예상보다 오래 걸리고 있습니다. 잠시 후 다시 시도해주세요.'}</span></div>`;
 }
 
+// 연도별 수익률 - equityCurve(재평가일마다 찍힌 {date, value} 배열)를 연도별로
+// 묶어 그 해 마지막 평가액을 "그 해 종가"로 본다(재평가 주기가 매일이 아니라
+// 재평가일 스냅샷일 뿐이라 그 해의 정확한 12/31 값과는 다를 수 있지만, 이
+// 엔진의 다른 지표(CAGR·총수익 등)도 전부 이 equityCurve 마지막 값 기준이라
+// 같은 기준으로 일관성 있게 계산한 것이다). 첫 해의 시작값은 시드.
+function computeYearlyReturns(equityCurve, seed) {
+  if (!equityCurve || !equityCurve.length) return [];
+  const lastOfYear = {};
+  for (const pt of equityCurve) {
+    lastOfYear[pt.date.slice(0, 4)] = pt.value;
+  }
+  const years = Object.keys(lastOfYear).sort();
+  const rows = [];
+  let startValue = seed;
+  for (const y of years) {
+    const endValue = lastOfYear[y];
+    const retPct = startValue > 0 ? (endValue / startValue - 1) * 100 : 0;
+    rows.push({ year: y, startValue, endValue, retPct });
+    startValue = endValue;
+  }
+  return rows;
+}
+
+function renderYearlyReturnsCard(equityCurve, seed, fmt) {
+  const rows = computeYearlyReturns(equityCurve, seed);
+  if (!rows.length) {
+    return `
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('yearlyReturns')}</div>
+      <div class="empty-state" style="padding:1.5rem;"><p>${t('yearlyReturnsUnavailable')}</p></div>
+    </div>`;
+  }
+  return `
+    <div class="card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('yearlyReturns')}</div>
+      <div class="pf-table-wrap">
+        <table class="pf-table">
+          <thead><tr>
+            <th>${t('year')}</th>
+            <th style="text-align:right;">${t('finalValue')}</th>
+            <th style="text-align:right;">${t('totalReturn')}</th>
+          </tr></thead>
+          <tbody>
+            ${rows.map(r => `
+              <tr>
+                <td>${escapeHtml(r.year)}</td>
+                <td style="text-align:right;">${fmt(r.endValue)}</td>
+                <td style="text-align:right;" class="${r.retPct >= 0 ? 'positive' : 'negative'}">${r.retPct >= 0 ? '+' : ''}${r.retPct.toFixed(1)}%</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
 function renderScreeningBacktestResult(d) {
   const el = document.getElementById('screenbt-result');
   const pnlCls = d.returnPct >= 0 ? 'positive' : 'negative';
@@ -4238,6 +4303,8 @@ function renderScreeningBacktestResult(d) {
       </div>
       <div style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">${t('scrollZoomDragPan')}</div>
     </div>
+
+    ${renderYearlyReturnsCard(d.equityCurve, d.seed, fmtCap)}
 
     <div class="card">
       <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${t('tradeLog')} (${d.tradeCount})</div>
