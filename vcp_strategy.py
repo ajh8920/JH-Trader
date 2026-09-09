@@ -329,6 +329,20 @@ WATCHER_PARAMS = {
     "ma_break_period": 50, "ma_break_consec_days": MA_BREAK_CONSEC_DAYS,
     "time_stop_days": TIME_STOP_DAYS, "time_stop_progress_r": TIME_STOP_PROGRESS_R,
     "pyramid_max_count": PYRAMID_MAX_COUNT,
+    # 재평가(신규진입 후보 재계산) 간격 - 1일(매일)로 바꿔달라는 요청이 있어
+    # 실측했으나 치명적으로 악화됨을 확인해 3일로 되돌렸다: CAGR 47.89%->
+    # -2.3%(!), 총수익 +6419%->-22.0%, MDD -40.89%->-87.46%, 승률 22.6%->
+    # 16.0%, 거래 1,585->2,297건(초기손절 858->1,474건으로 급증). 매일
+    # 후보를 처음부터 다시 계산하면 3일 간격이 암묵적으로 걸러주던 "며칠은
+    # 버텨야 유효한 신호"라는 지속성 필터가 사라져, 하루짜리 노이즈성
+    # 눌림목까지 대거 진입해 곧바로 손절당하는 패턴이 크게 늘었다.
+    #
+    # 다만 실전 배치(paper_trading.run_watcher_daily_step)는 이 값과 무관하게
+    # 이미 매일 한 번(14:30) 실행된다 - rescan_interval_days는 "하루에 몇 번
+    # 매매하는가"가 아니라 "신규진입 후보 자격을 며칠마다 다시 계산하는가"를
+    # 조절하는 값이라, "하루 한 번만 매매" 요구사항과는 이미 별개로 충족되고
+    # 있다(보유 포지션의 손절/트레일링 판정은 원래도 매일 확인한다 - 재평가는
+    # "새로 살 후보를 다시 뽑는" 부분에만 해당).
     "rescan_interval_days": 3, "gate_entries_on_regime": False,
     "include_delisted": True, "require_profitable": False,
 }
