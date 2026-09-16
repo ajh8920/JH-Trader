@@ -208,6 +208,22 @@ class ScreeningBacktestJob(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class BacktestRunLog(db.Model):
+    """지금까지 백테스트를 몇 번 돌렸는지에 답하기 위한 실행 이력. 무한매수법/국내
+    스윙 백테스트는 계산이 빨라 결과를 저장하지 않고 요청-응답 안에서 바로 끝나서
+    (QuantBacktestJob/ScreeningBacktestJob과 달리) 실행 횟수가 남는 곳이 없었다 -
+    네 가지 백테스트 종류(kind) 전부를 여기 한 곳에 한 줄씩 남겨 총 실행 횟수를
+    셀 수 있게 한다."""
+
+    __tablename__ = "backtest_run_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    kind = db.Column(db.String(30), nullable=False)  # infinite_buying|kr_swing|kr_quant|screening
+    summary = db.Column(db.String(200))  # 티커/전략 등 요약(예: "AAPL v2", "미너비니 v2")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class KrPriceCache(db.Model):
     """국내 퀀트 스크리닝용 현재가 캐시. 프로세스 메모리가 아니라 DB에 두는 이유:
     gunicorn 워커가 여러 개면 각자 별도 프로세스라 메모리 캐시가 서로 안 보여서,

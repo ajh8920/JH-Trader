@@ -29,6 +29,9 @@
       비워두면 그 계좌의 알림은 꺼진 상태입니다.
     </p>
     <div id="admin-alerts-content"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div></div>
+
+    <h2 style="font-size:15px;font-weight:700;margin:28px 0 4px;">📊 백테스트 실행 이력</h2>
+    <div id="admin-backtest-content"><div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading...</div></div>
   </div>
 
   <script>
@@ -164,8 +167,48 @@
       }
     }
 
+    const BACKTEST_KIND_LABEL = {
+      infinite_buying: '무한매수법', kr_swing: '국내 스윙', kr_quant: '국내 퀀트', screening: '스크리닝',
+    };
+
+    async function loadBacktestStats() {
+      const el = document.getElementById('admin-backtest-content');
+      try {
+        const stats = await api('GET', '/api/admin/backtest-stats');
+        renderBacktestStats(stats);
+      } catch (e) {
+        el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i>${e.message}</div>`;
+      }
+    }
+
+    function renderBacktestStats(stats) {
+      const el = document.getElementById('admin-backtest-content');
+      const byKindHtml = Object.entries(stats.byKind)
+        .map(([k, v]) => `<span style="display:inline-block;margin:0 12px 8px 0;">${BACKTEST_KIND_LABEL[k] || k}: <strong>${v}</strong>회</span>`)
+        .join('');
+      el.innerHTML = `
+        <p style="font-size:14px;margin:0 0 8px;">총 <strong>${stats.total}</strong>회 실행됨</p>
+        <p style="font-size:12.5px;color:var(--text-muted,#888);margin:0 0 12px;">${byKindHtml}</p>
+        <div class="pf-table-wrap">
+          <table class="pf-table">
+            <thead><tr><th>종류</th><th>요약</th><th>사용자</th><th>실행 시각</th></tr></thead>
+            <tbody>
+              ${stats.recent.map(r => `
+                <tr>
+                  <td>${escapeHtml(BACKTEST_KIND_LABEL[r.kind] || r.kind)}</td>
+                  <td>${escapeHtml(r.summary || '-')}</td>
+                  <td>${escapeHtml(r.username)}</td>
+                  <td>${escapeHtml(r.createdAt)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
     loadUsers();
     loadTradeAlerts();
+    loadBacktestStats();
   </script>
 </body>
 </html>

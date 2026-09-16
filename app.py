@@ -764,6 +764,11 @@ def backtest_infinite_buying():
     result = run_infinite_buying(ticker, start, end, seed, splits, target_return, version)
     if "error" in result:
         return jsonify(result), 400
+
+    from models import BacktestRunLog
+    db.session.add(BacktestRunLog(user_id=current_user.id, kind="infinite_buying", summary=f"{ticker} {version}"))
+    db.session.commit()
+
     return jsonify(sanitize_json(result))
 
 
@@ -844,6 +849,11 @@ def kr_swing_backtest():
     result = run_kr_swing_backtest(strategy, code, start, end, seed, params)
     if "error" in result:
         return jsonify(result), 400
+
+    from models import BacktestRunLog
+    db.session.add(BacktestRunLog(user_id=current_user.id, kind="kr_swing", summary=f"{strategy} {code}"))
+    db.session.commit()
+
     return jsonify(sanitize_json(result))
 
 
@@ -964,8 +974,13 @@ def kr_quant_backtest():
     if not (2015 <= start_year < end_year <= datetime.today().year):
         return jsonify({"error": "연도 범위가 올바르지 않습니다"}), 400
 
+    from models import BacktestRunLog
+
     job = QuantBacktestJob(user_id=current_user.id, status="pending")
     db.session.add(job)
+    db.session.add(BacktestRunLog(
+        user_id=current_user.id, kind="kr_quant", summary=f"{start_year}-{end_year} top{top_n}",
+    ))
     db.session.commit()
 
     threading.Thread(
@@ -1520,8 +1535,13 @@ def create_screening_backtest():
     if in_flight:
         return jsonify({"error": "이미 다른 스크리닝 백테스트가 진행 중입니다. 완료 후 다시 시도해주세요."}), 409
 
+    from models import BacktestRunLog
+
     job = ScreeningBacktestJob(user_id=current_user.id, status="pending")
     db.session.add(job)
+    db.session.add(BacktestRunLog(
+        user_id=current_user.id, kind="screening", summary=preset or f"{market} {strategy}",
+    ))
     db.session.commit()
 
     threading.Thread(
@@ -1899,6 +1919,38 @@ def list_users():
         }
         for u in users
     ])
+
+
+@app.route("/api/admin/backtest-stats")
+@admin_required
+def admin_backtest_stats():
+    """지금까지 실행된 백테스트 총 횟수 - 종류별 집계 + 사용자별 이름을 붙여
+    최근 실행 내역도 함께 보여준다."""
+    from models import BacktestRunLog
+
+    by_kind = dict(
+        db.session.query(BacktestRunLog.kind, db.func.count(BacktestRunLog.id))
+        .group_by(BacktestRunLog.kind).all()
+    )
+    total = sum(by_kind.values())
+    recent = (
+        BacktestRunLog.query.join(User, BacktestRunLog.user_id == User.id)
+        .order_by(BacktestRunLog.id.desc()).limit(20)
+        .with_entities(BacktestRunLog.kind, BacktestRunLog.summary, BacktestRunLog.created_at, User.username)
+        .all()
+    )
+    return jsonify({
+        "total": total,
+        "byKind": by_kind,
+        "recent": [
+            {
+                "kind": r.kind, "summary": r.summary,
+                "createdAt": r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
+                "username": r.username,
+            }
+            for r in recent
+        ],
+    })
 
 
 @app.route("/api/admin/users/<int:user_id>/role", methods=["PATCH"])
