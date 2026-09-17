@@ -1976,22 +1976,33 @@ def cron_run_daily_batch():
     스레드는 이중 안전망으로 그대로 둔다 - 로컬 개발 등 크론이 없는 환경 대비).
 
     로그인 세션이 없는 외부 크론이라 관리자 쿠키 대신 CRON_SECRET 공유 비밀을
-    쓴다(RULES.md R10 - Render 환경변수로만 관리, 코드에 하드코딩 금지)."""
+    쓴다(RULES.md R10 - Render 환경변수로만 관리, 코드에 하드코딩 금지).
+
+    배치 자체(가격 조회 + 계좌별 판정)는 gunicorn 요청 타임아웃(30초)보다 오래
+    걸릴 수 있다(실측: 첫 호출이 31초에서 워커가 강제 종료돼 500 반환 -
+    force_trend_screen_refresh와 같은 이유로 여기도 요청 핸들러 안에서 직접
+    돌리면 안 됐다). 다른 무거운 작업들과 같은 패턴(RULES.md R6)으로 백그라운드
+    스레드에 맡기고 요청은 즉시 202로 응답한다."""
     import paper_trading
 
     secret = os.environ.get("CRON_SECRET")
     if not secret or not hmac.compare_digest(request.headers.get("X-Cron-Secret", ""), secret):
         return jsonify({"error": "인증 실패"}), 403
 
-    with app.app_context():
-        try:
-            paper_trading.run_all_accounts()
-            paper_trading.send_trade_alerts()
-        except Exception:
-            app.logger.exception("크론 트리거 배치 처리 오류")
-            db.session.rollback()
-            return jsonify({"error": "처리 중 오류가 발생했습니다"}), 500
-    return jsonify({"ok": True})
+    def _run():
+        with app.app_context():
+            try:
+                paper_trading.run_all_accounts()
+                paper_trading.send_trade_alerts()
+            except Exception:
+                app.logger.exception("크론 트리거 배치 처리 오류")
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "started": True}), 202
 
 
 # JSON API는 CSRF 토큰 대신 로그인 세션 + JSON Content-Type(교차 출처 요청 시
