@@ -1,0 +1,29 @@
+# keep-warm.yml(10분 간격 핑)만으로는 14:30 정시 배치를 완전히 보장 못 한다 -
+# GitHub Actions 스케줄 자체가 "정시 실행"을 보장하지 않아(공지된 한계, 부하가
+# 몰리면 수 분~십수 분 밀릴 수 있음) 핑이 어쩌다 한 번 밀리면 그 틈에 Render가
+# 잠들 수 있고, app.py의 paper_trading_scheduler 스레드는 그 순간 컨테이너가
+# 살아있어야만 동작하는 구조라 그날 배치가 통째로 스킵된다(2026-09-09 와쳐 메일
+# 누락 사고).
+#
+# 근본 해결: "컨테이너가 그 순간 깨어있길 바라는" 대신, 이 워크플로우가 직접
+# app.py의 /api/cron/run-daily-batch를 호출해 배치를 그 자리에서 돌린다 - 호출
+# 자체가 Render를 깨우므로 콜드슬립 여부와 무관하다. 배치 함수는 last_processed_date
+# (확정 종가 기준) 가드로 하루 여러 번 불려도 중복 처리하지 않으므로, 아래처럼
+# 10분 간격으로 몇 차례 재시도해도 안전하다(한 번은 성공해야 하니 여러 정시
+# 언저리에 흩어 건다).
+name: Trigger Watcher daily batch
+
+on:
+  schedule:
+    - cron: "30,40,50 5 * * 1-5"  # 05:30/05:40/05:50 UTC = 한국시간 14:30/14:40/14:50, 평일만
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 배치 트리거 호출 (콜드스타트 감안해 넉넉히 대기)
+        run: |
+          curl -sS --max-time 150 -o /dev/null -w "HTTP %{http_code} (%{time_total}s)\n" \
+            -X POST -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}" \
+            https://stock-tracker-5gy3.onrender.com/api/cron/run-daily-batch

@@ -1,3 +1,4 @@
+import hmac
 import json
 import os
 import re
@@ -1956,6 +1957,43 @@ def force_trend_screen_refresh():
     return jsonify({"ok": True, "markets": markets})
 
 
+@app.route("/api/cron/run-daily-batch", methods=["POST"])
+@limiter.limit("20 per hour")
+def cron_run_daily_batch():
+    """렌더 무료 웹서비스는 15분간 요청이 없으면 컨테이너가 멈춘다(콜드슬립).
+    paper_trading_scheduler 스레드는 그 안에서 "매일 14:30까지 sleep"하는
+    방식이라, keep-warm 핑(10분 간격)이 어쩌다 한 번 밀리기만 해도(GitHub
+    Actions 스케줄 자체가 정시 실행을 보장하지 않는다 - 공지된 한계) 14:30을
+    끼고 컨테이너가 잠들면 그날 배치가 통째로 스킵되고 다음날로 넘어가 버린다
+    (실제로 이렇게 와쳐 메일이 안 온 적이 있었다 - keep-warm 도입 배경).
+
+    근본 해결은 "컨테이너가 그 순간 깨어있길 바라는" 방식 자체를 버리고,
+    외부(GitHub Actions cron)가 이 엔드포인트를 직접 호출해 배치를 그 자리에서
+    돌리는 것이다 - 호출 자체가 Render를 깨우므로 콜드슬립 여부와 무관하다.
+    run_all_accounts/send_trade_alerts는 이미 last_processed_date(확정 종가
+    기준) 가드로 하루 안에 여러 번 불려도 중복 처리하지 않으므로, GitHub
+    Actions에서 14:30 전후로 몇 분 간격 재시도를 걸어도 안전하다(스케줄러
+    스레드는 이중 안전망으로 그대로 둔다 - 로컬 개발 등 크론이 없는 환경 대비).
+
+    로그인 세션이 없는 외부 크론이라 관리자 쿠키 대신 CRON_SECRET 공유 비밀을
+    쓴다(RULES.md R10 - Render 환경변수로만 관리, 코드에 하드코딩 금지)."""
+    import paper_trading
+
+    secret = os.environ.get("CRON_SECRET")
+    if not secret or not hmac.compare_digest(request.headers.get("X-Cron-Secret", ""), secret):
+        return jsonify({"error": "인증 실패"}), 403
+
+    with app.app_context():
+        try:
+            paper_trading.run_all_accounts()
+            paper_trading.send_trade_alerts()
+        except Exception:
+            app.logger.exception("크론 트리거 배치 처리 오류")
+            db.session.rollback()
+            return jsonify({"error": "처리 중 오류가 발생했습니다"}), 500
+    return jsonify({"ok": True})
+
+
 # JSON API는 CSRF 토큰 대신 로그인 세션 + JSON Content-Type(교차 출처 요청 시
 # 브라우저 프리플라이트로 차단됨) 조합으로 보호하므로 폼 기반 CSRF 검사에서 제외합니다.
 for _view in (
@@ -1971,7 +2009,7 @@ for _view in (
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
-    admin_set_trade_alert_email, admin_test_trade_alert_email,
+    admin_set_trade_alert_email, admin_test_trade_alert_email, cron_run_daily_batch,
 ):
     csrf.exempt(_view)
 
