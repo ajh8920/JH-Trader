@@ -222,12 +222,12 @@ def get_watchlist(account, limit=15):
                 .filter(TrendScreenCache.market_cap >= min_market_cap)
         rows = query.order_by(TrendScreenCache.rs_rating.desc()).limit((limit + len(held_codes)) * 3).all()
         rows = [r for r in rows if not vcp.is_preferred_stock(r.name)]
-    elif account.strategy == "watcher":
+    elif account.strategy in ("watcher", "watcher_v21"):
         # 조회 전용 근사치 - RS·시총·유동성만으로 좁힌다(지인 2단계 조건 전체와
         # 눌림목 확인은 실제 매매 판정(run_watcher_daily_step)에서만 정확히
         # 계산한다 - 캐시된 스냅샷 필드만으로는 52주 수익률/200일선이격도까지
         # 재현할 수 없어 "다음 매수 후보"를 보여주는 이 목적에는 근사로 충분하다).
-        params = vcp.WATCHER_PARAMS
+        params = vcp.WATCHER_V21_PARAMS if account.strategy == "watcher_v21" else vcp.WATCHER_PARAMS
         min_rs = (params.get("evan_params") or {}).get("min_rs", 70.0)
         query = (
             TrendScreenCache.query.filter_by(market=params["market"])
@@ -270,7 +270,7 @@ def run_daily_step(account):
     리프레셔가 중복 처리하지 않도록)."""
     if account.strategy in ("anonymous", "sweeper"):
         return run_anonymous_daily_step(account)
-    if account.strategy == "watcher":
+    if account.strategy in ("watcher", "watcher_v21"):
         return run_watcher_daily_step(account)
 
     preset = STRATEGY_PRESETS.get(account.strategy)
@@ -792,10 +792,12 @@ WATCHER_CANDIDATE_LOOKBACK_DAYS = ANON_HELD_LOOKBACK_DAYS  # evan_stage2 판정�
 
 
 def run_watcher_daily_step(account):
-    """"와쳐" 계좌를 최신 거래일까지 진행시킨다. run_daily_step/
+    """"와쳐"/"와쳐 2.1" 계좌를 최신 거래일까지 진행시킨다. run_daily_step/
     run_anonymous_daily_step과 같은 "이미 처리된 상태면 조용히 반환" 규칙을
-    따른다."""
-    params = vcp.WATCHER_PARAMS
+    따른다. 두 전략은 재평가 간격(3일)과 후보 선별 골격은 같고, 진입 필터
+    세부값(눌림목 지속일·손절폭·시간손절·MA이탈 완화·EPS성장 요구)만 다르다
+    (vcp_strategy.WATCHER_V21_PARAMS 정의부 주석 참고)."""
+    params = vcp.WATCHER_V21_PARAMS if account.strategy == "watcher_v21" else vcp.WATCHER_PARAMS
     held_positions = list(account.positions)
     held_codes = [p.code for p in held_positions]
 
@@ -1007,6 +1009,11 @@ def run_watcher_daily_step(account):
             from models import KrFundamental
             fundamentals_rows_by_code = vcp.load_fundamentals_rows(KrFundamental)
             evan_params = params.get("evan_params") or {}
+            quarterly_rows_by_code = {}
+            if params.get("min_eps_growth_pct") is not None or params.get("require_eps_acceleration"):
+                from data_pipeline.common import FUND_KR_DIR
+                quarterly_rows_by_code = vcp.load_quarterly_rows(
+                    sorted((FUND_KR_DIR.parent / "kr_quarter").glob("*.parquet")))
             for row in candidate_rows:
                 if open_slots <= 0:
                     break
@@ -1028,9 +1035,20 @@ def run_watcher_daily_step(account):
                 pb = vcp.detect_pullback(
                     highs, lows, closes, j, lookback=params["pullback_lookback"],
                     min_pullback_pct=params["min_pullback_pct"], max_pullback_pct=params["max_pullback_pct"],
-                    ma_period=params["pullback_ma_period"])
+                    ma_period=params["pullback_ma_period"],
+                    min_persist_days=params.get("pullback_min_persist_days", 0))
                 if not pb:
                     continue
+                # 분기 EPS 성장/가속(와쳐 2.1 신규, vcp_strategy.eps_growth_ok 참고) -
+                # min_eps_growth_pct/require_eps_acceleration 둘 다 없으면(와쳐 v1)
+                # quarterly_rows_by_code가 비어 있어도 eps_growth_ok가 무조건 True를
+                # 돌려주므로(데이터 없으면 필터 미적용 원칙) 기존 동작 그대로다.
+                if params.get("min_eps_growth_pct") is not None or params.get("require_eps_acceleration"):
+                    if not vcp.eps_growth_ok(
+                            quarterly_rows_by_code.get(row.code, {}), latest_date,
+                            min_growth_pct=params.get("min_eps_growth_pct"),
+                            require_acceleration=params.get("require_eps_acceleration", False)):
+                        continue
                 atr20 = vcp._atr(highs, lows, closes, j)
                 price = closes[j]
                 if not atr20 or atr20 <= 0 or not price or price <= 0:
@@ -1097,7 +1115,7 @@ _ALERT_EXIT_REASON_LABEL = {
     "partialProfit": "분할익절", "periodEnd": "기간종료",
 }
 STRATEGY_LABEL_KO = {
-    "sweeper": "스위퍼", "anonymous": "어나니머스", "watcher": "와쳐",
+    "sweeper": "스위퍼", "anonymous": "어나니머스", "watcher": "와쳐", "watcher_v21": "와쳐 2.1",
     "minervini_v2": "미너비니 v2", "minervini_v21": "미너비니 v2.1",
 }
 

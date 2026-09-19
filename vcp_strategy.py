@@ -348,6 +348,40 @@ WATCHER_PARAMS = {
 }
 
 
+# "와쳐 2.1(Watcher v2.1)" - 승률(목표 31.57%)을 올려달라는 요청에 51~57차
+# (7라운드, 94개 변형)로 답한 결과. 재평가 간격은 와쳐(v1)와 동일하게 3일로
+# 유지하되(1일로 바꾸면 39~50차에서 확인했듯 오히려 전부 나빠진다), 아래 네
+# 레버가 "승률과 CAGR을 동시에" 끌어올리는 조합으로 확정됐다(트레이드오프가
+# 아니라 순수 개선 - 51~54차에서 시도한 다른 축들은 전부 승률을 올리려면
+# CAGR을 깎아야 하는 트레이드오프였다):
+#  1) 눌림목 지속일(pullback_min_persist_days=5, 48차 신규) - 눌림 구간이
+#     최소 5거래일은 연속으로 유지돼야 진입 인정. 하루짜리 노이즈성 눌림목을
+#     걸러 초기손절 비중을 줄인다.
+#  2) 손절폭 확대(max_initial_risk_pct 3.5%->5.0%, 52차 XF) - 지속일 조건과
+#     함께일 때만 승률에 도움이 된다(지속일 없이 단독으로는 안 됨, 51차 확인).
+#  3) 시간손절 완화(time_stop_progress_r 0.5R->0.25R, 55차 AC) - "느리지만
+#     손실은 아닌" 거래를 조기에 강제청산해 승률을 깎고 있던 걸 확인, 완화.
+#  4) MA이탈 완화(ma_break_consec_days 2일->4일, 55차 AE) - 짧은 조정에
+#     성급히 청산되는 것을 줄인다.
+#  5) 분기 EPS성장 20%↑ 요구(min_eps_growth_pct=20.0, 55차 AJ) - 연간
+#     매출성장(기존 min_revenue_growth)과 다른, 더 최근 실적 모멘텀 축.
+# 실측(2016-01-01~2026-09-19, 10.7년): CAGR 27.43%(목표의 54%), MDD -26.36%
+# (목표 -44.45%보다 안전), 승률 28.2%(목표의 89%), 손익비 4.48, 연 59.6건.
+# 공시 촉매 요구(require_catalyst)는 시도했으나(55차 AG/AH) 후보가 너무 줄어
+# CAGR이 붕괴해(1~5%) 기각했다. 지속일수(3/4/6/7일)·새고점마진·RS90 등
+# 추가 레버는 56~57차에서 전부 이 조합보다 나빴다(28% 부근이 현재 구조의
+# 수렴점으로 보인다). 사용자 요청으로 기존 와쳐(v1, 재평가 3일 유지 결정 -
+# rescan_interval_days=3)는 그대로 두고 이 조합을 별도 전략("와쳐 2.1")으로
+# 분리했다 - v1은 CAGR·총수익·MDD가 목표에 근접하고, v2.1은 승률·MDD가 더
+# 목표에 가깝다. 무엇이 "더 나은지"는 승률과 CAGR 중 무엇을 우선하느냐에
+# 달려 있어 사용자가 고를 수 있게 둘 다 남긴다.
+WATCHER_V21_PARAMS = {**WATCHER_PARAMS,
+    "pullback_min_persist_days": 5, "max_initial_risk_pct": 5.0,
+    "time_stop_progress_r": 0.25, "ma_break_consec_days": 4,
+    "min_eps_growth_pct": 20.0,
+}
+
+
 def _true_range(highs, lows, closes, k):
     prev_close = closes[k - 1] if k > 0 else closes[k]
     return max(highs[k] - lows[k], abs(highs[k] - prev_close), abs(lows[k] - prev_close))
@@ -522,7 +556,8 @@ def detect_donchian_breakout(highs, closes, i, period=20):
 
 
 def detect_pullback(highs, lows, closes, i, lookback=20, min_pullback_pct=3.0,
-                    max_pullback_pct=15.0, ma_period=50):
+                    max_pullback_pct=15.0, ma_period=50, min_uptick_pct=0.0,
+                    min_persist_days=0, volumes=None, max_pullback_vol_ratio=None):
     """상승 추세 종목이 고점에서 눌린 뒤 되돌아서는 지점을 잡는다.
 
     지금까지 쓴 진입 신호(돈치안 돌파·VCP)는 전부 "신고가를 뚫는 순간"을 노리는데,
@@ -549,8 +584,56 @@ def detect_pullback(highs, lows, closes, i, lookback=20, min_pullback_pct=3.0,
     ma = _sma(closes, ma_period, i)
     if ma is None or closes[i] <= ma:
         return None
-    if closes[i] <= closes[i - 1]:
+    # 반등폭 하한(min_uptick_pct, 기본 0=기존과 동일) - "어제보다 조금이라도
+    # 높으면 반등"은 재평가가 매일 도는 상황에서 하루짜리 노이즈까지 전부
+    # 신호로 잡는다(39차 - 재평가 1일 실측에서 확인된 문제). 최소 상승폭을
+    # 요구해 진짜 방향 전환과 미세한 흔들림을 구분한다.
+    if closes[i - 1] <= 0 or (closes[i] / closes[i - 1] - 1) * 100 < min_uptick_pct:
         return None
+    # 눌림목 지속일(48차 신규) - 매일 재계산이 "직전 하루짜리 흔들림"까지 전부
+    # 신호로 잡는 문제(39차부터 계속 확인됨)의 근본 원인 가설: 조건 자체가
+    # 하루이틀 만에 생겼다 사라지는 게 아니라 며칠은 눌림목 구간에 머물러야
+    # "진짜 베이스"라고 본다. min_persist_days>0이면 오늘 이전 최소 그만큼의
+    # 거래일도 (반등 조건은 빼고) 같은 눌림폭·이평선 상단 조건을 만족했는지
+    # 되짚어 확인한다 - 하루 노이즈로 생겼다 사라지는 눌림목을 제외한다.
+    if min_persist_days > 0:
+        for back in range(1, min_persist_days + 1):
+            j = i - back
+            if j < 0:
+                return None
+            rh = max(highs[max(0, j - lookback):j + 1])
+            if rh <= 0:
+                return None
+            pb = (rh - closes[j]) / rh * 100
+            if not (min_pullback_pct <= pb <= max_pullback_pct):
+                return None
+            ma_j = _sma(closes, ma_period, j)
+            if ma_j is None or closes[j] <= ma_j:
+                return None
+    # 거래량 마름(54차 신규) - "룰로 못 잡는 재량 판단" 영역을 분석해달라는
+    # 요청에 대한 답으로, 지금까지 한 번도 눌림목 판정에 거래량을 안 썼다는
+    # 걸 발견했다(가격만 봤다). VCP/오닐 식 해석: 눌린 기간의 거래량이 그
+    # 직전 상승 구간보다 줄어들면 "차익실현/자연스러운 숨고르기"(진짜 매수
+    # 기회)이고, 오히려 늘면 "분산/이탈"(피해야 할 하락)이라는 재량적 판단을
+    # 수치로 근사한 것 - 실제 트레이더가 차트를 보고 "이 눌림은 괜찮다"고
+    # 판단할 때 쓰는 단서 중 하나다. max_pullback_vol_ratio가 주어지면 고점
+    # 형성일부터 오늘까지(눌림 구간) 평균 거래량이, 그 직전 lookback일
+    # (상승 구간) 평균 거래량 대비 이 비율 이하일 때만 통과시킨다.
+    if volumes is not None and max_pullback_vol_ratio is not None:
+        sub_start = max(0, i - lookback)
+        sub_highs = highs[sub_start:i + 1]
+        peak_idx = sub_start + sub_highs.index(recent_high)
+        pullback_vols = [v for v in volumes[peak_idx:i + 1] if v is not None]
+        prior_start = max(0, peak_idx - lookback)
+        prior_vols = [v for v in volumes[prior_start:peak_idx] if v is not None]
+        if not pullback_vols or not prior_vols:
+            return None
+        prior_avg = sum(prior_vols) / len(prior_vols)
+        if prior_avg <= 0:
+            return None
+        pullback_avg = sum(pullback_vols) / len(pullback_vols)
+        if pullback_avg / prior_avg > max_pullback_vol_ratio:
+            return None
     return {"pivot": recent_high, "pullbackPct": round(pullback_pct, 2)}
 
 
@@ -1202,7 +1285,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       max_position_weight_pct=MAX_POSITION_WEIGHT_PCT,
                       dividend_dates_by_code=None, dividend_gap_threshold_pct=-6.0,
                       dividend_gap_max_pct=-20.0, dividend_gap_lookback_days=30,
-                      stop_cooldown_days=None, min_ret12m_percentile=None):
+                      stop_cooldown_days=None, min_ret12m_percentile=None,
+                      pullback_min_uptick_pct=0.0, pullback_min_persist_days=0,
+                      max_pullback_vol_ratio=None,
+                      require_new_pivot=False, new_pivot_margin_pct=0.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -1340,6 +1426,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     # 영향 없음 - round32의 max_ma200_gap_pct/round33의
     # pullback_min_volume_mult와 같은 처리).
     stopped_recently = {}
+    # require_new_pivot용 - {종목코드: 마지막 진입 때의 피벗(직전 고점)가}.
+    # stopped_recently와 같은 자리에서 함께 초기화(둘 다 "종목별 진입 이력"
+    # 추적용 - 백테스트 전체 기간에 걸쳐 한 번만 만든다).
+    last_entry_pivot = {}
     excluded_preferred = excluded_cap = excluded_liquidity = excluded_shareholder = excluded_unprofitable = 0
     excluded_low_quality = excluded_no_catalyst = excluded_eps_growth = 0
     excluded_volatility = excluded_evan = excluded_fin_quality = 0
@@ -1813,7 +1903,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         pb = detect_pullback(highs, lows, closes, i, lookback=pullback_lookback,
                                              min_pullback_pct=min_pullback_pct,
                                              max_pullback_pct=max_pullback_pct,
-                                             ma_period=pullback_ma_period)
+                                             ma_period=pullback_ma_period,
+                                             min_uptick_pct=pullback_min_uptick_pct,
+                                             min_persist_days=pullback_min_persist_days,
+                                             volumes=volumes, max_pullback_vol_ratio=max_pullback_vol_ratio)
                         if not pb:
                             continue
                         pivot = pb["pivot"]
@@ -1864,7 +1957,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             if not detect_pullback(highs, lows, closes, j, lookback=pullback_lookback,
                                                    min_pullback_pct=min_pullback_pct,
                                                    max_pullback_pct=max_pullback_pct,
-                                                   ma_period=pullback_ma_period):
+                                                   ma_period=pullback_ma_period,
+                                                   min_uptick_pct=pullback_min_uptick_pct,
+                                                   min_persist_days=pullback_min_persist_days,
+                                                   volumes=volumes, max_pullback_vol_ratio=max_pullback_vol_ratio):
                                 continue
                             # 되돌림 재개일 거래량 확인(선택) - SEPA/오닐 식 "발자국"
                             # 논리: 눌림 구간 자체는 거래량이 줄어드는 게 정상이지만,
@@ -1888,6 +1984,15 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             break
                     if fill_date is None:
                         continue
+                    # 새 고점 요구(require_new_pivot, 39~40차 신규) - 재평가1일에서
+                    # 확인된 문제(같은 종목이 거의 같은 자리에서 반복 진입->손절)를
+                    # 시간(냉각기간) 대신 가격 기준으로 직접 겨냥한다. 직전에 이
+                    # 종목을 샀던 피벗(고점)보다 이번 피벗이 더 높아야만 재진입을
+                    # 허용한다 - "진짜 새 상승" vs "같은 구간에서의 흔들림"을 구분.
+                    if require_new_pivot:
+                        prev_pivot = last_entry_pivot.get(e["code"])
+                        if prev_pivot is not None and pivot <= prev_pivot * (1 + new_pivot_margin_pct / 100):
+                            continue
                     atr20 = _atr(highs, lows, closes, fj)
                     if not atr20 or atr20 <= 0:
                         continue
@@ -1950,6 +2055,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     if cost > cash:
                         continue
                     cash -= cost
+                    if require_new_pivot:
+                        last_entry_pivot[e["code"]] = pivot
                     positions[ticker] = {
                         "code": e["code"], "name": e["name"], "entryDate": fill_date, "entryIdx": fj,
                         "shares": shares, "initialShares": shares, "totalCost": cost,

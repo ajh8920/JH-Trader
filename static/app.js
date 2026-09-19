@@ -540,6 +540,17 @@ const I18N = {
       + '눌림목(고점 대비 3~15% 눌림, 20일선 위) — 모의투자 "와쳐" 전략(지인이 실제 쓰는 스크리너를 복제)이 '
       + '신규 진입에 실제로 쓰는 조건과 동일합니다.',
   },
+  stratWatcherV21Title: { en: 'Watcher 2.1', ko: '와쳐 2.1' },
+  stratWatcherV21Note: {
+    en: 'Same entry conditions as "Watcher", plus: pullback must hold for 5+ consecutive trading days, wider '
+      + 'initial stop (5% vs 3.5%), and quarterly EPS growth ≥20%. A win-rate-focused variant kept separate '
+      + 'from "Watcher" (v1) — v1 tracks the friend\'s CAGR/return more closely, v2.1 tracks the win rate more '
+      + 'closely (28.2% vs 22.6%, at roughly half the CAGR).',
+    ko: '"와쳐"와 진입 조건은 같고, 추가로: 눌림목이 5거래일 이상 연속 유지돼야 진입 인정, 손절폭 확대(3.5%→5%), '
+      + '분기 EPS성장률 20% 이상 요구. "와쳐"(v1)는 그대로 두고 승률에 더 집중한 조합을 별도 전략으로 분리한 '
+      + '것입니다 — v1은 CAGR·총수익이 목표에 더 가깝고, v2.1은 승률(28.2% vs 22.6%, 대신 CAGR은 절반 수준)이 '
+      + '더 목표에 가깝습니다.',
+  },
   ptGroupMinerviniTitle: { en: 'Minervini', ko: '미너비니' },
   exitInitialStop: { en: 'Stop-loss (2×ATR)', ko: '초기 손절(2×ATR)' },
   exitBreakevenStop: { en: 'Breakeven stop', ko: '본전 손절' },
@@ -4422,6 +4433,10 @@ const PAPER_STRATEGY_LIST = [
   // vcp_strategy.WATCHER_PARAMS.default_seed(5천만원)와 동일 - 슬롯당 동일금액
   // 배분(equal_weight)이 이 시드를 전제로 검증됐다.
   { key: 'watcher', titleKey: 'stratWatcherTitle', emoji: '🔭', defaultSeed: 50_000_000, group: 'watcher' },
+  // 와쳐(v1)와 같은 그룹(minervini_v2/v21처럼 그룹 탭 하나에 둘을 같이 보여준다) -
+  // 재평가 간격(3일)·시드는 v1과 동일하고 승률 개선 레버만 다르다(vcp_strategy.
+  // WATCHER_V21_PARAMS 정의부 주석 참고).
+  { key: 'watcher_v21', titleKey: 'stratWatcherV21Title', emoji: '🔭', defaultSeed: 50_000_000, group: 'watcher' },
 ];
 
 const PAPER_TRADING_GROUPS = [
