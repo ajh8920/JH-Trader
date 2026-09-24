@@ -222,12 +222,13 @@ def get_watchlist(account, limit=15):
                 .filter(TrendScreenCache.market_cap >= min_market_cap)
         rows = query.order_by(TrendScreenCache.rs_rating.desc()).limit((limit + len(held_codes)) * 3).all()
         rows = [r for r in rows if not vcp.is_preferred_stock(r.name)]
-    elif account.strategy in ("watcher", "watcher_v21"):
+    elif account.strategy in ("watcher", "watcher_v21", "apex"):
         # 조회 전용 근사치 - RS·시총·유동성만으로 좁힌다(지인 2단계 조건 전체와
         # 눌림목 확인은 실제 매매 판정(run_watcher_daily_step)에서만 정확히
         # 계산한다 - 캐시된 스냅샷 필드만으로는 52주 수익률/200일선이격도까지
         # 재현할 수 없어 "다음 매수 후보"를 보여주는 이 목적에는 근사로 충분하다).
-        params = vcp.WATCHER_V21_PARAMS if account.strategy == "watcher_v21" else vcp.WATCHER_PARAMS
+        params = {"watcher_v21": vcp.WATCHER_V21_PARAMS, "apex": vcp.APEX_PARAMS}.get(
+            account.strategy, vcp.WATCHER_PARAMS)
         min_rs = (params.get("evan_params") or {}).get("min_rs", 70.0)
         query = (
             TrendScreenCache.query.filter_by(market=params["market"])
@@ -270,7 +271,7 @@ def run_daily_step(account):
     리프레셔가 중복 처리하지 않도록)."""
     if account.strategy in ("anonymous", "sweeper"):
         return run_anonymous_daily_step(account)
-    if account.strategy in ("watcher", "watcher_v21"):
+    if account.strategy in ("watcher", "watcher_v21", "apex"):
         return run_watcher_daily_step(account)
 
     preset = STRATEGY_PRESETS.get(account.strategy)
@@ -792,12 +793,21 @@ WATCHER_CANDIDATE_LOOKBACK_DAYS = ANON_HELD_LOOKBACK_DAYS  # evan_stage2 판정�
 
 
 def run_watcher_daily_step(account):
-    """"와쳐"/"와쳐 2.1" 계좌를 최신 거래일까지 진행시킨다. run_daily_step/
+    """"와쳐"/"와쳐 2.1"/"APEX" 계좌를 최신 거래일까지 진행시킨다. run_daily_step/
     run_anonymous_daily_step과 같은 "이미 처리된 상태면 조용히 반환" 규칙을
-    따른다. 두 전략은 재평가 간격(3일)과 후보 선별 골격은 같고, 진입 필터
-    세부값(눌림목 지속일·손절폭·시간손절·MA이탈 완화·EPS성장 요구)만 다르다
-    (vcp_strategy.WATCHER_V21_PARAMS 정의부 주석 참고)."""
-    params = vcp.WATCHER_V21_PARAMS if account.strategy == "watcher_v21" else vcp.WATCHER_PARAMS
+    따른다. 셋 다 후보 선별 골격(지인 2단계 조건+눌림목)은 같고, 진입 필터
+    세부값과 재평가 간격이 다르다(vcp_strategy.WATCHER_V21_PARAMS/APEX_PARAMS
+    정의부 주석 참고). APEX만 14:30 실시간가 합성을 안 한다 - "매일 종가로
+    재계산"이 필수조건이라 추정치가 아닌 확정 종가를 써야 하기 때문이다
+    (use_realtime=False면 그날 데이터가 아직 안 올라온 날은 latest_date가
+    전날에 머물러 자동으로 "확정 종가 나올 때까지 대기"가 된다)."""
+    if account.strategy == "apex":
+        params = vcp.APEX_PARAMS
+    elif account.strategy == "watcher_v21":
+        params = vcp.WATCHER_V21_PARAMS
+    else:
+        params = vcp.WATCHER_PARAMS
+    use_realtime = account.strategy != "apex"
     held_positions = list(account.positions)
     held_codes = [p.code for p in held_positions]
 
@@ -832,11 +842,14 @@ def run_watcher_daily_step(account):
 
     # 14:30 실시간가 합성 - run_anonymous_daily_step과 동일한 이유(장마감 전에
     # 오늘 신호를 알아야 실전 계좌에서 같은 매매를 그대로 따라 할 수 있다).
-    today_str = datetime.today().strftime("%Y-%m-%d")
-    realtime_codes = list(dict.fromkeys(held_codes + candidate_codes))
-    realtime_prices = fetch_realtime_prices(realtime_codes, params["market"])
-    _append_realtime_bar(held_bars, {c: p for c, p in realtime_prices.items() if c in held_codes}, today_str)
-    _append_realtime_bar(candidate_bars, {c: p for c, p in realtime_prices.items() if c in candidate_codes}, today_str)
+    # APEX는 하지 않는다(use_realtime=False) - "종가로 재계산"이 필수조건이라
+    # 확정 전 가격을 오늘 종가처럼 취급하면 안 된다.
+    if use_realtime:
+        today_str = datetime.today().strftime("%Y-%m-%d")
+        realtime_codes = list(dict.fromkeys(held_codes + candidate_codes))
+        realtime_prices = fetch_realtime_prices(realtime_codes, params["market"])
+        _append_realtime_bar(held_bars, {c: p for c, p in realtime_prices.items() if c in held_codes}, today_str)
+        _append_realtime_bar(candidate_bars, {c: p for c, p in realtime_prices.items() if c in candidate_codes}, today_str)
 
     latest_date = max(
         [bars[-1]["date"] for bars in held_bars.values() if bars]
@@ -1116,7 +1129,7 @@ _ALERT_EXIT_REASON_LABEL = {
 }
 STRATEGY_LABEL_KO = {
     "sweeper": "스위퍼", "anonymous": "어나니머스", "watcher": "와쳐", "watcher_v21": "와쳐 2.1",
-    "minervini_v2": "미너비니 v2", "minervini_v21": "미너비니 v2.1",
+    "minervini_v2": "미너비니 v2", "minervini_v21": "미너비니 v2.1", "apex": "APEX",
 }
 
 

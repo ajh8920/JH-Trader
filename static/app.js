@@ -540,6 +540,17 @@ const I18N = {
       + '눌림목(고점 대비 3~15% 눌림, 20일선 위) — 모의투자 "와쳐" 전략(지인이 실제 쓰는 스크리너를 복제)이 '
       + '신규 진입에 실제로 쓰는 조건과 동일합니다.',
   },
+  stratApexTitle: { en: 'APEX', ko: 'APEX' },
+  stratApexNote: {
+    en: 'Built from scratch, independent of "Watcher" — the only fixed rules are KR-only and daily '
+      + 'recalculation on the confirmed close (no same-day estimate). Concentrated in 4 slots with a tight '
+      + 'initial stop (so losers get cut fast) and a 3x-ATR trailing stop for winners — the exact entry/exit '
+      + 'logic used by the "APEX" paper-trading strategy.',
+    ko: '"와쳐" 계열과 무관하게 처음부터 새로 설계했습니다 — 고정 조건은 국내 종목, 매일 확정 종가로 재계산 '
+      + '(당일 추정가 안 씀) 둘뿐입니다. 4슬롯에 집중 배분하고, 손절선을 좁혀 패자를 빨리 끊어내며, 승자는 '
+      + 'ATR 3배 트레일링으로 따라갑니다 — 모의투자 "APEX" 전략이 신규 진입/청산에 실제로 쓰는 조건과 '
+      + '동일합니다.',
+  },
   stratWatcherV21Title: { en: 'Watcher 2.1', ko: '와쳐 2.1' },
   stratWatcherV21Note: {
     en: 'Same entry conditions as "Watcher", plus: pullback must hold for 5+ consecutive trading days, wider '
@@ -4437,6 +4448,9 @@ const PAPER_STRATEGY_LIST = [
   // 재평가 간격(3일)·시드는 v1과 동일하고 승률 개선 레버만 다르다(vcp_strategy.
   // WATCHER_V21_PARAMS 정의부 주석 참고).
   { key: 'watcher_v21', titleKey: 'stratWatcherV21Title', emoji: '🔭', defaultSeed: 50_000_000, group: 'watcher' },
+  // APEX - 와쳐 계열과 완전히 별도로 설계된 전략(재평가 1일=매일 종가 재계산,
+  // 4슬롯 집중 베팅). vcp_strategy.APEX_PARAMS.default_seed와 동일.
+  { key: 'apex', titleKey: 'stratApexTitle', emoji: '⚡', defaultSeed: 50_000_000, group: 'apex' },
 ];
 
 const PAPER_TRADING_GROUPS = [
@@ -4444,6 +4458,7 @@ const PAPER_TRADING_GROUPS = [
   { key: 'anonymous', icon: '🐢', titleKey: 'stratAnonymousTitle' },
   { key: 'minervini', icon: '🎯', titleKey: 'ptGroupMinerviniTitle' },
   { key: 'watcher', icon: '🔭', titleKey: 'stratWatcherTitle' },
+  { key: 'apex', icon: '⚡', titleKey: 'stratApexTitle' },
 ];
 
 let ptActiveGroup = PAPER_TRADING_GROUPS[0].key;
