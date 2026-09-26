@@ -1049,7 +1049,8 @@ def run_watcher_daily_step(account):
                     highs, lows, closes, j, lookback=params["pullback_lookback"],
                     min_pullback_pct=params["min_pullback_pct"], max_pullback_pct=params["max_pullback_pct"],
                     ma_period=params["pullback_ma_period"],
-                    min_persist_days=params.get("pullback_min_persist_days", 0))
+                    min_persist_days=params.get("pullback_min_persist_days", 0),
+                    min_uptick_pct=params.get("pullback_min_uptick_pct", 0.0))
                 if not pb:
                     continue
                 # 분기 EPS 성장/가속(와쳐 2.1 신규, vcp_strategy.eps_growth_ok 참고) -
