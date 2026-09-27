@@ -1027,6 +1027,11 @@ def run_watcher_daily_step(account):
                 from data_pipeline.common import FUND_KR_DIR
                 quarterly_rows_by_code = vcp.load_quarterly_rows(
                     sorted((FUND_KR_DIR.parent / "kr_quarter").glob("*.parquet")))
+            catalyst_dates_by_code = {}
+            if params.get("require_catalyst"):
+                from data_pipeline.common import FUND_KR_DIR
+                catalyst_dates_by_code = vcp.load_catalyst_dates(
+                    sorted((FUND_KR_DIR.parent / "disclosures_kr").glob("*.parquet")))
             for row in candidate_rows:
                 if open_slots <= 0:
                     break
@@ -1045,6 +1050,14 @@ def run_watcher_daily_step(account):
                         fundamentals_rows_by_code.get(row.code, []), latest_date,
                         min_revenue_growth=params.get("min_revenue_growth")):
                     continue
+                # 공시 촉매(APEX 신규, vcp_strategy.has_recent_catalyst 참고) -
+                # require_catalyst가 없으면(와쳐/와쳐2.1) catalyst_dates_by_code가
+                # 비어 있는 채로 이 블록 자체를 건너뛰어 기존 동작 그대로다.
+                if params.get("require_catalyst") and catalyst_dates_by_code:
+                    if not vcp.has_recent_catalyst(
+                            catalyst_dates_by_code.get(row.code, []), latest_date,
+                            params.get("catalyst_lookback_days", 60)):
+                        continue
                 pb = vcp.detect_pullback(
                     highs, lows, closes, j, lookback=params["pullback_lookback"],
                     min_pullback_pct=params["min_pullback_pct"], max_pullback_pct=params["max_pullback_pct"],
