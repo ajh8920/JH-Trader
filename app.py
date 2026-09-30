@@ -95,10 +95,16 @@ app.config["SECRET_KEY"] = _load_or_create_secret_key()
 # 개발 중엔 SQLite 파일을 사용하고, 운영 전환 시 DATABASE_URL 환경변수만 설정하면
 # (예: postgresql://user:pw@host/dbname) 코드 변경 없이 PostgreSQL로 옮길 수 있습니다.
 # Render 등 일부 호스팅은 예전 스킴인 postgres://로 URL을 주는데, SQLAlchemy 1.4+는
-# postgresql://만 인식하므로 여기서 보정한다.
+# postgresql://만 인식하므로 여기서 보정한다. 드라이버는 psycopg2로 명시 고정한다 -
+# requirements.txt엔 psycopg2-binary만 있는데, 드라이버를 안 밝히면 SQLAlchemy가
+# (버전에 따라) psycopg(3버전, 미설치)를 기본으로 먼저 시도해 배포가 깨진 적이
+# 있다(2026-09-24~09-30 프로덕션 배포 전체가 이 이유로 실패했었음 - ModuleNotFound
+# Error: psycopg).
 _database_url = os.environ.get("DATABASE_URL", f"sqlite:///{DATA_DIR / 'app.db'}")
 if _database_url.startswith("postgres://"):
     _database_url = _database_url.replace("postgres://", "postgresql://", 1)
+if _database_url.startswith("postgresql://"):
+    _database_url = _database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = _database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # 커넥션 풀에 남아있던 죽은 연결(DB 재시작, idle timeout 등으로 끊긴 연결)을 쓰려다
