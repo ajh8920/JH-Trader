@@ -523,8 +523,14 @@ APEX_V2_PARAMS.pop("catalyst_lookback_days", None)
 # 실측(2016-01-01~2026-09-24, 10.7년): CAGR 41.43%(목표의 82%), MDD
 # -39.01%, 승률 21.2%(67%, 가장 낮음), 손익비 8.31(89%, 비촉매 중 최고),
 # 연 44.9건(APEX 계열 중 최고), 평균보유 15.3일.
+#
+# 주의: 9차 당시 손절폭은 0.7배ATR/리스크2%였다(1.1배/2.8%는 12차에서
+# 나중에 찾은 개선값 - APEX_PARAMS가 그 이후로 이 값을 쓰고 있어, 그냥
+# 상속만 하면 9차와 다른 조합이 된다). 위 실측치를 그대로 재현하려면
+# 손절폭도 9차 당시 값으로 명시적으로 되돌려야 한다.
 APEX_V3_PARAMS = {**APEX_V2_PARAMS,
     "pullback_min_uptick_pct": 0.0,
+    "initial_stop_atr_mult": 0.7, "max_initial_risk_pct": 2.0,
 }
 
 
