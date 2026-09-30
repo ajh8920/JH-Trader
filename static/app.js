@@ -551,6 +551,23 @@ const I18N = {
       + 'ATR 3배 트레일링으로 따라갑니다 — 모의투자 "APEX" 전략이 신규 진입/청산에 실제로 쓰는 조건과 '
       + '동일합니다.',
   },
+  stratApexV2Title: { en: 'APEX 2', ko: 'APEX 2' },
+  stratApexV2Note: {
+    en: 'Same as "APEX", minus the disclosure-catalyst requirement — a catalyst requirement pushes win rate '
+      + 'past 30% but caps trades at ~10-11/year, so this variant trades the win-rate edge back for far more '
+      + 'CAGR and trade frequency (backtested win rate ~27%, below the 30% floor).',
+    ko: '"APEX"와 동일하되 공시 촉매 요구만 뺐습니다 — 촉매 조건이 승률을 30% 위로 올려주지만 거래를 연 '
+      + '10~11건으로 묶는다는 게 확인돼, 그 승률 이득을 CAGR·거래빈도로 맞바꾼 버전입니다(실측 승률은 '
+      + '약 27%로 30% 밑입니다).',
+  },
+  stratApexV3Title: { en: 'APEX 3', ko: 'APEX 3' },
+  stratApexV3Note: {
+    en: 'The original APEX combination before both the disclosure-catalyst requirement and the pullback '
+      + 'rebound-strength threshold were added — highest trade frequency of the APEX family, and the best '
+      + 'profit/loss ratio among the non-catalyst variants.',
+    ko: 'APEX 계열에서 공시 촉매와 반등폭 문턱을 추가하기 전, 가장 먼저 정착됐던 원조 조합입니다 — APEX '
+      + '계열 중 거래빈도가 가장 높고, 촉매 없는 조합 중 손익비가 가장 좋습니다.',
+  },
   stratWatcherV21Title: { en: 'Watcher 2.1', ko: '와쳐 2.1' },
   stratWatcherV21Note: {
     en: 'Same entry conditions as "Watcher", plus: pullback must hold for 5+ consecutive trading days, wider '
@@ -4451,6 +4468,12 @@ const PAPER_STRATEGY_LIST = [
   // APEX - 와쳐 계열과 완전히 별도로 설계된 전략(재평가 1일=매일 종가 재계산,
   // 4슬롯 집중 베팅). vcp_strategy.APEX_PARAMS.default_seed와 동일.
   { key: 'apex', titleKey: 'stratApexTitle', emoji: '⚡', defaultSeed: 50_000_000, group: 'apex' },
+  // APEX와 같은 그룹(APEX 계열 3종을 한 탭에서 같이 보여준다) - 공시 촉매 없이
+  // 반등폭1% 문턱만 쓴 버전(vcp_strategy.APEX_V2_PARAMS 정의부 주석 참고).
+  { key: 'apex_v2', titleKey: 'stratApexV2Title', emoji: '⚡', defaultSeed: 50_000_000, group: 'apex' },
+  // 공시 촉매·반등폭 문턱 둘 다 없는, APEX 계열의 원조 조합(vcp_strategy.
+  // APEX_V3_PARAMS 정의부 주석 참고) - 거래빈도가 APEX 계열 중 가장 높다.
+  { key: 'apex_v3', titleKey: 'stratApexV3Title', emoji: '⚡', defaultSeed: 50_000_000, group: 'apex' },
 ];
 
 const PAPER_TRADING_GROUPS = [

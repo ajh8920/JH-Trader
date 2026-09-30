@@ -222,13 +222,13 @@ def get_watchlist(account, limit=15):
                 .filter(TrendScreenCache.market_cap >= min_market_cap)
         rows = query.order_by(TrendScreenCache.rs_rating.desc()).limit((limit + len(held_codes)) * 3).all()
         rows = [r for r in rows if not vcp.is_preferred_stock(r.name)]
-    elif account.strategy in ("watcher", "watcher_v21", "apex"):
+    elif account.strategy in ("watcher", "watcher_v21", "apex", "apex_v2", "apex_v3"):
         # 조회 전용 근사치 - RS·시총·유동성만으로 좁힌다(지인 2단계 조건 전체와
         # 눌림목 확인은 실제 매매 판정(run_watcher_daily_step)에서만 정확히
         # 계산한다 - 캐시된 스냅샷 필드만으로는 52주 수익률/200일선이격도까지
         # 재현할 수 없어 "다음 매수 후보"를 보여주는 이 목적에는 근사로 충분하다).
-        params = {"watcher_v21": vcp.WATCHER_V21_PARAMS, "apex": vcp.APEX_PARAMS}.get(
-            account.strategy, vcp.WATCHER_PARAMS)
+        param_name = _WATCHER_FAMILY_PARAMS.get(account.strategy)
+        params = getattr(vcp, param_name) if param_name else vcp.WATCHER_PARAMS
         min_rs = (params.get("evan_params") or {}).get("min_rs", 70.0)
         query = (
             TrendScreenCache.query.filter_by(market=params["market"])
@@ -271,7 +271,7 @@ def run_daily_step(account):
     리프레셔가 중복 처리하지 않도록)."""
     if account.strategy in ("anonymous", "sweeper"):
         return run_anonymous_daily_step(account)
-    if account.strategy in ("watcher", "watcher_v21", "apex"):
+    if account.strategy in ("watcher", "watcher_v21", "apex", "apex_v2", "apex_v3"):
         return run_watcher_daily_step(account)
 
     preset = STRATEGY_PRESETS.get(account.strategy)
@@ -792,22 +792,27 @@ WATCHER_CANDIDATE_LOOKBACK_DAYS = ANON_HELD_LOOKBACK_DAYS  # evan_stage2 판정�
 # 부족하다 - 보유 종목과 같은 긴 구간을 받는다.
 
 
+_WATCHER_FAMILY_PARAMS = {
+    "watcher_v21": "WATCHER_V21_PARAMS",
+    "apex": "APEX_PARAMS",
+    "apex_v2": "APEX_V2_PARAMS",
+    "apex_v3": "APEX_V3_PARAMS",
+}
+_APEX_STRATEGIES = ("apex", "apex_v2", "apex_v3")  # 전부 "매일 종가로 재계산" 필수조건 공유
+
+
 def run_watcher_daily_step(account):
-    """"와쳐"/"와쳐 2.1"/"APEX" 계좌를 최신 거래일까지 진행시킨다. run_daily_step/
-    run_anonymous_daily_step과 같은 "이미 처리된 상태면 조용히 반환" 규칙을
-    따른다. 셋 다 후보 선별 골격(지인 2단계 조건+눌림목)은 같고, 진입 필터
-    세부값과 재평가 간격이 다르다(vcp_strategy.WATCHER_V21_PARAMS/APEX_PARAMS
-    정의부 주석 참고). APEX만 14:30 실시간가 합성을 안 한다 - "매일 종가로
-    재계산"이 필수조건이라 추정치가 아닌 확정 종가를 써야 하기 때문이다
-    (use_realtime=False면 그날 데이터가 아직 안 올라온 날은 latest_date가
-    전날에 머물러 자동으로 "확정 종가 나올 때까지 대기"가 된다)."""
-    if account.strategy == "apex":
-        params = vcp.APEX_PARAMS
-    elif account.strategy == "watcher_v21":
-        params = vcp.WATCHER_V21_PARAMS
-    else:
-        params = vcp.WATCHER_PARAMS
-    use_realtime = account.strategy != "apex"
+    """"와쳐"/"와쳐 2.1"/"APEX" 계열(APEX/APEX 2/APEX 3) 계좌를 최신 거래일까지
+    진행시킨다. run_daily_step/run_anonymous_daily_step과 같은 "이미 처리된
+    상태면 조용히 반환" 규칙을 따른다. 전부 후보 선별 골격(지인 2단계 조건+
+    눌림목)은 같고, 진입 필터 세부값과 재평가 간격이 다르다(vcp_strategy의
+    각 *_PARAMS 정의부 주석 참고). APEX 계열만 14:30 실시간가 합성을 안 한다
+    - "매일 종가로 재계산"이 필수조건이라 추정치가 아닌 확정 종가를 써야
+    하기 때문이다(use_realtime=False면 그날 데이터가 아직 안 올라온 날은
+    latest_date가 전날에 머물러 자동으로 "확정 종가 나올 때까지 대기"가 된다)."""
+    param_name = _WATCHER_FAMILY_PARAMS.get(account.strategy)
+    params = getattr(vcp, param_name) if param_name else vcp.WATCHER_PARAMS
+    use_realtime = account.strategy not in _APEX_STRATEGIES
     held_positions = list(account.positions)
     held_codes = [p.code for p in held_positions]
 
@@ -1143,7 +1148,8 @@ _ALERT_EXIT_REASON_LABEL = {
 }
 STRATEGY_LABEL_KO = {
     "sweeper": "스위퍼", "anonymous": "어나니머스", "watcher": "와쳐", "watcher_v21": "와쳐 2.1",
-    "minervini_v2": "미너비니 v2", "minervini_v21": "미너비니 v2.1", "apex": "APEX",
+    "minervini_v2": "미너비니 v2", "minervini_v21": "미너비니 v2.1",
+    "apex": "APEX", "apex_v2": "APEX 2", "apex_v3": "APEX 3",
 }
 
 

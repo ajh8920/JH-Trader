@@ -499,6 +499,35 @@ APEX_PARAMS = {**WATCHER_PARAMS,
 }
 
 
+# "APEX 2" - APEX_PARAMS와 골격은 같지만(4슬롯 집중, 재평가1일=종가만, 손절
+# ATR1.1배/리스크2.8%, 챈들리어3배) 공시 촉매(require_catalyst) 없이 반등폭
+# 1% 문턱만 쓴 15~18차 채택안. 공시 촉매가 승률30%대를 만들어주는 대신
+# 거래를 연10~11건으로 묶는다는 게 19~27차 결론이라, "승률보다 CAGR·거래
+# 빈도가 더 급하다"는 상황에서 쓸 별도 선택지로 분리했다(APEX 본체는
+# 승률30%대를 그대로 유지).
+# 실측(2016-01-01~2026-09-26, 10.7년): CAGR 43.45%(목표의 86%, APEX 계열
+# 중 최고), MDD -38.67%, 승률 26.9%(85%, 30% 미달), 손익비 6.78(73%),
+# 연 30.2건(APEX 본체의 약 3배), 평균보유 19.2일.
+APEX_V2_PARAMS = {**APEX_PARAMS,
+    "require_catalyst": False,
+}
+APEX_V2_PARAMS.pop("catalyst_lookback_days", None)
+
+
+# "APEX 3" - APEX 1~9차에서 반등폭 문턱(pullback_min_uptick_pct)과 공시
+# 촉매를 도입하기 전, "손절을 좁혀 패자를 빨리 끊고 챈들리어3배로 승자를
+# 태운다"는 핵심 아이디어가 처음 정착됐던 9차(YG) 조합 - 반등 신호는
+# "어제보다 조금이라도 오르면"(문턱 없음) 그대로 둔다. APEX 2보다 후보
+# 필터가 한 겹 더 느슨해 거래빈도가 가장 높고, 손익비는 APEX 계열 중
+# (촉매 없는 것 중) 가장 높다.
+# 실측(2016-01-01~2026-09-24, 10.7년): CAGR 41.43%(목표의 82%), MDD
+# -39.01%, 승률 21.2%(67%, 가장 낮음), 손익비 8.31(89%, 비촉매 중 최고),
+# 연 44.9건(APEX 계열 중 최고), 평균보유 15.3일.
+APEX_V3_PARAMS = {**APEX_V2_PARAMS,
+    "pullback_min_uptick_pct": 0.0,
+}
+
+
 def _true_range(highs, lows, closes, k):
     prev_close = closes[k - 1] if k > 0 else closes[k]
     return max(highs[k] - lows[k], abs(highs[k] - prev_close), abs(lows[k] - prev_close))

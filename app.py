@@ -1566,7 +1566,7 @@ def paper_trading_start():
 
     body = request.json or {}
     strategy = str(body.get("strategy", "minervini_v2"))
-    if strategy not in ("anonymous", "sweeper", "watcher", "watcher_v21", "apex") \
+    if strategy not in ("anonymous", "sweeper", "watcher", "watcher_v21", "apex", "apex_v2", "apex_v3") \
             and strategy not in pt.STRATEGY_PRESETS:
         return jsonify({"error": "알 수 없는 전략입니다"}), 400
     if strategy == "sweeper":
@@ -1582,11 +1582,12 @@ def paper_trading_start():
     if seed <= 0:
         return jsonify({"error": "시드는 0보다 커야 합니다"}), 400
 
-    if strategy in ("anonymous", "sweeper", "watcher", "watcher_v21", "apex"):
+    if strategy in ("anonymous", "sweeper", "watcher", "watcher_v21", "apex", "apex_v2", "apex_v3"):
         import vcp_strategy as vcp
         preset = {"anonymous": vcp.ANONYMOUS_PARAMS, "sweeper": vcp.SWEEPER_PARAMS,
                   "watcher": vcp.WATCHER_PARAMS, "watcher_v21": vcp.WATCHER_V21_PARAMS,
-                  "apex": vcp.APEX_PARAMS}[strategy]
+                  "apex": vcp.APEX_PARAMS, "apex_v2": vcp.APEX_V2_PARAMS,
+                  "apex_v3": vcp.APEX_V3_PARAMS}[strategy]
     else:
         preset = pt.STRATEGY_PRESETS[strategy]
     account = PaperStrategyAccount.query.filter_by(user_id=current_user.id, strategy=strategy).first()
@@ -1688,10 +1689,11 @@ def paper_trading_watchlist():
     if not account:
         return jsonify({"exists": False})
 
-    if strategy in ("anonymous", "sweeper", "watcher", "watcher_v21", "apex"):
+    if strategy in ("anonymous", "sweeper", "watcher", "watcher_v21", "apex", "apex_v2", "apex_v3"):
         preset = {"anonymous": vcp.ANONYMOUS_PARAMS, "sweeper": vcp.SWEEPER_PARAMS,
                   "watcher": vcp.WATCHER_PARAMS, "watcher_v21": vcp.WATCHER_V21_PARAMS,
-                  "apex": vcp.APEX_PARAMS}[strategy]
+                  "apex": vcp.APEX_PARAMS, "apex_v2": vcp.APEX_V2_PARAMS,
+                  "apex_v3": vcp.APEX_V3_PARAMS}[strategy]
         max_positions = preset["max_positions"]
     else:
         max_positions = pt.STRATEGY_PRESETS.get(strategy, {}).get("max_positions", 10)
