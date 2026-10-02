@@ -22,6 +22,7 @@ from flask_login import (
     logout_user,
 )
 from flask_wtf import CSRFProtect
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from backtest import run_infinite_buying
@@ -52,6 +53,14 @@ ENV_FILE = BASE_DIR / ".env"
 load_dotenv(ENV_FILE)
 
 app = Flask(__name__)
+# Render는 요청을 자체 프록시(앞단에 Cloudflare)를 거쳐 앱으로 전달한다.
+# ProxyFix 없이는 request.remote_addr가 실제 접속자 IP가 아니라 Render 내부
+# 프록시의 고정 IP로 찍혀서, flask_limiter(get_remote_address 기반)가 전
+# 세계 모든 외부 요청(사용자 로그인, cron-job.org, GitHub Actions 등)을
+# "같은 IP"로 합산해 "시간당 200회" 한도를 같이 나눠 쓰게 된다 - 실제로
+# keep-warm 핑이 "429 Too Many Requests"로 자주 막히는 원인이었다(2026-10-02
+# 확인). X-Forwarded-For 맨 앞(Render가 붙인 원 접속자 IP) 1개만 신뢰한다.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 
 def _asset_version(filename):
