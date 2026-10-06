@@ -2595,11 +2595,12 @@ def _ensure_column(table_name, column_name, ddl_type):
     existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
     if column_name in existing_cols:
         return
+    if_not_exists = "IF NOT EXISTS " if db.engine.dialect.name == "postgresql" else ""
     try:
         with db.engine.begin() as conn:
-            conn.execute(db.text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl_type}"))
-    except Exception:
-        pass
+            conn.execute(db.text(f"ALTER TABLE {table_name} ADD COLUMN {if_not_exists}{column_name} {ddl_type}"))
+    except Exception as e:
+        print(f"[_ensure_column] {table_name}.{column_name} 추가 실패: {e}", flush=True)
 
 
 def _backfill_stage_column():
