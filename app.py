@@ -1090,6 +1090,7 @@ def screener_results():
         "conditions": json.loads(r.conditions_json) if r.conditions_json else {},
         "volume": r.volume, "relVolume": r.rel_volume, "avgTradeValue": r.avg_trade_value,
         "donchianHigh15": r.donchian_high_15,
+        "donchianHigh252": r.donchian_high_252,
         "marketCap": r.market_cap, "peRatio": r.pe_ratio, "epsGrowth": r.eps_growth,
         "dividendYield": r.dividend_yield, "analystRating": r.analyst_rating,
         "metrics": json.loads(r.metrics_json) if r.metrics_json else {},
@@ -2304,6 +2305,7 @@ def _refresh_trend_screen_market(market, force=False):
                 row.rel_volume = r.get("relVolume")
                 row.avg_trade_value = r.get("avgTradeValue")
                 row.donchian_high_15 = r.get("donchianHigh15")
+                row.donchian_high_252 = r.get("donchianHigh252")
                 if market == "KR":
                     row.market_cap = r.get("marketCap")
                     row.pe_ratio = r.get("peRatio")
@@ -2625,6 +2627,7 @@ with app.app_context():
     _ensure_column("trend_screen_cache", "stage", "INTEGER")
     _ensure_column("trend_screen_cache", "avg_trade_value", "FLOAT")
     _ensure_column("trend_screen_cache", "donchian_high_15", "FLOAT")
+    _ensure_column("trend_screen_cache", "donchian_high_252", "FLOAT")
     _ensure_column("paper_strategy_accounts", "index_units", "FLOAT DEFAULT 0")
     _ensure_column("paper_positions", "pyramid_count", "INTEGER DEFAULT 0")
     _ensure_column("paper_positions", "last_entry_price", "FLOAT")

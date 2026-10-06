@@ -272,6 +272,8 @@ def evaluate_trend_template(code, name, bars, industry=None, sector=None):
     avg_trade_value = _avg_trade_value_20d(bars)
     # 15 = vcp_strategy.ANONYMOUS_PARAMS["donchian_period"]와 맞춤(모의투자용, 위 함수 docstring 참고)
     donchian_high_15 = _donchian_prior_high(highs, idx, 15)
+    # 52주 신고가 돌파(지인 진입 이력 분석 기반) - 오늘 제외 직전 252거래일 고가
+    donchian_high_252 = _donchian_prior_high(highs, idx, 252)
 
     conditions = {
         "priceAboveMa150And200": price > ma150 and price > ma200,
@@ -295,6 +297,7 @@ def evaluate_trend_template(code, name, bars, industry=None, sector=None):
         "stage": stage,
         "weightedReturn": weighted_return,
         "donchianHigh15": round(donchian_high_15, 2) if donchian_high_15 is not None else None,
+        "donchianHigh252": round(donchian_high_252, 2) if donchian_high_252 is not None else None,
         "volume": volume,
         "relVolume": rel_volume,
         "avgTradeValue": avg_trade_value,

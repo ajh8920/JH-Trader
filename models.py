@@ -289,6 +289,7 @@ class TrendScreenCache(db.Model):
     rel_volume = db.Column(db.Float)  # 최근 거래량 / 직전 20거래일 평균거래량
     avg_trade_value = db.Column(db.Float)  # 최근 20거래일 평균 거래대금(원) - 유동성 팩터(미너비니 v2)용
     donchian_high_15 = db.Column(db.Float)  # 직전 15거래일 고가(오늘 제외) - "어나니머스" 모의투자 돈치안 브레이크아웃 판정용
+    donchian_high_252 = db.Column(db.Float)  # 직전 252거래일(52주) 고가(오늘 제외) - 52주 신고가 돌파 스크리닝용
     market_cap = db.Column(db.Float)  # 국내: 원, 미국: 백만 달러(Finnhub 기준)
     pe_ratio = db.Column(db.Float)
     eps_growth = db.Column(db.Float)  # YoY %. 국내는 순이익 증가율로 근사

@@ -606,6 +606,15 @@ const I18N = {
       + '"어나니머스" 전략이 신규 진입에 실제로 쓰는 조건과 동일합니다. 트렌드템플릿 통과 여부는 요구하지 '
       + '않으니, 정확한 후보를 보려면 위 "전체 조건 통과만" 체크를 해제하세요.',
   },
+  stratBreakout52Title: { en: '52-Week High Breakout', ko: '52주 신고가 돌파' },
+  stratBreakout52Note: {
+    en: 'Close above the prior 252-day high (52-week breakout), with avg. daily trading value ≥ ₩300M. '
+      + 'Based on the entry history of a reference strategy: most entries were at 52-week highs with top-tier 12-month returns. '
+      + 'Does NOT require Trend Template pass; turn off "Passed all conditions only" to see the full pool.',
+    ko: '직전 252거래일(52주) 고가를 종가로 돌파 + 평균 일 거래대금 3억원 이상. 지인 진입 이력 분석 결과 '
+      + '대부분의 진입이 52주 고점 부근·12개월 수익률 상위권에서 일어났다는 점을 반영했습니다. '
+      + '트렌드템플릿 통과는 요구하지 않으므로 "전체 조건 통과만"을 끄면 전체 후보가 보입니다.',
+  },
   stratSweeperNote: {
     en: '(Paper trading discontinued — realistic next-day-open fills turned the backtest catastrophic.) Same '
       + 'entry filter as "Anonymous", but exits are tight instead of wide.',
@@ -2546,6 +2555,11 @@ const SCREENER_STRATEGY_PRESETS = [
     key: 'anonymous', icon: '🐢', titleKey: 'stratAnonymousTitle', noteKey: 'stratAnonymousNote',
     predicate: r => !isPreferredStockName(r.name) && r.donchianHigh15 != null && r.price > r.donchianHigh15
       && r.avgTradeValue != null && r.avgTradeValue >= 100_000_000,
+  },
+  {
+    key: 'breakout52', icon: '📈', titleKey: 'stratBreakout52Title', noteKey: 'stratBreakout52Note',
+    predicate: r => !isPreferredStockName(r.name) && r.donchianHigh252 != null && r.price > r.donchianHigh252
+      && r.avgTradeValue != null && r.avgTradeValue >= 300_000_000,
   },
   {
     // 스위퍼 - 진입 신호(돈치안15일 브레이크아웃+유동성)는 어나니머스와 완전히 동일,
