@@ -718,6 +718,11 @@ const I18N = {
   tabLab: { en: 'Lab', ko: '실험실' },
   tabKrSwing: { en: 'KR Swing', ko: '국내 스윙' },
   tabKrQuant: { en: 'KR Quant', ko: '국내 퀀트' },
+  tabStrategy: { en: 'Strategy', ko: '전략' },
+  strategySelectHint: { en: 'Select a strategy on the left.', ko: '왼쪽에서 전략을 선택하세요.' },
+  strategyCommonTitle: { en: 'Common to all strategies', ko: '전략 공통 정보' },
+  strategyStatusVerified: { en: 'Verified', ko: '검증됨' },
+  strategyStatusUnverified: { en: 'Unverified (recorded value)', ko: '검증 불가(과거 기록값)' },
   tabScreener: { en: 'Screener', ko: '스크리닝' },
   searchTickerPlaceholder: { en: 'Enter ticker (e.g. AAPL, TSLA, NVDA)', ko: '티커 입력 (예: AAPL, TSLA, NVDA)' },
   quickPicks: { en: 'Quick picks:', ko: '빠른 선택:' },
@@ -870,6 +875,7 @@ function switchTab(name) {
   if (name === 'screener') initScreenerTab();
   if (name === 'screenbt') initScreeningBacktestTab();
   if (name === 'papertrade') loadPaperTrading();
+  if (name === 'strategy') initStrategyTab();
 }
 
 document.addEventListener('DOMContentLoaded', () => loadMacro());
@@ -5417,3 +5423,92 @@ setInterval(() => {
   const el = document.getElementById('alerts-content');
   if (el && document.getElementById('sec-alerts').classList.contains('active')) loadAlerts();
 }, 30000);
+
+// ─── 전략 탭(관리자 전용) - strategy_specs.py 스냅샷 열람 ──────────────────────
+let _strategyData = null;
+let _strategyActiveKey = null;
+
+async function initStrategyTab() {
+  if (_strategyData) { renderStrategyTab(); return; }
+  const common = document.getElementById('strat-common');
+  try {
+    _strategyData = await api('GET', '/api/admin/strategies');
+    renderStrategyTab();
+  } catch (e) {
+    common.innerHTML = `<p class="strat-empty">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderStrategyTab() {
+  const data = _strategyData;
+  const commonEl = document.getElementById('strat-common');
+  const rows = [
+    ['universe', '유니버스'], ['data_source', '데이터 소스'], ['survivorship', '생존편향'],
+    ['fill_policy', '체결 방식'], ['missing_filters', '빠진 필터'], ['backtest_engines', '백테스트 엔진'],
+  ];
+  commonEl.innerHTML = `
+    <h3><i class="ti ti-info-circle" aria-hidden="true"></i> ${escapeHtml(t('strategyCommonTitle') || '전략 공통 정보')}</h3>
+    <dl class="strat-common-grid">
+      ${rows.map(([k, label]) => data.common[k]
+        ? `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(data.common[k])}</dd>` : '').join('')}
+    </dl>`;
+
+  const listEl = document.getElementById('strat-list');
+  listEl.innerHTML = data.strategies.map(s => `
+    <button type="button" class="strat-list-item${s.key === _strategyActiveKey ? ' active' : ''}" data-key="${escapeHtml(s.key)}" onclick="selectStrategy('${escapeHtml(s.key)}')">
+      <span class="strat-list-name">${escapeHtml(s.name)}</span>
+      <span class="strat-list-summary">${escapeHtml(s.summary || '')}</span>
+    </button>`).join('');
+
+  if (_strategyActiveKey) renderStrategyDetail(_strategyActiveKey);
+}
+
+function selectStrategy(key) {
+  _strategyActiveKey = key;
+  document.querySelectorAll('#strat-list .strat-list-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.key === key);
+  });
+  renderStrategyDetail(key);
+}
+
+function renderStrategyDetail(key) {
+  const s = (_strategyData.strategies || []).find(x => x.key === key);
+  const detailEl = document.getElementById('strat-detail');
+  if (!s) { detailEl.innerHTML = '<p class="strat-empty">전략을 찾을 수 없습니다.</p>'; return; }
+
+  const list = (title, items) => (items && items.length)
+    ? `<h4>${escapeHtml(title)}</h4><ul>${items.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : '';
+
+  const resultsHtml = (s.results || []).map(r => {
+    const statusKey = r.status === 'VERIFIED' ? 'strategyStatusVerified' : 'strategyStatusUnverified';
+    const statusClass = r.status === 'VERIFIED' ? 'strat-badge-ok' : 'strat-badge-warn';
+    const metrics = Object.entries(r.metrics || {}).map(([k, v]) =>
+      `<div class="strat-metric"><span>${escapeHtml(k)}</span><strong>${escapeHtml(v)}</strong></div>`).join('');
+    return `
+      <div class="strat-result">
+        <div class="strat-result-head">
+          <strong>${escapeHtml(r.label)}</strong>
+          <span class="strat-badge ${statusClass}">${escapeHtml(t(statusKey) || r.status)}</span>
+        </div>
+        <div class="strat-result-period">${escapeHtml(r.period || '')}</div>
+        <div class="strat-metrics">${metrics}</div>
+        ${r.note ? `<p class="strat-result-note">${escapeHtml(r.note)}</p>` : ''}
+      </div>`;
+  }).join('');
+
+  detailEl.innerHTML = `
+    <h3>${escapeHtml(s.name)}</h3>
+    <p class="strat-engine"><code>${escapeHtml(s.engine || '')}</code></p>
+    ${s.summary ? `<p class="strat-summary">${escapeHtml(s.summary)}</p>` : ''}
+    ${s.universe ? `<h4>유니버스</h4><p>${escapeHtml(s.universe)}</p>` : ''}
+    ${list('진입 조건', s.entry)}
+    ${list('청산 조건', s.exit)}
+    ${s.sizing ? `<h4>포지션 사이징</h4><p>${escapeHtml(s.sizing)}</p>` : ''}
+    ${s.pyramiding ? `<h4>피라미딩</h4><p>${escapeHtml(s.pyramiding)}</p>` : ''}
+    ${s.cash_management ? `<h4>현금 운용</h4><p>${escapeHtml(s.cash_management)}</p>` : ''}
+    ${s.costs ? `<h4>비용 가정</h4><p>${escapeHtml(s.costs)}</p>` : ''}
+    <h4>백테스트 결과</h4>
+    ${resultsHtml || '<p class="strat-empty">기록된 결과가 없습니다.</p>'}
+    ${s.doc ? `<p class="strat-doc-ref">문서: <code>${escapeHtml(s.doc)}</code></p>` : ''}
+  `;
+}

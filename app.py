@@ -1957,6 +1957,15 @@ def delete_user(user_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/admin/strategies", methods=["GET"])
+@admin_required
+def list_strategy_specs():
+    """관리자 전용 "전략" 탭용 - strategy_specs.py에 손으로 정리해둔 스펙 스냅샷을
+    그대로 돌려준다. 백테스트를 실행하지 않는다(읽기 전용 참고자료)."""
+    import strategy_specs as ss
+    return jsonify({"common": ss.COMMON_INFO, "strategies": ss.STRATEGY_SPECS})
+
+
 @app.route("/api/admin/trend-screen-refresh", methods=["POST"])
 @admin_required
 def force_trend_screen_refresh():

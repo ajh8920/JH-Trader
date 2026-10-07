@@ -83,6 +83,7 @@
       <button class="tab" data-tab="live" onclick="switchTab('live')" role="tab"><i class="ti ti-infinity" aria-hidden="true"></i> <span data-i18n="tabLive">Live</span></button>
       <button class="tab" data-tab="lab" onclick="switchTab('lab')" role="tab"><i class="ti ti-flask" aria-hidden="true"></i> <span data-i18n="tabLab">Lab</span></button>
       <button class="tab" data-tab="krswing" onclick="switchTab('krswing')" role="tab"><i class="ti ti-chart-candle" aria-hidden="true"></i> <span data-i18n="tabKrSwing">KR Swing</span></button>
+      <button class="tab" data-tab="strategy" onclick="switchTab('strategy')" role="tab"><i class="ti ti-clipboard-list" aria-hidden="true"></i> <span data-i18n="tabStrategy">Strategy</span></button>
       <button class="tab" data-tab="krquant" onclick="switchTab('krquant')" role="tab"><i class="ti ti-filter" aria-hidden="true"></i> <span data-i18n="tabKrQuant">KR Quant</span></button>
       {% endif %}
     </nav>
@@ -451,6 +452,21 @@
           </div>
         </div>
         <div id="krquant-result"></div>
+      </section>
+      {% endif %}
+
+      {% if show_all_tabs %}
+      <!-- 전략 스펙 열람(관리자 전용) - strategy_specs.py 스냅샷을 조회만 함, 백테스트 실행 없음 -->
+      <section id="sec-strategy" class="section">
+        <div class="card" id="strat-common">
+          <p data-i18n="loading">Loading…</p>
+        </div>
+        <div class="strat-layout">
+          <div class="strat-list" id="strat-list"></div>
+          <div class="strat-detail" id="strat-detail">
+            <p class="strat-empty" data-i18n="strategySelectHint">왼쪽에서 전략을 선택하세요.</p>
+          </div>
+        </div>
       </section>
       {% endif %}
 
