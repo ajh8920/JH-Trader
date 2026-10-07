@@ -1354,6 +1354,19 @@ def _vcp_fundamentals_rows():
         return {}
 
 
+def _vcp_quarterly_rows():
+    """JPEX(min_eps_growth_pct)가 참조하는 분기 재무 - 대량보유보고와 같은 이유로
+    로컬 전용(000.Data/fundamentals/kr_quarter, git 미포함)이라 프로덕션에서는
+    조용히 빈 딕셔너리를 돌려준다(분기 성장률 필터가 자동으로 통과되는 효과)."""
+    import vcp_strategy as vcp
+    from data_pipeline.common import FUND_KR_DIR
+    try:
+        quarter_paths = sorted((FUND_KR_DIR.parent / "kr_quarter").glob("*.parquet"))
+        return vcp.load_quarterly_rows(quarter_paths) if quarter_paths else {}
+    except Exception:
+        return {}
+
+
 def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, stop_loss_pct, max_positions, seed,
                                  preset=None):
     import screening_backtest as sb
@@ -1382,6 +1395,7 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
                     fundamentals_rows_by_code=_vcp_fundamentals_rows() if (
                         p.get("require_profitable") or p.get("min_quality_score") is not None
                         or p.get("quality_rank_weight")) else None,
+                    quarterly_rows_by_code=_vcp_quarterly_rows() if p.get("min_eps_growth_pct") else None,
                     adx_threshold=p.get("adx_threshold", vcp.ADX_THRESHOLD),
                     final_contraction_ratio=p.get("final_contraction_ratio", 0.5),
                     min_final_duration=p.get("min_final_duration", 5),
@@ -1414,6 +1428,10 @@ def _run_screening_backtest_job(job_id, market, strategy, start_date, end_date, 
                     require_profitable=p.get("require_profitable", True),
                     min_quality_score=p.get("min_quality_score"),
                     quality_rank_weight=p.get("quality_rank_weight", 0.0),
+                    entry_rank_top_n=p.get("entry_rank_top_n"),
+                    exit_on_regime_loss=p.get("exit_on_regime_loss", False),
+                    min_eps_growth_pct=p.get("min_eps_growth_pct"),
+                    min_revenue_growth=p.get("min_revenue_growth"),
                 )
                 job = db.session.get(ScreeningBacktestJob, job_id)
                 if "error" in result:

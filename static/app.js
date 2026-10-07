@@ -5509,6 +5509,7 @@ function renderStrategyDetail(key) {
     ${s.costs ? `<h4>비용 가정</h4><p>${escapeHtml(s.costs)}</p>` : ''}
     <h4>백테스트 결과</h4>
     ${resultsHtml || '<p class="strat-empty">기록된 결과가 없습니다.</p>'}
+    ${s.limitations ? `<h4>한계</h4><p>${escapeHtml(s.limitations)}</p>` : ''}
     ${s.doc ? `<p class="strat-doc-ref">문서: <code>${escapeHtml(s.doc)}</code></p>` : ''}
   `;
 }
