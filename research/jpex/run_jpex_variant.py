@@ -14,8 +14,9 @@
   계속 이어질 예정이라 재사용 가능한 형태가 필요했다.
 
 변형:
-  VARIANTS 딕셔너리 참고(`--list`로 조회). v49 = 최종 채택(`vcp_strategy.JPEX_PARAMS`
-  와 동일, 2라운드). v6은 1라운드 최종(`JPEX_V2_PARAMS`)이었으나 v49로 대체됨.
+  VARIANTS 딕셔너리 참고(`--list`로 조회). v64 = 최종 채택(`vcp_strategy.JPEX_PARAMS`
+  와 동일, 4라운드: max_initial_risk_pct 4.0 적용). v49는 2라운드 최종(=JPEX_V3_PARAMS)
+  이었으나 v64로 대체됨. v6은 1라운드 최종(`JPEX_V2_PARAMS`)이었으나 v49로 대체됨.
   PERIOD_OVERRIDES로 구간검증(하락장/상승장/코로나 급락)도 가능.
 
 데이터:
@@ -29,9 +30,9 @@
   변형을 추가했으면 VARIANTS에 넣고 RESULTS.md 표에도 같이 추가할 것.
 
 사용법:
-  python -m research.jpex.run_jpex_variant v49                   # 최종 채택
+  python -m research.jpex.run_jpex_variant v64                   # 최종 채택
   python -m research.jpex.run_jpex_variant v25                   # 거래량 확대 대안
-  python -m research.jpex.run_jpex_variant v49 --period covid    # 코로나 급락 구간검증
+  python -m research.jpex.run_jpex_variant v64 --period covid    # 코로나 급락 구간검증
   python -m research.jpex.run_jpex_variant --list                # 변형 목록만 출력
 """
 import argparse
@@ -51,9 +52,9 @@ sys.path.insert(0, str(PROJECT_DIR))
 # v1~v30은 2026-10-08 새벽(1라운드, entry_rank_top_n 동순위 비결정성 버그
 # 수정 전) 측정값이라 재실행하면 숫자가 달라질 수 있다 - research/jpex/
 # RESULTS.md 7단계 참고. v31부터는 버그 수정 + 성능 최적화 이후(2라운드)다.
-# v49 = 최종 채택(vcp_strategy.JPEX_PARAMS와 동일). v6(=JPEX_V2_PARAMS)은
-# 1라운드 최종이었지만 v49로 대체됐다.
-# V64 = 2026-10-08 밤 최종 채택 설정(JPEX_PARAMS와 동일) - 4라운드 변형들이 기준으로 삼는다.
+# v64 = 최종 채택(vcp_strategy.JPEX_PARAMS와 동일, 4라운드). v49(=JPEX_V3_PARAMS)는
+# 2라운드 최종이었지만 v64로 대체됐다. v6(=JPEX_V2_PARAMS)은 1라운드 최종이었지만 v49로 대체됐다.
+# _V64 = 4라운드 변형들이 기준으로 삼는 베이스 오버라이드.
 _V64 = {"pyramid_max_count": 4, "overheat_days": 5, "overheat_gain_pct": 50.0,
         "chandelier_atr_mult": 3.0, "breakeven_r": 3.0, "max_initial_risk_pct": 4.0}
 
@@ -116,7 +117,7 @@ VARIANTS = {
     "v47": {"pyramid_max_count": 3, "overheat_days": 5, "overheat_gain_pct": 50.0, "chandelier_atr_mult": 3.0},
     "v48": {"pyramid_max_count": 2, "overheat_days": 5, "overheat_gain_pct": 50.0, "chandelier_atr_mult": 3.0},
     "v49": {"pyramid_max_count": 4, "overheat_days": 5, "overheat_gain_pct": 50.0,
-            "chandelier_atr_mult": 3.0, "breakeven_r": 3.0},  # === 최종 채택: JPEX_PARAMS와 동일 ===
+            "chandelier_atr_mult": 3.0, "breakeven_r": 3.0},  # === 2라운드 최종(JPEX_V3_PARAMS와 동일) - v64로 대체됨 ===
     "v50": {"pyramid_max_count": 4, "overheat_days": 5, "overheat_gain_pct": 50.0, "chandelier_atr_mult": 2.5},
     "v51": {"pyramid_max_count": 4, "overheat_days": 5, "overheat_gain_pct": 50.0,
             "chandelier_atr_mult": 3.0, "breakeven_r": 3.0, "trail_activate_r": 1.5},
@@ -204,7 +205,7 @@ VARIANTS = {
 }
 del _V64
 
-# 구간검증(강건성 확인)용 - 변형은 기본 v49(JPEX_PARAMS) 기준으로 쓴다
+# 구간검증(강건성 확인)용 - 변형은 기본 v64(JPEX_PARAMS) 기준으로 쓴다
 PERIOD_OVERRIDES = {
     "full": ("2016-01-01", None),  # None이면 오늘 날짜
     "down": ("2016-01-01", "2019-12-31"),  # 2017-2019 하락장
@@ -215,7 +216,7 @@ PERIOD_OVERRIDES = {
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("variant", nargs="?", default="v49", help="VARIANTS 키 (기본 v49=최종 채택)")
+    parser.add_argument("variant", nargs="?", default="v64", help="VARIANTS 키 (기본 v64=최종 채택)")
     parser.add_argument("--period", default="full", choices=list(PERIOD_OVERRIDES), help="구간검증용")
     parser.add_argument("--list", action="store_true", help="변형 목록만 출력하고 종료")
     args = parser.parse_args()
