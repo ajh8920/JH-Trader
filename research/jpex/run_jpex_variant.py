@@ -197,6 +197,10 @@ VARIANTS = {
             "require_evan_stage2": False, "gate_entries_on_regime": False},
     "v91": {**_V64, "min_market_cap": 500_000_000_000},
     "v92": {**_V64, "min_market_cap": 1_000_000_000_000},
+    "v93": {**_V64, "entry_rank_top_n": 20},
+    "v94": {**_V64, "entry_rank_top_n": 10},
+    "v95": {**_V64, "time_stop_days": 15},
+    "v96": {**_V64, "time_stop_days": 5},
 }
 del _V64
 
