@@ -1,17 +1,37 @@
 # -*- coding: utf-8 -*-
-"""JPEX 전략을 만들며 시험한 30여 개 변형을 하나의 스크립트로 합친 것.
+"""JPEX 변형 백테스트 실행기
 
-2026-10-08 밤~아침 세션에서 scratchpad에 변형마다 70줄짜리 파일을 복제해가며
-돌렸던 것(vcp_run_jpex_v1.py ~ v30.py)을 다시 쓸 수 있게 정리했다 - 그 파일들은
-세션 임시 폴더에만 있어서 영구 보관되지 않았다. 결과 숫자는 RESULTS.md 참고.
+목적:
+  "JPEX" 전략(APEX Stage3 68차 + 시장국면 게이팅/국면상실청산 + 피라미딩 최적화)을
+  만드는 과정에서 시험한 변형들을 재현 가능한 형태로 보관하고, 새 변형을 추가로
+  시험할 때도 같은 스크립트를 재사용한다.
+
+배경:
+  2026-10-08 밤~아침 세션에서 scratchpad(세션 임시 폴더)에 변형마다 70줄짜리
+  파일을 복제해가며 돌렸다(vcp_run_jpex_v1.py ~ v30.py). 임시 폴더라 세션이
+  끝나면 사라지므로, 변형을 딕셔너리(VARIANTS)로 추출해 하나의 스크립트로
+  합쳤다. 지인 목표(CAGR 68.9%/MDD -24.2%/거래 487건)에 근접시키려는 탐색이
+  계속 이어질 예정이라 재사용 가능한 형태가 필요했다.
+
+변형:
+  VARIANTS 딕셔너리 참고(`--list`로 조회). v6 = 최종 채택(`vcp_strategy.JPEX_PARAMS`
+  와 동일). PERIOD_OVERRIDES로 구간검증(하락장/상승장/코로나 급락)도 가능.
+
+데이터:
+  로컬 전용. data/price_cache/*.parquet(가격 캐시, 2018년~), data/app.db(재무
+  일부), 000.Data/(이 저장소 밖 - 대량보유·공시·분기재무, STOCK_DATA_ROOT 환경변수로
+  경로 변경 가능) 전부 있어야 실행된다. 전부 상장폐지 종목 포함(include_delisted=True).
+
+산출(결과물):
+  콘솔에 CAGR/총수익/최종자산/MDD/CAGR-MDD/알파/승률/손익비/거래수/평균보유/고유종목수
+  출력. 숫자를 비교·누적 기록하는 곳은 이 스크립트가 아니라 RESULTS.md다 - 새
+  변형을 추가했으면 VARIANTS에 넣고 RESULTS.md 표에도 같이 추가할 것.
 
 사용법:
-  python -m research.jpex.run_jpex_variant v6          # 최종 채택(JPEX_PARAMS)
-  python -m research.jpex.run_jpex_variant v25          # 거래량 확대 대안
-  python -m research.jpex.run_jpex_variant --list        # 변형 목록만 출력
-
-주의: 로컬 전용이다. data/price_cache(가격 캐시)와 000.Data(재무·대량보유·분기
-데이터, 이 저장소 밖)가 있어야 실행된다 - RULES.md와 CLAUDE.md 참고.
+  python -m research.jpex.run_jpex_variant v6                    # 최종 채택
+  python -m research.jpex.run_jpex_variant v25                   # 거래량 확대 대안
+  python -m research.jpex.run_jpex_variant v6 --period covid     # 코로나 급락 구간검증
+  python -m research.jpex.run_jpex_variant --list                # 변형 목록만 출력
 """
 import argparse
 import io
