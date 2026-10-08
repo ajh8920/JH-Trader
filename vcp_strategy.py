@@ -2228,14 +2228,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             if i + 1 < ts.MIN_BARS:
                 continue
             code, name, industry, sector = info_by_ticker.get(ticker, (ticker, ticker, None, None))
-            # 2026-10-08 시도: evaluate_trend_template이 리스트 끝에서 상대 인덱스로만
-            # 읽는 점을 이용해 bars_slice를 최근 300일로 잘라 매 재평가일의 O(i) 재구성
-            # 비용(실행시간 대부분 추정)을 줄이려 했다. 수식상 손실 없어야 하는데 실제
-            # 재실행 결과가 달라졌다(CAGR 31.67%->29.31%, 거래 84->87건, 같은 캐시 데이터
-            # 기준) - 원인을 못 찾아 되돌린다. 손 대려면 결과 재현성부터 다시 검증할 것.
+            window_start = max(0, i - 299)
             bars_slice = [
                 {"date": dates[k], "close": closes[k], "high": highs[k], "low": lows[k], "volume": volumes[k]}
-                for k in range(i + 1)
+                for k in range(window_start, i + 1)
             ]
             try:
                 result = ts.evaluate_trend_template(code, name, bars_slice, industry, sector)
@@ -2345,7 +2341,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         # 한 번만 확인하므로 같은 랭킹이라도 휩소 위험이 훨씬 적다.
         rank_of_ticker = None
         if rank_exit_top_n is not None or entry_rank_top_n is not None:
-            ranked = sorted(trend_ok_set, key=lambda t: -((by_ticker.get(t) or {}).get("rsRating") or 0))
+            # rsRating은 1~99 백분위 정수값이라 trend_ok_set(수백 종목)에서 동률이
+            # 흔하다. trend_ok_set은 set이라 순회 순서가 프로세스마다(해시 랜덤화로)
+            # 달라지므로, 동률 구간의 정렬 순서가 바뀌면 Top40 경계의 종목이 실행할
+            # 때마다 달라진다(2026-10-08, 재실행 결과가 달라지는 비결정성으로 확인됨
+            # - entry_rank_top_n을 쓰는 모든 APEX Stage3/JPEX 계열이 영향을 받았다).
+            # 티커 문자열을 2차 정렬키로 둬 동률을 항상 같은 순서로 깬다.
+            ranked = sorted(trend_ok_set, key=lambda t: (-((by_ticker.get(t) or {}).get("rsRating") or 0), t))
             rank_of_ticker = {t: idx + 1 for idx, t in enumerate(ranked)}
 
         # 1) 보유 포지션 처리 - 하루씩 순서대로(손절/트레일링 히트 > MA50이탈 > 시간손절 > 본전/분할익절/트레일링갱신 > 피라미딩)
