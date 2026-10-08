@@ -14,8 +14,9 @@
   계속 이어질 예정이라 재사용 가능한 형태가 필요했다.
 
 변형:
-  VARIANTS 딕셔너리 참고(`--list`로 조회). v6 = 최종 채택(`vcp_strategy.JPEX_PARAMS`
-  와 동일). PERIOD_OVERRIDES로 구간검증(하락장/상승장/코로나 급락)도 가능.
+  VARIANTS 딕셔너리 참고(`--list`로 조회). v49 = 최종 채택(`vcp_strategy.JPEX_PARAMS`
+  와 동일, 2라운드). v6은 1라운드 최종(`JPEX_V2_PARAMS`)이었으나 v49로 대체됨.
+  PERIOD_OVERRIDES로 구간검증(하락장/상승장/코로나 급락)도 가능.
 
 데이터:
   로컬 전용. data/price_cache/*.parquet(가격 캐시, 2018년~), data/app.db(재무
@@ -28,9 +29,9 @@
   변형을 추가했으면 VARIANTS에 넣고 RESULTS.md 표에도 같이 추가할 것.
 
 사용법:
-  python -m research.jpex.run_jpex_variant v6                    # 최종 채택
+  python -m research.jpex.run_jpex_variant v49                   # 최종 채택
   python -m research.jpex.run_jpex_variant v25                   # 거래량 확대 대안
-  python -m research.jpex.run_jpex_variant v6 --period covid     # 코로나 급락 구간검증
+  python -m research.jpex.run_jpex_variant v49 --period covid    # 코로나 급락 구간검증
   python -m research.jpex.run_jpex_variant --list                # 변형 목록만 출력
 """
 import argparse
@@ -47,7 +48,11 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 # JPEX_V1_PARAMS(=APEX_STAGE3_BEST68_PARAMS + 국면게이팅 + 국면상실청산)에 더한
 # 오버라이드만 적어둔다 - 전부 vcp_strategy.JPEX_V1_PARAMS를 베이스로 한다.
-# v6이 최종 채택(JPEX_PARAMS)이고, 그 뒤는 v6 기준 추가 오버라이드다.
+# v1~v30은 2026-10-08 새벽(1라운드, entry_rank_top_n 동순위 비결정성 버그
+# 수정 전) 측정값이라 재실행하면 숫자가 달라질 수 있다 - research/jpex/
+# RESULTS.md 7단계 참고. v31부터는 버그 수정 + 성능 최적화 이후(2라운드)다.
+# v49 = 최종 채택(vcp_strategy.JPEX_PARAMS와 동일). v6(=JPEX_V2_PARAMS)은
+# 1라운드 최종이었지만 v49로 대체됐다.
 VARIANTS = {
     "v1": {},  # 국면게이팅+국면상실청산만 추가 (베이스라인)
     "v2a": {"max_positions": 4, "max_position_weight_pct": 30.0},
@@ -55,7 +60,7 @@ VARIANTS = {
     "v3": {"max_positions": 4, "max_position_weight_pct": 40.0, "entry_rank_top_n": 80},
     "v4": {"max_positions": 3, "max_position_weight_pct": 35.0, "entry_rank_top_n": 60},
     "v5": {"max_positions": 3, "max_position_weight_pct": 35.0},
-    "v6": {"pyramid_max_count": 6},  # === 최종 채택: JPEX_PARAMS와 동일 ===
+    "v6": {"pyramid_max_count": 6},  # 1라운드 최종(JPEX_V2_PARAMS와 동일) - v49로 대체됨
     "v7": {"pyramid_max_count": 8},
     "v8": {"pyramid_max_count": 6, "max_positions": 4, "max_position_weight_pct": 30.0},
     "v9": {"pyramid_max_count": 5},
@@ -82,10 +87,42 @@ VARIANTS = {
     "v30": {"pyramid_max_count": 6, "max_positions": 3, "max_position_weight_pct": 35.0,
             "min_eps_growth_pct": 10.0, "min_revenue_growth": 10.0},
     "ceiling": {"pyramid_max_count": 6, "max_positions": 30, "max_position_weight_pct": 8.0,
-                "entry_rank_top_n": 1000},  # 진단용 - 슬롯/순위게이트를 사실상 해제해 신호 천장 확인
+                "entry_rank_top_n": 1000},  # 진단용 - 신호 천장 확인(1라운드)
+
+    # --- 2라운드(2026-10-08 아침, 결정성 버그 수정 + 성능 최적화 이후) ---
+    "v31": {"pyramid_max_count": 6, "require_profitable": True},
+    "v32": {"pyramid_max_count": 6, "evan_params": {"min_rs": 70.0}},
+    "v33": {"pyramid_max_count": 6, "require_catalyst": True},  # 무효 시험 - catalyst_dates_by_code 미전달
+    "v34": {"pyramid_max_count": 6, "overheat_days": 5, "overheat_gain_pct": 50.0},
+    "v35": {"pyramid_max_count": 6, "overheat_days": 5, "overheat_gain_pct": 50.0, "chandelier_atr_mult": 3.0},
+    "v36": {"pyramid_max_count": 6, "overheat_days": 5, "overheat_gain_pct": 50.0, "breakeven_r": 3.0},
+    "v37": {"pyramid_max_count": 6, "overheat_days": 7, "overheat_gain_pct": 40.0},
+    "v38": {"pyramid_max_count": 6, "overheat_days": 5, "overheat_gain_pct": 50.0, "trail_activate_r": 1.5},
+    "v39": {"pyramid_max_count": 6, "overheat_days": 5, "overheat_gain_pct": 50.0,
+            "chandelier_atr_mult": 3.0, "breakeven_r": 3.0},
+    "v40": {"pyramid_max_count": 6, "overheat_days": 5, "overheat_gain_pct": 50.0, "chandelier_atr_mult": 2.5},
+    "v41": {"pyramid_max_count": 6, "overheat_days": 5, "overheat_gain_pct": 50.0,
+            "chandelier_atr_mult": 3.0, "trail_activate_r": 1.5},
+    "v42": {"pyramid_max_count": 5, "overheat_days": 5, "overheat_gain_pct": 50.0, "chandelier_atr_mult": 3.0},
+    "v43": {"pyramid_max_count": 5, "overheat_days": 5, "overheat_gain_pct": 50.0,
+            "chandelier_atr_mult": 3.0, "breakeven_r": 3.0},
+    "v44": {"pyramid_max_count": 4, "overheat_days": 5, "overheat_gain_pct": 50.0, "chandelier_atr_mult": 3.0},
+    "v45": {"pyramid_max_count": 5, "overheat_days": 5, "overheat_gain_pct": 40.0, "chandelier_atr_mult": 3.0},
+    "v46": {"pyramid_max_count": 5, "overheat_days": 3, "overheat_gain_pct": 50.0, "chandelier_atr_mult": 3.0},
+    "v47": {"pyramid_max_count": 3, "overheat_days": 5, "overheat_gain_pct": 50.0, "chandelier_atr_mult": 3.0},
+    "v48": {"pyramid_max_count": 2, "overheat_days": 5, "overheat_gain_pct": 50.0, "chandelier_atr_mult": 3.0},
+    "v49": {"pyramid_max_count": 4, "overheat_days": 5, "overheat_gain_pct": 50.0,
+            "chandelier_atr_mult": 3.0, "breakeven_r": 3.0},  # === 최종 채택: JPEX_PARAMS와 동일 ===
+    "v50": {"pyramid_max_count": 4, "overheat_days": 5, "overheat_gain_pct": 50.0, "chandelier_atr_mult": 2.5},
+    "v51": {"pyramid_max_count": 4, "overheat_days": 5, "overheat_gain_pct": 50.0,
+            "chandelier_atr_mult": 3.0, "breakeven_r": 3.0, "trail_activate_r": 1.5},
+    "v52": {"pyramid_max_count": 4, "overheat_days": 5, "overheat_gain_pct": 50.0,
+            "chandelier_atr_mult": 3.0, "breakeven_r": 2.5},
+    "v53": {"pyramid_max_count": 4, "overheat_days": 5, "overheat_gain_pct": 50.0, "chandelier_atr_mult": 3.0,
+            "breakeven_r": 3.0, "initial_stop_atr_mult": 0.7, "max_initial_risk_pct": 2.0},
 }
 
-# 구간검증(강건성 확인)용 - 변형은 항상 v6(JPEX_PARAMS) 기준
+# 구간검증(강건성 확인)용 - 변형은 기본 v49(JPEX_PARAMS) 기준으로 쓴다
 PERIOD_OVERRIDES = {
     "full": ("2016-01-01", None),  # None이면 오늘 날짜
     "down": ("2016-01-01", "2019-12-31"),  # 2017-2019 하락장
@@ -96,7 +133,7 @@ PERIOD_OVERRIDES = {
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("variant", nargs="?", default="v6", help="VARIANTS 키 (기본 v6=최종 채택)")
+    parser.add_argument("variant", nargs="?", default="v49", help="VARIANTS 키 (기본 v49=최종 채택)")
     parser.add_argument("--period", default="full", choices=list(PERIOD_OVERRIDES), help="구간검증용")
     parser.add_argument("--list", action="store_true", help="변형 목록만 출력하고 종료")
     args = parser.parse_args()
