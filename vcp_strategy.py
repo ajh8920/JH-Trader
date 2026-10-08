@@ -534,6 +534,543 @@ APEX_V3_PARAMS = {**APEX_V2_PARAMS,
 }
 
 
+# "APEX 4" - 지인이 실제로 "3단계 이상"(minervini_stage>=3) 종목만 편입한다고
+# 밝혀, 2단계까지만 복제하던 기존 APEX 계열과 다른 축을 시도한 것.
+#
+# 주의: 표본이 지독하게 적다 - EVAN 폴더 스냅샷 12개 날짜(2026-08-27~10-01)
+# 전체에서 minervini_stage>=3로 찍힌 종목이 에이피알·한화 단 2종목뿐이다(관측
+# 24건은 같은 두 종목을 반복 추적한 것). 그래서 아래 값은 "2개 종목의 공통점"
+# 이지 통계적으로 검증된 경계가 아니다 - 스냅샷이 더 쌓이면 다시 역산해야 한다.
+#
+# 두 종목의 공통점(evan_stage_analysis.py 재현 가능):
+#  - RS는 71~83.5로 2단계 풀(70.3~95.5)보다 오히려 중간대에 몰림 - 극단적으로
+#    높지 않다.
+#  - 60일 연환산 변동성이 62~68%로, 2단계 풀 전체(중앙값 109%, 최대 153%)보다
+#    뚜렷이 낮다 - "막 돌파한 신규 추세"가 아니라 "변동성이 가라앉은 성숙한
+#    추세"로 해석했다.
+#  - 12개월 수익률이 35~117%로 2단계 풀(중앙값 163%, 최대 717%)보다 절제돼
+#    있다 - 이미 수백% 오른 극단적 종목이 아니다.
+#  - 200일선 이격도는 8~40%로 폭이 넓어(에이피알 17~40%, 한화 8%) 공통 경계를
+#    못 찾아 필터에서 뺐다.
+#
+# 1차 시도(2026-10-01, 가격지표 느슨)는 RS 하한(70)+변동성 상한(80%)만 걸었다가
+# 실패했다 - 매매종목 201개(실제 3단계 이상은 2종목뿐인데 100배 차이).
+# 2차 시도(가격지표 타이트)는 모든 수익률/변동성에 상하한을 다 걸어 56개까지
+# 좁혔지만 성과가 오히려 더 나빠졌다(CAGR 13.1%->3.6%, 알파 -202.8%) - "수익률이
+# 절제된 종목"으로 좁힌 게 거꾸로 저성과 종목만 남긴 꼴이었다.
+#
+# 3차 시도: 에이피알·한화 두 종목의 재무체질(ROE/마진/밸류에이션)은 정반대였지만
+# (financial_quality 주석 참고), 지인 스크리너의 복합점수 중 growth(80/83)와
+# momentum(91/86)만은 거의 일치했다 - value/quality/health/track_record는
+# 13↔70, 95↔54, 59↔16, 94↔63로 극과 극. "재무체질이나 밸류에이션과 무관하게
+# 성장성+모멘텀만 둘 다 강하면 된다"는 가설로 전환 - 1·2차의 상한(수익률/변동성
+# 천장)을 전부 빼고 하한 두 개만 강화했다: 매출증가율(financial_quality의
+# revenue_growth, JSON의 revenue_yoy와 같은 정의) 45%+, RS 75+. 복합점수 자체는
+# 산식을 몰라 못 쓰고, 우리가 가진 지표 중 같은 방향(성장률·RS)으로만 근사한다.
+# 4차 시도: 3차(성장/모멘텀 절대 문턱)는 CAGR/MDD·손익비는 개선됐지만 여전히
+# 196종목을 걸러내(실제 2개와 괴리) 선별력이 턱없이 부족했다. roe_percentile_cutoff
+# 가 이미 쓰는 패턴(그날 후보군 내 "상대 순위")을 매출증가율에도 그대로 적용한
+# min_revenue_growth_percentile을 새로 추가했다 - "얼마나 벌었나"라는 절대값보다
+# "그날 다른 후보들과 비교해 얼마나 튀는가"가 복합점수 방식에 더 가깝다는 가설
+# (RS85 절대->상대 전환이 통했던 27-28차 패턴과 같은 방향). 모멘텀 쪽은 기존
+# min_ret12m_percentile(38차에 이미 있던 것)을 재사용한다 - 둘 다 상위 25~35%
+# (다른 쪽은 안 보고) 수준으로 걸어, "재무체질과 무관하게 성장+모멘텀만 둘 다
+# 상위권"이라는 가설을 더 정확히 반영했다.
+# 5차 시도: 4번 다 종목선별 축만 바꿨는데 CAGR/MDD가 0.6대에서 벽에 막혔다.
+# 축을 바꿔 "지인은 극도로 집중투자한다"는 가설(샤프지수 0.691이 CAGR 50%대
+# 대비 낮다는 데서 초반에 추정했던 것)을 직접 테스트한다 - 4차의 종목선별
+# 필터는 그대로 두고 max_positions만 4->2로 줄였다. 슬롯이 적으면 30% 비중
+# 상한에 막혀 현금이 묶이므로 max_position_weight_pct도 55%로 같이 올렸다.
+# 6차 시도: 1~5차 전부 진입(종목선별) 축만 바꿨다 - 출구는 APEX 기본값
+# (챈들리어3배, 손절ATR1.1배/2.8%, 시간손절10일, 본전이동2R) 그대로였다.
+# 그런데 새 목표를 역산하면 평균수익≈손익비7.8×평균손실(5.63%대 가정)≈44%를
+# 평균보유 8.3일 안에 내야 한다 - "느리게 눌림목 타는" 게 아니라 "돌파 직후
+# 단기 급등을 빠르게 먹고 빠지는" 구조라는 뜻. 1~5차는 평균보유가 14.8~17.9일로
+# 전부 목표의 2배 가까이 나왔다(진입 필터만 바꿔선 보유기간이 안 줄었다는
+# 증거). 그래서 3차(CAGR/MDD 0.647로 5번 중 최고)의 진입 필터는 그대로 두고
+# 출구를 전부 타이트하게 바꿨다: 손절 ATR1.1->0.9배/리스크2.8->2.2%, 챈들리어
+# 트레일링 3.0->2.0배(수익 빨리 확정), 시간손절 10->6일, 본전이동 2R->1.5R.
+# 6차 스모그 테스트(2021-2026 단축구간) 결과: 평균보유 14.8~17.9일->11.2일로
+# 방향은 맞았지만, 챈들리어를 2.0배까지 조이니 손익비가 오히려 5.93으로
+# 떨어졌다(목표 7.8) - 큰 수익을 너무 일찍 끊어버린 부작용. 챈들리어와
+# "보유기간 단축"을 같은 손잡이로 묶은 게 문제 - 챈들리어를 다시 2.5배로
+# 풀어 수익은 더 태우고, 대신 max_hold_days(승자든 패자든 강제 청산 상한)를
+# 새로 걸어 보유기간만 따로 눌렀다.
+# 7차 스모그 테스트 결과: 평균보유 9.6일(목표 8.3일 근접), MDD -25.08%,
+# CAGR/MDD≈1.24까지 개선(5차 최고치 0.647 대비 거의 2배) - 방향이 맞았다.
+# 8차(max_hold_days 15->11 + RS 75->80, 두 변수 동시 변경)는 보유일을 정확히
+# 8.3일로 맞췄지만 손익비 6.14->4.41, 최종자산 23.8억->17.2억으로 후퇴했다
+# (CAGR/MDD 1.24->0.88) - 보유기간을 억지로 더 조이면 승자가 자랄 시간을
+# 빼앗아 손익비가 더 크게 깎인다는 뜻. 두 변수를 동시에 바꿔 RS80의 개별
+# 효과는 못 갈랐지만, max_hold_days는 15가 11보다 분명히 낫다는 게 확인돼
+# 7차 설정으로 되돌리고 여기서 전체 기간 검증으로 넘어간다.
+# 7차를 전체 10.75년(2016~2026)으로 돌리니 CAGR/MDD가 0.45로 추락했다
+# (스모그 테스트 구간 2021~2026에서는 1.24였다) - 2018년 하락장·2020년
+# 코로나 급락이 낀 전체기간에서 MDD가 -35.25%까지 벌어진 게 원인으로 보인다.
+# 1~7차 전부 gate_entries_on_regime=False(시장 국면과 무관하게 매수)였다 -
+# 9차는 이걸 켜서 하락장 신규 진입을 막아본다. 이제부터 스모그 테스트는
+# vcp_apex_stage3_smoke2.py로 상승장+하락장 두 구간을 같이 본다(RULES.md R13).
+# 9차 2구간 스모그 테스트: 국면필터(KOSPI 200일선 기울기, 매우 느린 지표)를
+# 켜도 하락장(A구간)에서 원금손실(승률14.3%, 알파-36%)이 났다 - 국면필터는
+# 신규진입만 늦게 막을 뿐 "진입 당시엔 국면이 괜찮았다가 직후 꺾인" 포지션은
+# 전혀 못 지킨다. 평균손실(-5.16%)이 명목 손절폭(리스크2.2%)보다 큰 것도
+# 단서다 - _realized_vol 주석에 이미 문서화된 현상("종가 기준 손절은
+# 변동성이 큰 종목일수록 손절선보다 크게 벌어진다")과 일치한다. 10차는
+# max_volatility_pct를 추가해 손절이 심하게 씹힐 위험이 있는 고변동성
+# 종목 자체를 후보에서 미리 뺀다 - 3단계 표본(62~68%)에 여유를 둔 70%.
+#
+# 10차 2구간 스모그 테스트: 실패. 변동성 상한이 핵심 수익원(고변동성 급등주)
+# 까지 같이 걸러내 양쪽 구간 다 더 나빠졌다(B구간 최종자산 20.0억->10.7억,
+# 알파 +171.6%->-13.9%, A구간 손익비 3.72->1.4) - 손절 방어보다 수익원
+# 제거 효과가 훨씬 컸다. 이 레버는 폐기.
+#
+# 11차: "국면 전환 시 신규진입만 막고 기존 포지션은 못 지킨다"는 9차에서
+# 진단한 진짜 공백을 직접 메운다 - exit_on_regime_loss(신규 파라미터)를
+# 추가해, 국면이 꺼지면 보유 포지션을 손절/트레일링 도달 여부와 무관하게
+# 그 시점 종가로 즉시 전량 청산한다.
+APEX_STAGE3_PARAMS = {**APEX_V2_PARAMS,
+    "evan_params": {"min_rs": 75.0},
+    "min_revenue_growth": 45.0,
+    "initial_stop_atr_mult": 0.9, "max_initial_risk_pct": 2.2,
+    "chandelier_atr_mult": 2.5,
+    "time_stop_days": 6,
+    "breakeven_r": 1.5, "trail_activate_r": 1.5,
+    "gate_entries_on_regime": True,
+    "max_hold_days": 15,
+    "exit_on_regime_loss": True,
+}
+
+# 진단용 대조군(ablation) - 11차까지 출구(손절/챈들리어/시간손절/최대보유/
+# 국면필터+강제청산)를 바꿔도 전체기간 CAGR/MDD가 0.65를 못 넘겨, "진입필터
+# (3단계 프록시, 표본 2종목)에 진짜 엣지가 없는 것 아니냐"는 의심이 들었다.
+# 이 프리셋은 그 의심을 직접 검증한다 - 출구는 11차와 완전히 동일하게 두고
+# 진입필터만 표준 APEX 2(evan_params 기본값 RS85, min_revenue_growth 없음)로
+# 되돌렸다. 전체기간으로 11차와 직접 비교하면 "문제가 진입이었나 출구였나"가
+# 바로 갈린다.
+APEX_STAGE3_ABLATION_PARAMS = {**APEX_V2_PARAMS,
+    "initial_stop_atr_mult": 0.9, "max_initial_risk_pct": 2.2,
+    "chandelier_atr_mult": 2.5,
+    "time_stop_days": 6,
+    "breakeven_r": 1.5, "trail_activate_r": 1.5,
+    "gate_entries_on_regime": True,
+    "max_hold_days": 15,
+    "exit_on_regime_loss": True,
+}
+
+# 12차: 대조군 결과(진입필터를 빼도 CAGR/MDD가 그대로)로 봐서, 진입 "종목"
+# 선별보다 진입 "타이밍" 정밀도가 승률 정체(19~29%, 목표 35.5%)의 진짜
+# 원인일 가능성이 높다는 결론. 1~11차 전부 entry_mode="pullback"(추세 안에서
+# 적당히 눌렸으면 매수 - 느슨한 신호, 맞을 때도 틀릴 때도 많다)만 썼다.
+# 미너비니 SEPA 원안대로 entry_mode="vcp"(변동성수축패턴 + ADX + 피벗 돌파를
+# 거래량 증가와 함께 확인한 뒤에만 진입)로 바꿔, "진입 시점 자체를 더 정밀하게
+# 확인하면 승률이 오르는가"를 직접 검증한다. 출구(11차)와 진입필터(evan_params
+# 등)는 그대로 두고 entry_mode만 바꿨다 - 단일 변수 교체.
+APEX_STAGE3_BREAKOUT_PARAMS = {**APEX_STAGE3_PARAMS,
+    "entry_mode": "vcp", "require_volume_decrease": True,
+}
+
+# 12차 스모그 테스트 결과: 실패. A·B구간 전부 거래가 1건씩만 나왔다(연
+# 0.3~0.5건) - VCP는 "순차적 변동성 수축 패턴" 모양 자체를 요구하는데
+# (detect_vcp), 이미 RS75+매출증가45% 필터로 좁혀진 "3단계" 풀 안에서
+# 그 특정 모양까지 동시에 만족하는 종목이 사실상 없었다. 필터 두 개를
+# 곱하듯 쌓은 게 문제.
+#
+# 13차: VCP 대신 더 단순한 detect_donchian_breakout(패턴 모양 요구 없이
+# "N일 신고가 종가 돌파"만 확인, docstring에 "VCP보다 훨씬 자주 신호가
+# 난다"고 명시됨)으로 교체 - "진입 타이밍 정밀도"라는 같은 가설을, 후보를
+# 다 죽이지 않는 수준에서 검증한다.
+APEX_STAGE3_DONCHIAN_PARAMS = {**APEX_STAGE3_PARAMS,
+    "entry_mode": "donchian", "donchian_period": 20,
+}
+
+# 13차(돈치안)도 실패 - 거래가 폭발적으로 늘었지만(연 56~84건) 가짜돌파가
+# 많이 섞여 손익비가 2.68~2.94로 급락, MDD도 역대 최악(-46~50%)이었다.
+# "진입 타이밍" 축(VCP·돈치안)을 두 가지 다 시도했는데 둘 다 기존 pullback
+# 보다 못해, 이 축은 여기서 접는다.
+#
+# 14차: 2번째 가설(수급) 테스트. pykrx로 받은 외국인+기관 순매수(20거래일
+# 합, data_pipeline/fetch_investor_flows_kr.py)를 그날 후보군 내 상대 백분위로
+# 걸었다 - ROE/매출증가율 백분위와 같은 패턴. 출구는 3차(entry_mode=pullback,
+# APEX_V2 표준 출구)와 동일하게 둬서, 지금까지 전체기간 기준 최고치였던
+# 3차(CAGR/MDD 0.65)에 수급 한 겹만 추가했을 때 효과를 깨끗하게 본다 -
+# 6~11차에서 "출구를 더 다듬어도 전체기간엔 역효과였다"는 걸 배워서, 이번엔
+# 변수를 하나만 바꾼다.
+APEX_STAGE3_FLOW_PARAMS = {**APEX_V2_PARAMS,
+    "evan_params": {"min_rs": 75.0},
+    "min_revenue_growth": 45.0,
+    "flow_lookback_days": 20, "min_flow_percentile": 70.0,
+}
+
+# 14차 전체기간 결과도 실패(CAGR/MDD 0.27, 알파 -94.95%, 역대 최악) - 지금까지
+# 필터를 "추가"하는 쪽(출구 타이트닝·국면필터·수급)은 전부 전체기간에서
+# 역효과였다는 패턴이 14번째로 반복됐다. 3차(필터 2개만, CAGR/MDD 0.65)가
+# 계속 1위라는 건 "더 깐깐하게"가 아니라 "덜 집중해서 분산을 늘리는" 반대
+# 방향이 안 먹혔을 수 있다는 뜻 - 5차(4->2슬롯 집중)는 실패했지만 반대 방향
+# (분산 확대)은 아직 안 해봤다.
+#
+# 15차: 3차 그대로 두고 max_positions만 4->8로 늘린다(비중 상한도 30%->15%로
+# 같이 낮춰 8종목이 꽉 찼을 때 합계가 100%를 넘지 않게 맞춤). 상관관계 낮은
+# 베팅을 늘리면 기대수익은 유지하면서 변동성(MDD)만 줄어드는 포트폴리오
+# 이론의 기본 효과를 노린다.
+APEX_STAGE3_WIDE_PARAMS = {**APEX_V2_PARAMS,
+    "evan_params": {"min_rs": 75.0},
+    "min_revenue_growth": 45.0,
+    "max_positions": 8, "max_position_weight_pct": 15.0,
+}
+
+# 15차 성공 - CAGR/MDD 0.65->0.727(역대 최고), 알파 208%. 4->8슬롯 분산이
+# 실제로 MDD를 크게 줄였다(-37.23%->-23.82%, CAGR은 24.08%->17.32%로만
+# 줄어 순효과가 플러스). 16차: 이 추세가 더 이어지는지, 아니면 과도한
+# 분산(개별 종목당 비중이 너무 작아져 엣지가 희석)으로 꺾이는 지점이
+# 있는지 보려고 12슬롯까지 더 늘렸다(비중 상한도 비례해서 15%->10%).
+APEX_STAGE3_WIDE12_PARAMS = {**APEX_STAGE3_WIDE_PARAMS,
+    "max_positions": 12, "max_position_weight_pct": 10.0,
+}
+
+# 16차: 12슬롯은 과했다 - CAGR/MDD 0.727->0.691로 살짝 꺾이고, 결정적으로
+# 알파가 +208%->-16.1%로 급락(엣지 희석 신호). 4(0.65)<8(0.727)>12(0.691)
+# 형태로 8슬롯 근처가 봉우리로 보인다. 17차: 6슬롯으로 4~8 사이를 더
+# 촘촘히 봐서 진짜 봉우리 위치를 좁힌다(비중 상한도 비례해서 ~17%).
+APEX_STAGE3_WIDE6_PARAMS = {**APEX_STAGE3_WIDE_PARAMS,
+    "max_positions": 6, "max_position_weight_pct": 17.0,
+}
+
+# 17차로 슬롯 축 탐색 마무리 - CAGR/MDD가 4(0.65)<6(0.669)<8(0.727)>12(0.691)
+# 형태로 뚜렷한 봉우리를 그려, 8슬롯이 로컬 최적점으로 확정됐다.
+#
+# 18차: 14차(수급 백분위 필터)가 전체기간에서 나빴던 이유(알파 -94.95%)가
+# "4슬롯(이미 집중된 상태)에 선별까지 더해 과도하게 좁아진 것"이라면, 이미
+# 충분히 분산된 8슬롯 위에 수급 필터를 얹으면 다르게(시너지로) 작동할 수
+# 있다는 가설. 15차(8슬롯)에 14차의 수급 백분위 필터만 추가했다.
+APEX_STAGE3_WIDE_FLOW_PARAMS = {**APEX_STAGE3_WIDE_PARAMS,
+    "flow_lookback_days": 20, "min_flow_percentile": 70.0,
+}
+
+# 18차도 실패 - 8슬롯(CAGR/MDD 0.727) 위에 수급 필터를 얹으니 0.259로
+# 급락(알파 +208%->-166.6%). 분산 수준과 무관하게 수급 필터 자체가 전체기간
+# 에서 구조적으로 해롭다는 뜻 - 2번 가설(수급)은 여기서 완전히 접는다.
+#
+# 19차: 15차(8슬롯) 위에 다른 미시도 축 - position_sizing_mode를
+# "equal_weight"(지금까지 APEX 계열 전부 이것만 썼다, 슬롯당 동일 금액)에서
+# "risk"(종목별 변동성에 반비례해 수량 산정 - ATR이 넓은 종목은 작게, 좁은
+# 종목은 크게 담아 포지션별 '리스크'를 균등화)로 바꿨다. 8슬롯 분산과
+# 결이 맞는 방향(변동성 기반 추가 분산 효과 기대).
+APEX_STAGE3_WIDE_RISK_PARAMS = {**APEX_STAGE3_WIDE_PARAMS,
+    "position_sizing_mode": "risk",
+}
+
+# 19차: risk 사이징은 CAGR 17.32->18.03%로 소폭 올랐지만 MDD가 더 벌어져
+# (-23.82->-27.4%) CAGR/MDD는 오히려 후퇴(0.727->0.658) - equal_weight(15차)가
+# 여전히 1위.
+#
+# 20차: 8슬롯 필터(RS75+매출45%)가 꽤 타이트해서 슬롯이 상시 다 안 채워질
+# 가능성이 높은데, 지금까지 전부 cash_equitize=False(빈 슬롯 현금을 그냥
+# 놀렸다)였다. 켜면 유휴 현금이 KOSPI 지수에 들어가 추가 수익을 벌면서도,
+# 지수 자체는 개별 성장주보다 변동성이 낮아 MDD 부담이 크지 않을 수 있다는
+# 가설 - 15차(8슬롯) 그대로 두고 cash_equitize만 켰다.
+APEX_STAGE3_WIDE_EQUITIZE_PARAMS = {**APEX_STAGE3_WIDE_PARAMS,
+    "cash_equitize": True, "equitize_max_pct": 100.0,
+}
+
+# 20차: 현금유휴화방지도 실패 - MDD가 -23.82%->-39.19%로 크게 벌어졌다
+# (CAGR/MDD 0.727->0.494). 유휴 현금이라는 "방어 버퍼"를 지수 익스포저로
+# 바꾼 게 하락장 노출만 늘린 것으로 보인다. 15차(순수 8슬롯)가 20번 중
+# 부동의 1위 - 위에 뭘 얹어도(수급·risk사이징·현금유휴화) 전부 역효과였다.
+#
+# 21차: 8슬롯은 4슬롯 때 찾은 진입필터(RS75+매출45%) 강도를 그대로 물려받은
+# 것이다 - 슬롯이 늘었으니 후보 풀도 비례해서 넓혀야 분산 효과를 제대로
+# 실현할 수 있다는 가설로 필터를 완화했다(RS 75->70=evan_stage2 기본값,
+# 매출증가율 45->30%).
+APEX_STAGE3_WIDE_LOOSE_PARAMS = {**APEX_STAGE3_WIDE_PARAMS,
+    "evan_params": {"min_rs": 70.0},
+    "min_revenue_growth": 30.0,
+}
+
+# 21차 성공 - CAGR/MDD 0.727->0.788(새 역대 최고). 필터 완화가 8슬롯에서
+# 분산 효과를 더 끌어냈다. 22차: 같은 방향으로 더 밀어붙여(RS70->65,
+# 매출증가율30->20%) 개선 추세가 계속되는지, 아니면 (2차 가격지표 타이트
+# 사례처럼) 너무 느슨해지면 반대로 엣지가 사라지는 지점이 있는지 본다.
+APEX_STAGE3_WIDE_LOOSE2_PARAMS = {**APEX_STAGE3_WIDE_PARAMS,
+    "evan_params": {"min_rs": 65.0},
+    "min_revenue_growth": 20.0,
+}
+
+# 22차도 성공 - CAGR/MDD 0.788->0.985(새 역대 최고, 1에 근접). 완화할수록
+# CAGR은 크게 오르고 MDD는 오히려 더 좋아지는 뚜렷한 추세(0.727->0.788->
+# 0.985). 23차: 같은 방향 한 번 더(RS65->60, 매출증가율20->10%) - 어디서
+# 꺾이는지 봉우리를 찾는다.
+APEX_STAGE3_WIDE_LOOSE3_PARAMS = {**APEX_STAGE3_WIDE_PARAMS,
+    "evan_params": {"min_rs": 60.0},
+    "min_revenue_growth": 10.0,
+}
+
+# 23차에서 꺾였다 - CAGR/MDD 0.985(22차)->0.89로 후퇴(MDD -23.04%->-26.49%
+# 로 다시 벌어짐). 22차(RS65/매출20%)가 역대 최고로 확정. 24차: 22~23
+# 사이를 더 좁혀 진짜 봉우리 위치를 찾는다(RS62/매출15%).
+APEX_STAGE3_WIDE_PEAK_PARAMS = {**APEX_STAGE3_WIDE_PARAMS,
+    "evan_params": {"min_rs": 62.0},
+    "min_revenue_growth": 15.0,
+}
+
+# 24차 CAGR/MDD 1.181(신기록, 처음 1 돌파) - 그런데 65(0.985)->62(1.181)->
+# 60(0.89)로 요철이 심하다(작은 변화에 큰 등락) - 소수의 경계선 거래가
+# 들고남에 따른 노이즈일 위험이 있다. 25차: 62 바로 옆(RS63/매출17%)을
+# 찍어서 62가 진짜 봉우리인지, 우연히 걸린 값인지 안정성을 확인한다.
+APEX_STAGE3_WIDE_PEAK2_PARAMS = {**APEX_STAGE3_WIDE_PARAMS,
+    "evan_params": {"min_rs": 63.0},
+    "min_revenue_growth": 17.0,
+}
+
+# 25차로 62~63 영역이 노이즈가 아니라 안정적 봉우리라는 게 확인됐다
+# (0.89->1.033->1.181 단조 증가) - 24차(RS62/매출15%)가 역대 최고(1.181)로
+# 유지. 26차: 필터가 느슨해져 후보 풀이 커졌으니(연56건) 8슬롯이 더 이상
+# 최적이 아닐 수 있다 - 12슬롯이 실패했던 건 더 타이트한 필터(RS75/45%)
+# 기준이었다. 24차 그대로 두고 슬롯만 10개로 늘려 재확인한다(비중상한도
+# 100/10=10%에 여유를 둔 12%).
+APEX_STAGE3_PEAK_WIDE10_PARAMS = {**APEX_STAGE3_WIDE_PEAK_PARAMS,
+    "max_positions": 10, "max_position_weight_pct": 12.0,
+}
+
+# 26차 성공 - CAGR/MDD 1.181(8슬롯)->1.24(10슬롯, 새 역대 최고). MDD가
+# -23.88%->-19.63%로 더 줄어든 게 CAGR 소폭 하락(28.2%->24.34%)을 상쇄하고
+# 남았다. 27차: 12슬롯도 다시 본다 - 예전 12슬롯 실패(16차)는 더 타이트한
+# 필터(RS75/45%) 기준이었어서, 느슨한 필터(RS62/15%)에서는 결과가 다를 수
+# 있다.
+APEX_STAGE3_PEAK_WIDE12_PARAMS = {**APEX_STAGE3_WIDE_PEAK_PARAMS,
+    "max_positions": 12, "max_position_weight_pct": 10.0,
+}
+
+# 27차: 12슬롯(1.23)이 10슬롯(1.24)과 사실상 동일 - 슬롯 축은 10~12에서
+# 평평해졌다(정체기). 26차(10슬롯, RS62/매출15%, CAGR/MDD 1.24)를 최고로
+# 확정하고 다른 축으로 넘어간다.
+#
+# 28차: evan_stage2 산하의 RS/매출증가율은 완화했지만, 별도 필터인
+# min_eps_growth_pct(분기 EPS 증가율 하한, 지금까지 전부 20% 그대로)는 한
+# 번도 안 건드렸다. 같은 방향(완화)으로 0%까지 낮춰 추가 개선 여지를 본다.
+APEX_STAGE3_PEAK10_EPS0_PARAMS = {**APEX_STAGE3_PEAK_WIDE10_PARAMS,
+    "min_eps_growth_pct": 0.0,
+}
+
+# 28차 실패 - EPS 필터 완화(20%->0%)는 CAGR/MDD를 1.24->1.198로 오히려
+# 깎았다. 20%가 이미 적정선이라 더 건드리지 않는다. 26차(10슬롯, RS62/
+# 매출15%/EPS20%, CAGR/MDD 1.24)를 최종 최고로 확정.
+#
+# 29차: 출구 메커니즘(챈들리어·손절)을 다시 본다 - 6~11차에서 "출구를
+# 조이면 역효과"였던 건 4슬롯+타이트 필터(RS75/45%) 환경 기준이었다. 지금은
+# 10슬롯+완화 필터로 완전히 다른 상황이라 재검증할 가치가 있다. 26차 그대로
+# 두고 챈들리어만 3.0->2.5로 살짝 조였다.
+APEX_STAGE3_PEAK10_TIGHT_PARAMS = {**APEX_STAGE3_PEAK_WIDE10_PARAMS,
+    "chandelier_atr_mult": 2.5,
+}
+
+# 29차도 실패 - CAGR/MDD 1.24->0.992로 후퇴(손익비 7.03->5.74, 큰 수익을
+# 일찍 끊는 패턴이 10슬롯 환경에서도 똑같이 나타났다). 26차(표준 출구)를
+# 최종 확정.
+#
+# 30차: 아직 한 번도 안 쓴 레버 - quality_rank_weight(슬롯이 찼을 때 "누구를
+# 먼저 담을지"를 RS만이 아니라 재무품질 점수와 섞어서 정함, 기본값 0=RS만).
+# 10슬롯이 이미 연64건을 거래해 후보가 넉넉하니, 그중 재무품질이 더 좋은
+# 쪽을 우선 담으면 평균적인 종목 질이 올라갈 수 있다는 가설.
+APEX_STAGE3_PEAK10_QUAL_PARAMS = {**APEX_STAGE3_PEAK_WIDE10_PARAMS,
+    "quality_rank_weight": 0.3,
+}
+
+# 30차 중립 - CAGR/MDD 1.225, 26차(1.24)와 사실상 동일. 유의미한 효과 없음.
+# 26차가 24~30차 전체(1.18~1.24 범위)에서 계속 최고로 유지 - 이 조합 근처가
+# 꽤 견고한 최적 영역으로 보인다.
+#
+# 31차: 아직 한 번도 안 건드린 유니버스 축 - 시가총액 하한(min_market_cap,
+# 지금까지 전부 3,000억원 그대로). 와쳐 원안에서 가져온 값인데, 지금은
+# 완전히 다른 필터 조합이라 다시 맞을 보장이 없다. 1,000억으로 낮춰 후보
+# 유니버스 자체를 넓혔다.
+APEX_STAGE3_PEAK10_CAP_PARAMS = {**APEX_STAGE3_PEAK_WIDE10_PARAMS,
+    "min_market_cap": 100_000_000_000,
+}
+
+# 31차도 역효과(CAGR/MDD 1.24->0.839) - 3,000억이 최적선 유지. 지금까지
+# 31번의 공통점: 우리 최고치(26차)의 MDD(-19.63%)가 지인 목표 MDD(-41.5%)
+# 보다 훨씬 낮다 - 즉 아직 안 쓴 "리스크 여유"가 있다는 뜻. 그런데 슬롯수
+# 실험(4~12)은 전부 원래의 타이트한 필터(RS75/45%)로만 했지, 더 나은 필터
+# (RS62/매출15%, 24차 이후 발견)로 슬롯을 다시 좁혀본 적이 없다 - 나쁜
+# 필터로 집중했던 5차 실패와, 좋은 필터로 집중하는 건 다를 수 있다.
+#
+# 32차: 24차(8슬롯, RS62/15%)를 4슬롯으로 좁혀 재시도. MDD가 늘어나는
+# 대신(여유 있음) CAGR이 크게 뛰어 CAGR/MDD가 더 오를 수 있다는 가설.
+APEX_STAGE3_PEAK4_PARAMS = {**APEX_STAGE3_WIDE_PEAK_PARAMS,
+    "max_positions": 4, "max_position_weight_pct": 30.0,
+}
+
+# 32차: 가설이 절반만 맞았다 - MDD는 목표(-41.5%)에 거의 정확히 도달했지만
+# (-40.52%), CAGR은 비례만큼 못 따라와(32.25%, 목표64.9%) CAGR/MDD가 오히려
+# 떨어졌다(1.24->0.796). 집중할수록 절대수익은 커져도 위험조정 효율은
+# 떨어진다 - 포트폴리오 이론과 일치. 10슬롯(분산)이 효율 면에서는 여전히
+# 낫다.
+#
+# 33차: 10슬롯과 4슬롯 사이, 6슬롯으로 효율과 절대규모의 균형점을 본다 -
+# RS62/매출15% 필터로는 아직 6슬롯을 안 해봤다(기존 6슬롯 테스트는 17차,
+# 타이트한 원래 필터 기준이었다).
+APEX_STAGE3_PEAK6_PARAMS = {**APEX_STAGE3_WIDE_PEAK_PARAMS,
+    "max_positions": 6, "max_position_weight_pct": 18.0,
+}
+
+# 33차: 6슬롯이 CAGR(32.34%, 전체 최고)·손익비(7.54)·알파(1687%) 전부
+# 10슬롯보다 지인 목표에 더 가까운 "모양"이지만, 효율(CAGR/MDD 1.069)은
+# 10슬롯(1.24)보다 낮다. 사용자가 "둘 다 더 좋은 조합"을 요청 - 6슬롯
+# 기준으로 MDD만 줄이는 레버를 찾는다.
+#
+# 34차: 33번 중 한 번도 안 써본 분할익절(partial_profit_fraction, 기존
+# APEX 계열 전부 0=비활성). 챈들리어를 조여 "전량" 일찍 청산하는 건
+# 계속 역효과였지만(손익비 급락), 일부만 먼저 확정하고 나머지는 계속
+# 태우면 MDD는 줄이면서 손익비 훼손은 덜할 수 있다는 가설 - SWEEPER_PARAMS
+# 등 기존 프리셋에서 쓰던 0.25(1R 도달 시 25% 익절)를 그대로 가져왔다.
+APEX_STAGE3_PEAK6_PARTIAL_PARAMS = {**APEX_STAGE3_PEAK6_PARAMS,
+    "partial_profit_fraction": 0.25,
+}
+
+# 34차: 뜻밖의 발견 - 승률이 21.7%->43.5%로 폭증(처음으로 목표35.5% 초과
+# 달성!). 대신 손익비 7.54->3.78 급락, CAGR/MDD 1.069->0.898로 전체 효율은
+# 후퇴. "일부라도 먼저 확정"이 승률 계산 방식 자체에 큰 영향을 준 것으로
+# 보인다. 35차: 분할익절 비율을 25%->12%로 낮춰 승률 상승 효과는 어느 정도
+# 유지하면서 손익비 손실을 줄이는 균형점을 찾는다.
+APEX_STAGE3_PEAK6_PARTIAL2_PARAMS = {**APEX_STAGE3_PEAK6_PARAMS,
+    "partial_profit_fraction": 0.12,
+}
+
+# 35차: 비율을 12%로 낮춰도 승률(43.6%)·손익비(3.81)가 34차와 거의 그대로다
+# - "부분청산을 거쳤는지"가 핵심이지 비율 크기는 덜 중요하다는 뜻. 대신
+# CAGR이 26.25%->29.48%로 올라 CAGR/MDD가 0.898->0.993으로 개선.
+#
+# 36차: 다른 손잡이 - partial_profit_r(발동 시점, 기본 2.0R)을 3.0R로
+# 늦췄다. 더 확실히 수익이 난 거래에서만 부분청산이 일어나면, 승률 상승
+# 효과는 유지하면서 손익비 손실은 더 줄어들 수 있다는 가설.
+APEX_STAGE3_PEAK6_PARTIAL3_PARAMS = {**APEX_STAGE3_PEAK6_PARAMS,
+    "partial_profit_fraction": 0.12, "partial_profit_r": 3.0,
+}
+
+# 36차 성공 방향 확인 - 발동을 2R->3R로 늦추니 손익비 3.81->4.51 개선,
+# 승률은 40.3%로 여전히 목표(35.5%) 초과, CAGR/MDD는 거의 그대로(0.993->
+# 0.984). 37차: 같은 방향 한 번 더(4.0R) - 승률이 목표 밑으로 떨어지기
+# 전까지 손익비를 얼마나 더 개선할 수 있는지 본다.
+APEX_STAGE3_PEAK6_PARTIAL4_PARAMS = {**APEX_STAGE3_PEAK6_PARAMS,
+    "partial_profit_fraction": 0.12, "partial_profit_r": 4.0,
+}
+
+# 37차도 개선 - 손익비 4.51->4.86, CAGR/MDD 0.984->1.023(둘 다 플러스),
+# 승률은 39.9%로 여전히 목표(35.5%) 초과. 2R->3R->4R 전부 같은 방향으로
+# 개선 중 - 38차: 5.0R까지 한 번 더 밀어붙여 추세가 꺾이는지, 승률이
+# 목표 밑으로 떨어지는 경계가 어디인지 본다.
+APEX_STAGE3_PEAK6_PARTIAL5_PARAMS = {**APEX_STAGE3_PEAK6_PARAMS,
+    "partial_profit_fraction": 0.12, "partial_profit_r": 5.0,
+}
+
+# 38차 - 손익비 4.86->5.31 더 개선, 승률 38.3%(여전히 여유있게 목표 초과),
+# CAGR/MDD 1.018(4R과 거의 평평). 39차: 7.0R까지 더 밀어붙여 승률이 목표
+# (35.5%) 바로 위까지 갈 때까지 손익비 개선 여지를 더 본다.
+APEX_STAGE3_PEAK6_PARTIAL6_PARAMS = {**APEX_STAGE3_PEAK6_PARAMS,
+    "partial_profit_fraction": 0.12, "partial_profit_r": 7.0,
+}
+
+# 39차에서 경계 발견 - 7.0R에서 승률이 35.0%로 처음 목표(35.5%) 밑으로
+# 떨어졌다(5.0R=38.3%는 여유있게 넘김). 손익비는 5.31->6.13으로 계속 개선
+# 중. 40차: 5~7R 사이 6.0R로 좁혀 승률이 목표를 살짝 넘기면서 손익비가
+# 최대화되는 지점을 찾는다.
+APEX_STAGE3_PEAK6_PARTIAL7_PARAMS = {**APEX_STAGE3_PEAK6_PARAMS,
+    "partial_profit_fraction": 0.12, "partial_profit_r": 6.0,
+}
+
+# 41차: 사용자가 지인 스크리너의 실제 "종목 Exit" UI 캡처를 제공했다
+# (2026-10-04, 마이크로컨텍솔 사례) - 지금까지 40번 전부 ATR 기반 손절/
+# 챈들리어 트레일링을 썼는데, 실제로는 완전히 다른 체계였다:
+#   - 초기손절: 진입가 -15%(고정 퍼센트, ATR 아님)
+#   - 트레일링: 고점 대비 -10%(퍼센트 기반)
+#   - 순위이탈: 전체 후보 중 순위가 Top10 밖으로 밀려나면 청산(가격과 무관한
+#     상대적 "더 나은 후보로 교체" 로직 - 한 번도 구현한 적 없었다)
+#   - 정체청산: 3일간 가격이 거의 안 움직이면 청산(수익 중이어도 발동)
+#   - 청산 우선순위: 정체(3일) -> 손절(-15%) -> 트레일링(-10%) -> 순위이탈(Top10)
+#   - "14:30 batch exit"라는 문구로 미루어 지인 시스템도 우리와 같은 종가
+#     배치 구조라는 것도 확인됨
+# vcp_strategy.py에 initial_stop_pct/trail_pct/rank_exit_top_n/flat_halt_days
+# 를 새로 추가해(기존 ATR 방식과 완전히 독립, 설정 안 하면 기존 동작 그대로)
+# 반영했다. 6슬롯(RS62/매출15%, 역대 최고 필터) 그대로 두고 출구만 전부
+# 실측값으로 교체했다. max_initial_risk_pct를 15% 이상으로 올려야
+# risk_cap_mode="shrink"가 퍼센트 손절폭을 도로 깎지 않는다.
+APEX_STAGE3_REAL_EXIT_PARAMS = {**APEX_STAGE3_PEAK6_PARAMS,
+    "initial_stop_pct": 15.0, "max_initial_risk_pct": 16.0,
+    "trail_pct": 10.0,
+    "rank_exit_top_n": 10,
+    "flat_halt_days": 3, "flat_halt_threshold_pct": 0.5,
+}
+
+# 41차 실패 - 상승장(B구간)에서 거래가 연130.6건까지 폭증(평균보유 2.3일),
+# 원금손실(알파-140.87%). 순위이탈 청산을 "즉시"로 짠 게 문제였다 - 후보
+# 풀이 매일 크게 바뀌는 상승장에서 보유종목이 노이즈로 순위 안팎을 들락
+# 거렸다. rank_exit_persist_days(연속 N회 이탈해야 청산, 신규 파라미터)로
+# 완충을 추가하고, Top10->Top15로 여유도 더 줬다.
+APEX_STAGE3_REAL_EXIT2_PARAMS = {**APEX_STAGE3_REAL_EXIT_PARAMS,
+    "rank_exit_top_n": 15, "rank_exit_persist_days": 3,
+}
+
+# 42차도 실패 - 완충을 둬도 여전히 거래가 연30~106건, 손익비 1.6 근방으로
+# 낮다. 순위이탈 자체가 우리 trend_ok_set(RS62/매출15% 통과 풀, 매일 크게
+# 바뀜)과 구조적으로 안 맞는 것으로 보인다 - 실제 지인의 "Top10"은 더
+# 안정적인 랭킹 기준을 쓸 가능성이 높다. 43차: 순위이탈을 아예 빼고
+# 손절(-15%)/트레일링(-10%)/정체청산(3일)만 순수하게 테스트해 그 자체의
+# 효과를 분리해서 본다.
+APEX_STAGE3_REAL_EXIT3_PARAMS = {**APEX_STAGE3_PEAK6_PARAMS,
+    "initial_stop_pct": 15.0, "max_initial_risk_pct": 16.0,
+    "trail_pct": 10.0,
+    "flat_halt_days": 3, "flat_halt_threshold_pct": 0.5,
+}
+
+# 43차(실측 손절-15%/트레일링-10%/정체3일)는 승률(36.8%)을 목표대로 넘겼지만
+# 손익비(2.41)·CAGR/MDD(0.347)가 역대 최저권으로 무너졌다 - 퍼센트 손절폭이
+# 우리 pullback 진입과 결합하니 평균손실이 -5%대->-8.47%로 커진 게 원인.
+# 44차: 청산은 역대 최고(26/33/38차)의 ATR 방식으로 되돌리고, 대신 "진입
+# 순위 게이트"(entry_rank_top_n)를 새로 추가한다 - 청산 패널의 "Rank exit if
+# >Top10"과 대칭되는 가설("진입도 그 시점 Top10~15위 안에 들어야 한다")을
+# 진입 한 번만 확인하는 형태로 저위험 검증한다. 6슬롯(RS62/매출15%) 그대로
+# 두고 게이트만 추가 - 단일 변수 교체.
+APEX_STAGE3_ENTRY_RANK_PARAMS = {**APEX_STAGE3_PEAK6_PARAMS,
+    "entry_rank_top_n": 15,
+}
+
+# 44차 매우 유망 - 손익비가 양쪽 구간 다 7.7대(목표 7.8에 거의 도달!),
+# 평균수익 44~48%(역대 최대), A구간(하락장)에서 처음으로 흑자+양의 알파
+# (+7.63%) 기록. 다만 게이트가 너무 타이트해서 거래가 연10.7~22.1건까지
+# 줄어 B구간 상승장 기회를 놓쳤다(알파-71.23%). 45차: Top15->Top25로
+# 넓혀 "질"은 유지하면서 거래빈도를 회복시킨다.
+APEX_STAGE3_ENTRY_RANK25_PARAMS = {**APEX_STAGE3_PEAK6_PARAMS,
+    "entry_rank_top_n": 25,
+}
+
+# 45차 전체기간: 손익비 7.74(거의 목표7.8 도달)·알파+20.15%는 좋지만, 거래가
+# 연17.8건까지 줄어(33/38차의 연50~63건 대비 3배 이상 급감) CAGR이
+# 12.91%로 꺼져 CAGR/MDD가 0.448에 그쳤다. 46차: Top25->Top40으로 더 넓혀
+# 거래빈도를 연40~50건대까지 회복시키면서 손익비 개선 효과가 얼마나
+# 남는지 균형점을 본다.
+APEX_STAGE3_ENTRY_RANK40_PARAMS = {**APEX_STAGE3_PEAK6_PARAMS,
+    "entry_rank_top_n": 40,
+}
+
+# 46차 전체기간: Top25보다 전부 개선 - CAGR12.91%->21.03%, CAGR/MDD0.448->
+# 0.756, 알파+20.15%->+430.31%, 손익비7.74->7.84(목표7.8 첫 초과 달성).
+# 47차: 아직 추세가 안 꺾여 Top50으로 더 넓혀 거래빈도(연23.8건)를 33/38차
+# 수준(연50~63건)에 더 가깝게 회복시키면서 개선이 어디까지 이어지는지 본다.
+APEX_STAGE3_ENTRY_RANK50_PARAMS = {**APEX_STAGE3_PEAK6_PARAMS,
+    "entry_rank_top_n": 50,
+}
+
+# 사용자 목표 기준(영역별 목표의 80% 이상 근접): CAGR 51.9% 이상이 필요한데
+# 지금까지 최고는 32%(33차)라 가장 큰 격차다. 위험 예산(MDD -41.5% 수준)은
+# 현재 결과(-20~-30%)보다 여유가 있으므로, 위험을 더 쓰는 방향으로 테스트한다.
+# 48차: 4슬롯 집중(32차에서 MDD -40.5%로 목표 낙폭 수준 달성, CAGR 32%) +
+# Top40 진입 게이트(손익비 7.84) + 승자 피라미딩 확대(pyramid_max_count 2->4).
+APEX_STAGE3_RISK_PARAMS = {**APEX_STAGE3_ENTRY_RANK40_PARAMS,
+    "max_positions": 4, "max_position_weight_pct": 30.0,
+    "pyramid_max_count": 4,
+}
+
+
 def _true_range(highs, lows, closes, k):
     prev_close = closes[k - 1] if k > 0 else closes[k]
     return max(highs[k] - lows[k], abs(highs[k] - prev_close), abs(lows[k] - prev_close))
@@ -1140,6 +1677,50 @@ def load_dividend_dates(parquet_paths):
     return dates_by_code
 
 
+# ── 외국인/기관 순매수(data_pipeline/fetch_investor_flows_kr.py, pykrx) ──────
+# APEX_STAGE3 연구(지인 "3단계 이상" 프록시, 2026-10)에서 가격·재무 축으로는
+# 승률이 19~29%(목표 35.5%)에서 안 움직여 "수급이 진짜 신호 아니냐"는 가설로
+# 추가했다. dates_by_code 패턴과 달리 날짜마다 값(순매수 거래대금, 원)이
+# 있어서 (dates, inst_net, foreign_net) 3개 병렬 리스트로 둔다 - closes/highs
+# 등 가격 배열과 같은 구조라 bisect로 구간합을 낼 때 재사용하기 쉽다.
+def load_investor_flow_rows(parquet_path):
+    """{종목코드: (날짜 오름차순 리스트, 기관순매수 리스트, 외국인순매수 리스트)}.
+    날짜는 다른 로더들과 척도를 맞추려 "YYYY-MM-DD" 문자열로 변환한다(원본은
+    datetime64) - rd/dates[i]와 직접 bisect 비교가 가능해야 하므로."""
+    import pandas as pd
+
+    path = Path(parquet_path)
+    if not path.exists():
+        return {}
+    df = pd.read_parquet(path)
+    df = df.sort_values("date")
+    out = {}
+    for code, g in df.groupby("code"):
+        out[code] = (
+            g["date"].dt.strftime("%Y-%m-%d").tolist(),
+            g["inst_net"].tolist(),
+            g["foreign_net"].tolist(),
+        )
+    return out
+
+
+def flow_net_sum(flow_row, as_of_date, lookback_days=20):
+    """as_of_date 기준 최근 lookback_days 거래일의 기관+외국인 순매수 합(원).
+    flow_row는 load_investor_flow_rows()가 반환한 (dates, inst_net, foreign_net)
+    튜플 하나. 데이터가 없으면 None(필터에서 통과 처리하는 다른 지표들과 같은
+    원칙)."""
+    if flow_row is None:
+        return None
+    dates, inst_net, foreign_net = flow_row
+    if not dates:
+        return None
+    hi = bisect.bisect_right(dates, as_of_date)
+    lo = max(0, hi - lookback_days)
+    if hi <= lo:
+        return None
+    return sum(inst_net[lo:hi]) + sum(foreign_net[lo:hi])
+
+
 def financial_quality(rows_for_code, as_of_date):
     """as_of_date까지 공시된 재무로 수익성·성장성 지표를 계산한다.
 
@@ -1295,8 +1876,10 @@ def _return_pct(closes, i, days):
 
 
 def passes_evan_stage2(closes, highs, i, rs_rating,
-                       min_rs=70.0, min_high_52w_pct=75.0,
-                       min_return_3m=-6.0, min_return_6m=-10.0, min_return_12m=40.0,
+                       min_rs=70.0, max_rs=None, min_high_52w_pct=75.0,
+                       min_return_3m=-6.0, max_return_3m=None,
+                       min_return_6m=-10.0, max_return_6m=None,
+                       min_return_12m=40.0, max_return_12m=None,
                        min_ma200_gap_pct=8.0, max_ma200_gap_pct=None):
     """지인 스크리너의 "2단계" 판정식을 옮긴 것.
 
@@ -1339,6 +1922,8 @@ def passes_evan_stage2(closes, highs, i, rs_rating,
     (32~34% 사이로 추정)은 확정이 아니라 근사치다."""
     if rs_rating is None or rs_rating < min_rs:
         return False
+    if max_rs is not None and rs_rating > max_rs:
+        return False
     if i < 252:
         return False
     week52_high = max(highs[i - 251:i + 1])
@@ -1352,9 +1937,13 @@ def passes_evan_stage2(closes, highs, i, rs_rating,
         return False
     if max_ma200_gap_pct is not None and ma200_gap > max_ma200_gap_pct:
         return False
-    for days, floor in ((63, min_return_3m), (126, min_return_6m), (252, min_return_12m)):
+    for days, floor, ceil in ((63, min_return_3m, max_return_3m),
+                              (126, min_return_6m, max_return_6m),
+                              (252, min_return_12m, max_return_12m)):
         r = _return_pct(closes, i, days)
         if r is None or r < floor:
+            return False
+        if ceil is not None and r > ceil:
             return False
     return True
 
@@ -1425,6 +2014,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       time_stop_days=TIME_STOP_DAYS, time_stop_progress_r=TIME_STOP_PROGRESS_R,
                       entry_mode="vcp", donchian_period=20, initial_stop_atr_mult=INITIAL_STOP_ATR_MULT,
                       position_sizing_mode="risk", max_hold_days=None, gate_entries_on_regime=True,
+                      exit_on_regime_loss=False,
                       max_pct_of_avg_trade_value=None, max_position_value_abs=None, include_delisted=False,
                       min_quality_score=None, quality_rank_weight=0.0, require_profitable=True,
                       position_cap_base="seed",
@@ -1438,14 +2028,21 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       min_roe=None, min_roic=None, min_revenue_growth=None,
                       min_operating_margin=None,
                       min_revenue_growth_streak=None, min_operating_margin_trend=None,
-                      min_roe_percentile=None, max_per=None,
+                      min_roe_percentile=None, min_revenue_growth_percentile=None, max_per=None,
                       max_position_weight_pct=MAX_POSITION_WEIGHT_PCT,
                       dividend_dates_by_code=None, dividend_gap_threshold_pct=-6.0,
                       dividend_gap_max_pct=-20.0, dividend_gap_lookback_days=30,
                       stop_cooldown_days=None, min_ret12m_percentile=None,
                       pullback_min_uptick_pct=0.0, pullback_min_persist_days=0,
                       max_pullback_vol_ratio=None,
-                      require_new_pivot=False, new_pivot_margin_pct=0.0):
+                      require_new_pivot=False, new_pivot_margin_pct=0.0,
+                      flow_rows_by_code=None, flow_lookback_days=20, min_flow_percentile=None,
+                      initial_stop_pct=None, trail_pct=None,
+                      rank_exit_top_n=None, rank_exit_persist_days=1,
+                      flat_halt_days=None, flat_halt_threshold_pct=0.5,
+                      entry_rank_top_n=None,
+                      early_stop_days=None, early_stop_pct=None,
+                      overheat_days=None, overheat_gain_pct=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -1615,6 +2212,11 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         base = equity_value if position_cap_base == "equity" else seed_value
         return base * max_position_weight_pct / 100
 
+    # exit_on_regime_loss가 참조할 regime_ok 초기값 - 매 rd 루프의 "3) 시장국면"
+    # 단계에서 그 rd 기준으로 다시 계산되고, 포지션 처리(1단계)는 그보다 먼저
+    # 실행되므로 직전 rd에서 계산된 값을 쓴다(rescan_interval_days=1이면 하루
+    # 지연 - exit_on_regime_loss 주석 참고).
+    regime_ok = True
     for rd in rebalance_dates:
         idx_at_rd = {}
         evaluated = []
@@ -1626,6 +2228,11 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             if i + 1 < ts.MIN_BARS:
                 continue
             code, name, industry, sector = info_by_ticker.get(ticker, (ticker, ticker, None, None))
+            # 2026-10-08 시도: evaluate_trend_template이 리스트 끝에서 상대 인덱스로만
+            # 읽는 점을 이용해 bars_slice를 최근 300일로 잘라 매 재평가일의 O(i) 재구성
+            # 비용(실행시간 대부분 추정)을 줄이려 했다. 수식상 손실 없어야 하는데 실제
+            # 재실행 결과가 달라졌다(CAGR 31.67%->29.31%, 거래 84->87건, 같은 캐시 데이터
+            # 기준) - 원인을 못 찾아 되돌린다. 손 대려면 결과 재현성부터 다시 검증할 것.
             bars_slice = [
                 {"date": dates[k], "close": closes[k], "high": highs[k], "low": lows[k], "volume": volumes[k]}
                 for k in range(i + 1)
@@ -1675,6 +2282,40 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 idx = min(int(len(roe_vals) * min_roe_percentile / 100), len(roe_vals) - 1)
                 roe_percentile_cutoff = roe_vals[idx]
 
+        # 매출증가율 백분위 - roe_percentile_cutoff와 같은 논리(지인 "3단계 이상"
+        # 프록시용, APEX_STAGE3_PARAMS 4차 시도). 절대 문턱(min_revenue_growth)
+        # 대신 그날 후보군 내 상대 순위로 "성장성 복합점수"를 근사한다.
+        revenue_growth_percentile_cutoff = None
+        if min_revenue_growth_percentile is not None:
+            rg_vals = []
+            for t in trend_ok_set:
+                code_t, *_ = info_by_ticker.get(t, (t,))
+                fq = financial_quality(fundamentals_rows_by_code.get(code_t, []), rd)
+                v = fq.get("revenue_growth")
+                if v is not None:
+                    rg_vals.append(v)
+            if rg_vals:
+                rg_vals.sort()
+                idx = min(int(len(rg_vals) * min_revenue_growth_percentile / 100), len(rg_vals) - 1)
+                revenue_growth_percentile_cutoff = rg_vals[idx]
+
+        # 외국인+기관 순매수 백분위 - 위 ROE/매출증가율 백분위와 같은 논리를
+        # 수급에 적용(APEX_STAGE3 연구, 2026-10). flow_net_sum은 종목마다
+        # 시가총액 규모가 달라 거래대금(원) 절대값으로는 비교가 안 되므로,
+        # 반드시 percentile로만 쓴다(절대 문턱 모드는 의미가 없어 아예 안 둠).
+        flow_percentile_cutoff = None
+        if min_flow_percentile is not None and flow_rows_by_code:
+            flow_vals = []
+            for t in trend_ok_set:
+                code_t, *_ = info_by_ticker.get(t, (t,))
+                v = flow_net_sum(flow_rows_by_code.get(code_t), rd, flow_lookback_days)
+                if v is not None:
+                    flow_vals.append(v)
+            if flow_vals:
+                flow_vals.sort()
+                idx = min(int(len(flow_vals) * min_flow_percentile / 100), len(flow_vals) - 1)
+                flow_percentile_cutoff = flow_vals[idx]
+
         # 12개월 수익률 백분위 - 위 ROE 백분위와 같은 논리를 가격 모멘텀에
         # 적용한 것(38차 신규). evan_stage2의 min_return_12m(절대 문턱, 40%)은
         # 이미 있지만, RS85가 "절대 문턱보다 상대 순위가 더 안정적으로 통했다"는
@@ -1693,6 +2334,19 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 ret_vals.sort()
                 idx = min(int(len(ret_vals) * min_ret12m_percentile / 100), len(ret_vals) - 1)
                 ret12m_percentile_cutoff = ret_vals[idx]
+
+        # 순위이탈 청산(rank_exit_top_n, 2026-10 지인 실제 청산 UI 캡처로 확인된
+        # 방식 - "그날 순위가 Top10 밖으로 밀려나면 청산") - 그날 trend_ok_set
+        # 전체를 RS 내림차순으로 정렬해 순위를 매긴다. 가격과 무관하게 "더 나은
+        # 후보가 많아지면" 보유 종목이 청산 대상이 될 수 있는 상대적 기준이라,
+        # ROE/매출증가율 백분위처럼 그날 한 번만 계산해둔다.
+        # entry_rank_top_n(진입 게이트용, 42~43차에서 청산 쪽은 노이즈로 실패한
+        # 뒤 42차에서 분리) - 매일 재평가하는 청산과 달리 "진입하는 그 순간"
+        # 한 번만 확인하므로 같은 랭킹이라도 휩소 위험이 훨씬 적다.
+        rank_of_ticker = None
+        if rank_exit_top_n is not None or entry_rank_top_n is not None:
+            ranked = sorted(trend_ok_set, key=lambda t: -((by_ticker.get(t) or {}).get("rsRating") or 0))
+            rank_of_ticker = {t: idx + 1 for idx, t in enumerate(ranked)}
 
         # 1) 보유 포지션 처리 - 하루씩 순서대로(손절/트레일링 히트 > MA50이탈 > 시간손절 > 본전/분할익절/트레일링갱신 > 피라미딩)
         for ticker in list(positions.keys()):
@@ -1829,7 +2483,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         pos["partialTaken"] = True
 
                 if r_reached >= trail_activate_r:
-                    chandelier = pos["highestHigh"] - chandelier_atr_mult * pos["entryAtr"]
+                    # trail_pct(퍼센트 트레일링, "고점 -10%" 식) - 설정되면 ATR
+                    # 챈들리어 대신 이 값을 쓴다.
+                    chandelier = pos["highestHigh"] * (1 - trail_pct / 100) if trail_pct is not None \
+                        else pos["highestHigh"] - chandelier_atr_mult * pos["entryAtr"]
                     if chandelier > pos["stopPrice"]:
                         pos["stopPrice"] = chandelier
                         pos["stopState"] = "trailingStop"
@@ -1868,6 +2525,75 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                                           **(stage_exit_params if stage_exit_params is not None
                                              else (evan_params or {}))):
                     trade, proceeds = _full_exit(pos, closes[i], dates[i], "stageExit")
+                    trades.append(trade)
+                    cash += proceeds
+                    del positions[ticker]
+                    continue
+            # 시장국면 상실 시 보유 포지션 강제청산 - gate_entries_on_regime은
+            # 신규진입만 막아서, "진입 당시엔 국면이 괜찮았다가 직후 꺾인" 기존
+            # 포지션은 전혀 보호하지 못한다(2026-10-02 APEX_STAGE3_PARAMS 9차
+            # 스모그 테스트에서 하락장 구간 승률14.3%·알파-36%로 확인된 공백).
+            # exit_on_regime_loss=True면 국면이 꺼지는 순간 손절/트레일링 도달
+            # 여부와 무관하게 그 시점 종가로 전량 청산한다 - 손실을 그대로
+            # 확정시키더라도, 하락장에서 포지션을 계속 들고 가 더 크게 물리는
+            # 것보다 낫다는 가설.
+            if exit_on_regime_loss and not regime_ok:
+                trade, proceeds = _full_exit(pos, closes[i], dates[i], "regimeExit")
+                trades.append(trade)
+                cash += proceeds
+                del positions[ticker]
+                continue
+            # 정체 청산(flat_halt_days, 2026-10 지인 실제 청산 UI 캡처 - "3일간
+            # 가격이 안 움직이면 청산") - 최근 flat_halt_days 거래일의 일간
+            # 등락률이 전부 flat_halt_threshold_pct% 이내면 "정체"로 보고 청산한다.
+            # 캡처 화면에서 이 조건이 수익 중(+7.72%)인 포지션에도 발동했다 -
+            # 손익과 무관하게 "더 못 움직이는 자본"을 빼서 회전시키는 규칙이다.
+            # 조기 손절(early_stop_days/early_stop_pct) - 지인 청산 이력의 Early Stop
+            # (진입 후 1~3일 내 급락 청산). 진입 후 N거래일 안에 종가가 진입가 대비
+            # early_stop_pct% 이하이면 즉시 청산한다.
+            held_bars = i - pos["entryIdx"]
+            loss_from_entry = (closes[i] / pos["avgEntryPrice"] - 1) * 100
+            if early_stop_days is not None and 0 < held_bars <= early_stop_days and loss_from_entry <= early_stop_pct:
+                trade, proceeds = _full_exit(pos, closes[i], dates[i], "earlyStop")
+                trades.append(trade)
+                cash += proceeds
+                del positions[ticker]
+                continue
+            # 과열 청산(overheat_days/overheat_gain_pct) - 지인 이력의 Overheating
+            # (단기 급등 후 수일 내 익절). 진입 후 N거래일 안에 수익률이 gain% 이상이면 청산.
+            if overheat_days is not None and 0 < held_bars <= overheat_days and loss_from_entry >= overheat_gain_pct:
+                trade, proceeds = _full_exit(pos, closes[i], dates[i], "overheat")
+                trades.append(trade)
+                cash += proceeds
+                del positions[ticker]
+                continue
+
+            if flat_halt_days is not None and i >= flat_halt_days:
+                recent = closes[i - flat_halt_days + 1:i + 1]
+                prevs = closes[i - flat_halt_days:i]
+                flat = all(
+                    p and abs(c / p - 1) * 100 <= flat_halt_threshold_pct
+                    for c, p in zip(recent, prevs)
+                )
+                if flat:
+                    trade, proceeds = _full_exit(pos, closes[i], dates[i], "flatHalt")
+                    trades.append(trade)
+                    cash += proceeds
+                    del positions[ticker]
+                    continue
+            # 순위이탈 청산 - rank_of_ticker 산출 로직 참고. 1차 시도(2026-10-04,
+            # 즉시청산)는 상승장에서 후보 풀이 매일 크게 바뀌어 보유종목이 거의
+            # 매일 순위 밖으로 밀렸다 나왔다 해서 거래가 연130건까지 폭증하는
+            # 역효과가 났다 - rank_exit_persist_days(연속 이탈 횟수) 완충을
+            # 추가해 노이즈성 순위 흔들림을 걸러낸다.
+            if rank_exit_top_n is not None:
+                cur_rank = rank_of_ticker.get(ticker)
+                if cur_rank is None or cur_rank > rank_exit_top_n:
+                    pos["rankMissStreak"] = pos.get("rankMissStreak", 0) + 1
+                else:
+                    pos["rankMissStreak"] = 0
+                if pos["rankMissStreak"] >= rank_exit_persist_days:
+                    trade, proceeds = _full_exit(pos, closes[i], dates[i], "rankDrop")
                     trades.append(trade)
                     cash += proceeds
                     del positions[ticker]
@@ -1997,6 +2723,18 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         if r12 is None or r12 < ret12m_percentile_cutoff:
                             excluded_fin_quality += 1
                             continue
+                    # 매출증가율 상대 순위 - revenue_growth_percentile_cutoff 산출 로직 참고.
+                    if revenue_growth_percentile_cutoff is not None:
+                        fq_rg = financial_quality(fundamentals_rows_by_code.get(code, []), rd).get("revenue_growth")
+                        if fq_rg is None or fq_rg < revenue_growth_percentile_cutoff:
+                            excluded_fin_quality += 1
+                            continue
+                    # 외국인+기관 순매수 상대 순위 - flow_percentile_cutoff 산출 로직 참고.
+                    if flow_percentile_cutoff is not None:
+                        fv = flow_net_sum(flow_rows_by_code.get(code), rd, flow_lookback_days)
+                        if fv is None or fv < flow_percentile_cutoff:
+                            excluded_fin_quality += 1
+                            continue
                     # 밸류에이션 상한(PER 근사) - 이미 많이 오른 뒤 비싸게 사는 걸 거른다.
                     if max_per is not None:
                         per_v = estimate_per(price_now, shares_out, fundamentals_rows_by_code.get(code, []), rd)
@@ -2082,6 +2820,15 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     avg_vol50 = _avg_volume(volumes, i)
                     if not avg_vol50:
                         continue
+                    # 진입 순위 게이트(entry_rank_top_n) - 청산 쪽 순위이탈(rank_exit)은
+                    # 매일 재평가하다 노이즈로 실패했지만(42~43차), 진입 시점 한 번만
+                    # 확인하는 건 휩소 위험이 훨씬 적다. "청산도 Top10 기준이었다"는
+                    # 실측 UI와 대칭을 이루는 가설 - 눌림목/돌파 조건을 만족해도 그날
+                    # RS 순위가 상위권이 아니면 거른다.
+                    if entry_rank_top_n is not None:
+                        cur_rank = (rank_of_ticker or {}).get(ticker)
+                        if cur_rank is None or cur_rank > entry_rank_top_n:
+                            continue
                     candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality))
 
                 # 슬롯보다 후보가 많을 때 누구를 먼저 담을지 정하는 순위.
@@ -2153,7 +2900,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     atr20 = _atr(highs, lows, closes, fj)
                     if not atr20 or atr20 <= 0:
                         continue
-                    raw_risk = initial_stop_atr_mult * atr20
+                    # initial_stop_pct(퍼센트 고정 손절, 2026-10 지인 실제 청산 UI
+                    # 캡처로 확인된 방식 - "진입가 -15%" 식) - 설정되면 ATR 기반
+                    # 손절폭(initial_stop_atr_mult) 대신 이 값을 그대로 쓴다. atr20
+                    # 자체는 포지션에 계속 저장해둔다(trail_pct 미설정 시 챈들리어
+                    # 트레일링이 여전히 이걸 쓰므로).
+                    raw_risk = (fill_price * initial_stop_pct / 100) if initial_stop_pct is not None \
+                        else initial_stop_atr_mult * atr20
                     if risk_cap_mode == "shrink":
                         # 명세서 문구("리스크폭이 8% 넘으면 셋업 기각")와 다르게, 손절폭을
                         # 8%로 줄여서라도 진입시킨다 - 변동성 큰 후보를 버리지 않아
@@ -2303,3 +3056,230 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       "equityCurve": benchmark_curve},
         "equityCurve": equity_curve, "trades": trades,
     }
+
+# 48차 결과: CAGR 30.92%, CAGR/MDD 0.886, 승률 23.5%, 손익비 7.34, MDD -34.9%.
+# 손익비·MDD는 목표 80% 이상이나 CAGR·승률이 미달. 승률은 38차(분할익절 5R)에서
+# 확인된 효과를 살리고, 6슬롯 + Top40 게이트 + 피라미딩 4회로 CAGR을 올리는 49차.
+APEX_STAGE3_COMBO_PARAMS = {**APEX_STAGE3_ENTRY_RANK40_PARAMS,
+    "partial_profit_fraction": 0.12, "partial_profit_r": 5.0,
+    "pyramid_max_count": 4,
+}
+
+# 49차 결과: 승률 40.0%(달성)지만 CAGR 19.94%·손익비 5.08로 후퇴. 분할익절이
+# 피라미딩 효과를 묻는 것으로 보여, 50차는 46차 기준선(6슬롯·Top40·ATR 출구)에
+# 피라미딩 4회만 단독 추가해 효과를 분리한다.
+APEX_STAGE3_PYR_PARAMS = {**APEX_STAGE3_ENTRY_RANK40_PARAMS,
+    "pyramid_max_count": 4,
+}
+
+# 50차 결과: CAGR 22.47%, CAGR/MDD 0.808, 승률 23.2%, 손익비 7.54 - 피라미딩 단독은
+# 효과가 작았다. 51차는 같은 기준선에서 눌림 깊이 상한(max_pullback_pct 8->12)만
+# 넓혀 진입 기회(거래 수)와 CAGR 변화를 본다.
+APEX_STAGE3_PULL12_PARAMS = {**APEX_STAGE3_PYR_PARAMS,
+    "max_pullback_pct": 12.0,
+}
+
+# 51차(눌림 상한 12%)는 거래가 연61건으로 늘었지만 CAGR 15.2%, MDD -54.9%,
+# 승률 16.5%로 역효과였다 - 얕은 눌림까지 받아들이는 게 문제였다. 52차는 반대로
+# 최소 눌림 기준(min_pullback_pct 3->5)을 올려 더 의미 있는 눌림에서만 진입한다.
+APEX_STAGE3_PULLMIN5_PARAMS = {**APEX_STAGE3_PYR_PARAMS,
+    "min_pullback_pct": 5.0,
+}
+
+# 52차까지 CAGR 최고 32%. 목표 65%에 닿으려면 위험을 크게 키워야 한다는 판단 하에,
+# 53차: 2슬롯 집중 + 슬롯당 비중 상한 50% + 피라미딩 4회 (MDD는 목표보다 커질 수 있음).
+APEX_STAGE3_HIGHRISK_PARAMS = {**APEX_STAGE3_PYR_PARAMS,
+    "max_positions": 2, "max_position_weight_pct": 50.0,
+}
+
+# 53차: CAGR 37.65%(최고), MDD -50.4%(목표 낙폭권), 손익비 8.36. 54차는 같은 2슬롯
+# 설정에서 승자 피라미딩을 4->6회로 늘려 CAGR 추가 상승 여부를 본다.
+APEX_STAGE3_PYR6_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "pyramid_max_count": 6,
+}
+
+# 54차(피라미딩 6회)는 CAGR 34.16%로 53차(37.65%)보다 낮았다 -> 피라미딩 4회 유지.
+# 55차: 53차 설정(2슬롯·비중50%·피라미딩4)에서 진입 게이트를 Top40->Top25로 강화해
+# 선별 품질을 높이고 CAGR/MDD 개선 여부를 본다.
+APEX_STAGE3_HR_TOP25_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "entry_rank_top_n": 25,
+}
+
+# 55차(Top25)는 거래가 연12.7건으로 줄어 CAGR 31.63%로 하락 -> 진입 게이트는
+# 넓히는 방향이 CAGR에 유리했다. 56차: 53차 설정에서 Top40->Top50으로 넓힌다.
+APEX_STAGE3_HR_TOP50_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "entry_rank_top_n": 50,
+}
+
+# 56차(Top50) CAGR 31.34% -> 진입 게이트는 Top40 최적(53차 37.65%).
+# 57차: 53차에서 슬롯을 1개로 줄여 비중 100% 집중 - CAGR 상한을 확인한다.
+APEX_STAGE3_1SLOT_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "max_positions": 1, "max_position_weight_pct": 100.0,
+}
+
+# 57차(1슬롯): CAGR ~0%, MDD -66% - 극단적 집중은 실패. 2슬롯(53차)이 집중의 한계.
+# 58차: 53차에서 챈들리어 트레일링을 3.0->4.0배로 늦춰 승자를 더 길게 보유한다.
+APEX_STAGE3_CHAND4_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "chandelier_atr_mult": 4.0,
+}
+
+# 58차(챈들리어 4배): CAGR 32.29%(53차 37.65%보다 낮음), 손익비 9.03으로 상승 -> 청산을
+# 늦추면 손익비는 오르나 CAGR이 떨어지는 트레이드오프 확인. 59차: 53차에서 시간손절
+# 기간을 10->20일로 늘려 진행이 느린 종목도 더 기다리게 한다(CAGR 상승 여부 확인).
+APEX_STAGE3_TIME20_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "time_stop_days": 20,
+}
+
+# 59차(시간손절 20일): CAGR 33.72%로 53차(37.65%)보다 낮음 -> 시간손절 10일 유지.
+# 60차: 53차에서 눌림 기준 이동평균을 20일->50일로 바꿔 더 큰 추세의 눌림에서만 진입.
+APEX_STAGE3_MA50_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "pullback_ma_period": 50,
+}
+
+# 60차(눌림 MA50): CAGR 36.0%, CAGR/MDD 0.732로 53차와 유사 - 큰 개선 없음.
+# 61차: 53차에서 눌림 탐색 기간(pullback_lookback)을 20일->40일로 넓혀 고점 대비
+# 눌림을 더 긴 구간에서 찾는다.
+APEX_STAGE3_LOOK40_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "pullback_lookback": 40,
+}
+
+# 61차(눌림 탐색 40일): CAGR 31.05%로 53차보다 낮음 -> 탐색 기간 20일 유지.
+# 62차: 53차에서 초기 손절폭을 넓힌다(ATR 1.1->1.5, 리스크 상한 2.8%->4.0%) -
+# 짧은 흔들림에 조기 손절되는 것을 줄여 승자 보유를 늘리는 가설.
+APEX_STAGE3_WIDESTOP_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "initial_stop_atr_mult": 1.5, "max_initial_risk_pct": 4.0,
+}
+
+# 62차(초기 손절 확대): MDD -63.8%로 깊어져 CAGR/MDD 0.519 -> 손절 1.1/2.8% 유지.
+# 63차: 53차에서 재평가 주기를 1일->5일로 늘려 잦은 교체를 줄이는 가설 검증.
+APEX_STAGE3_RESCAN5_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "rescan_interval_days": 5,
+}
+
+# 63차(재평가 5일): CAGR 7.37%, 거래 62건으로 대폭 실패 -> 재평가는 매일(1일) 유지.
+# 64차: 53차에서 트레일링 시작 시점(trail_activate_r)을 2R->1R로 앞당겨 이익을 더 일찍 보호.
+APEX_STAGE3_TRAIL1_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "trail_activate_r": 1.0,
+}
+
+# 64차(트레일링 1R): CAGR 33.92%로 53차보다 낮음 -> 트레일링 2R 유지.
+# 65차: 53차에서 본전 이동 시점(breakeven_r)을 2R->3R로 늦춰 초반 조기 손절을 줄인다.
+APEX_STAGE3_BE3_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "breakeven_r": 3.0,
+}
+
+# 65차(본전 이동 3R): CAGR 38.08%, CAGR/MDD 0.756, 손익비 9.06 - 신기록(53차 37.65%).
+# 66차: 본전 이동을 4R로 더 늦춰 같은 방향(조기 손절 감소) 추세가 이어지는지 확인.
+APEX_STAGE3_BE4_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "breakeven_r": 4.0,
+}
+
+# 66차(본전 이동 4R): CAGR 41.08%, CAGR/MDD 0.815 - 신기록. 67차: 5R까지 늦춰 추세 확인.
+APEX_STAGE3_BE5_PARAMS = {**APEX_STAGE3_HIGHRISK_PARAMS,
+    "breakeven_r": 5.0,
+}
+
+# 67차(본전 5R): CAGR 40.95%로 66차(4R, 41.08%)와 정체 -> 본전 4R이 최적.
+# 68차: 66차(본전 4R)에 챈들리어 배수를 3.0->3.5로 조정해 CAGR/승률 균형을 본다.
+APEX_STAGE3_BEST68_PARAMS = {**APEX_STAGE3_BE4_PARAMS,
+    "chandelier_atr_mult": 3.5,
+}
+
+# 68차(챈들리어 3.5배 + 본전 4R): CAGR 42.78%(목표 80% 초과), CAGR/MDD 0.825 - 신기록.
+# 69차: 챈들리어를 4.0배로 더 늘려 CAGR/MDD 개선 추세가 이어지는지 확인.
+APEX_STAGE3_BEST69_PARAMS = {**APEX_STAGE3_BE4_PARAMS,
+    "chandelier_atr_mult": 4.0,
+}
+
+# 69차(챈들리어 4배): CAGR 35.42%로 하락 -> 챈들리어 3.5배가 최적(68차 42.78%).
+# 70차(마지막 실험): 68차 기준에서 트레일링 시작 시점(trail_activate_r)을 2R->3R로 늦춘다.
+APEX_STAGE3_BEST70_PARAMS = {**APEX_STAGE3_BEST68_PARAMS,
+    "trail_activate_r": 3.0,
+}
+
+# 지인 청산 이력(76건, 3/16~7/6)에서 확인한 두 규칙을 68차 설정에 추가해 검증한다.
+# 73차(결합): Early Stop(3일 내 -8%) + Overheating(5일 내 +50%).
+APEX_STAGE3_EXIT_FRIEND_PARAMS = {**APEX_STAGE3_BEST68_PARAMS,
+    "early_stop_days": 3, "early_stop_pct": -8.0,
+    "overheat_days": 5, "overheat_gain_pct": 50.0,
+}
+
+# 지인 진입 이력 분석(59건): 진입 시점이 52주 고점(백분위 97~98) · 12개월 수익률 상위 2~3%
+# · 200일선 이격 상위 · 20일 눌림 0% (고점에서 진입)로 나타났다. 우리 눌림목 규칙은 8.5%만 충족.
+# 74차: 진입을 눌림목 대신 52주 신고가 돌파(돈치안 252일)로 바꾸고, 기존 순위 게이트(Top40)는 유지.
+APEX_STAGE3_NEWHIGH52_PARAMS = {**APEX_STAGE3_BEST68_PARAMS,
+    "entry_mode": "donchian", "donchian_period": 252,
+}
+
+# ══════════════════════════════════════════════════════════════════════════
+# "JPEX" - 지금까지 점검한 전략들의 장점을 결합한 신규 계열 (2026-10-07~)
+# ══════════════════════════════════════════════════════════════════════════
+# 이 세션에서 여러 전략을 재현성까지 점검한 결과를 재료로 쓴다:
+#  - APEX Stage3 68차: 손익비가 APEX 계열 중 최고(9.38, 실행 로그로 검증됨).
+#    순위게이트(Top40)+피라미딩4회+챈들리어3.5배+본전4R 조합이 "이기는 거래를
+#    최대한 길게 끌고 가는" 축에서 가장 좋았다. JPEX의 뼈대로 그대로 쓴다.
+#  - 지인 필터30 실험(이번 세션, 비공식): 시장 폭(200일선 위 종목 비율) 30%
+#    이상일 때만 신규진입을 허용하자 Calmar가 0.545->0.971로 거의 2배가 됐다
+#    (MDD -62%->-38%, CAGR은 소폭 희생). 68차는 지금까지 이 축을 쓴 적이
+#    없었다(gate_entries_on_regime=False) - JPEX 1차는 이것부터 켠다.
+#  - 지인 실제 청산 UI 캡처: 보유 중 포지션도 국면이 꺾이면 바로 정리해야
+#    한다는 교훈(2026-10-02 9차 스모그 테스트에서 하락장 승률 14.3%로 확인된
+#    공백) - exit_on_regime_loss로 이미 엔진에 구현돼 있던 것을 처음 켠다.
+#  - APEX 2/3: 기록값(43%대)은 재현 불가로 판명났지만, "손절을 좁혀 패자를
+#    빨리 끊는다"는 설계 방향 자체는 68차에도 이미 녹아있다(ATR1.1배/2.8%).
+#  - 어나니머스: 유휴 현금을 지수에 대납하는 발상은 흥미롭지만 현재 엔진에서
+#    전략 자체가 마이너스라 핵심 가설(현금 유휴화 방지)을 분리 검증하기
+#    전에는 가져오지 않는다 - 2차 이후 후보.
+#
+# JPEX 1차: 68차 그대로 + 시장국면 게이팅(신규진입 차단) + 국면상실 시
+# 보유포지션 강제청산. 이 두 개만 추가해 효과를 깨끗하게 본다.
+JPEX_V1_PARAMS = {**APEX_STAGE3_BEST68_PARAMS,
+    "gate_entries_on_regime": True,
+    "exit_on_regime_loss": True,
+}
+
+# 1차 실측(2016-01-01~2026-10-08, 상장폐지 포함): CAGR 28.6%, MDD -27.73%,
+# CAGR/MDD 1.031(이 세션 최고 기록 경신), 승률 28.7%, 손익비 7.47, 거래 80건
+# (연 7.4건). 국면 게이팅만 추가했는데 68차(MDD -51.87%, 0.825) 대비 MDD가
+# 거의 반으로 줄고 승률·손익비도 같이 좋아졌다 - 가설이 맞았다. 다만 거래가
+# 너무 적어(연 7.4건) 수익 규모가 작다.
+#
+# 2차: MDD에 여유가 생겼으니 기회를 넓히는 두 축을 따로 시험했다.
+#  - 슬롯 2->4 + 비중상한 30%(분산): CAGR 20.21%, MDD -19.14%, 1.056 - MDD는
+#    더 줄었지만 집중도가 흐려져 CAGR이 떨어졌다.
+#  - 순위게이트 Top40->Top80(후보 확대): CAGR 25.73%, MDD -25.38%, 1.014.
+#  - 두 축을 합치면(슬롯4+Top80) 1.031보다도 못한 0.932로 오히려 악화 -
+#    "후보를 늘리면서 동시에 분산"하면 품질이 낮은 후보까지 들어와 상쇄효과가
+#    난다. 이 방향은 폐기.
+#
+# 3차: 피라미딩 축(승자를 얼마나 키우는가)을 바꿔봤다 - 4(원래)->5->6->7->8.
+# 6회에서 꺾이는 지점(peak)을 발견: CAGR/MDD가 1.031(4회)->1.257(5회)->
+# 1.344(6회, 역대 최고)->1.131(7회로는 1.314, 8회는 0.X대로 재하락)로 6회가
+# 최적. "국면이 좋을 때 이기는 포지션을 더 많이 더 크게 태운다"가 "거래빈도를
+# 넓힌다"보다 훨씬 효율적이었다 - 국면게이팅이 이미 패자를 걸러주고 있어서,
+# 남은 에너지를 분산이 아니라 승자 집중에 쓰는 게 맞았다.
+#
+# 4차: 6회 피라미딩을 고정하고 나머지 축(챈들리어 3.0/4.0배, 초기손절 ATR0.7/
+# 2.0%, 본전이동 3R/5R, 시간손절 15일, 트레일 시작 1.5R, 비중상한 70%, 시총
+# 하한 완화, EPS성장 10%)을 전부 따로 시험했지만 전부 6회+원래값 조합(1.344)
+# 보다 낮았다 - 68차 원본의 챈들리어 3.5배/손절ATR1.1배·2.8%/본전4R/시간손절
+# 10일 조합은 이미 로컬 최적점에 가까웠고, 피라미딩 횟수만 늘리는 것이
+# 유일하게 남아있던 개선 여지였다는 뜻.
+#
+# 구간검증(2017-2019 하락장 vs 2020-2026 상승장, 둘 다 6회 피라미딩 기준):
+# 하락장 CAGR +9.64%/MDD -17.39%(손실 없이 생존, 국면게이팅이 실제로 작동),
+# 상승장 CAGR +29.17%/MDD -27.01%/1.08. 전체기간 한 구간에만 맞춰진 과최적화가
+# 아니라 두 레짐 모두에서 건전하게 작동함을 확인했다.
+#
+# JPEX 최종 - 68차(순위게이트+챈들리어3.5+본전4R) + 국면게이팅/국면상실청산
+# (지인 필터30 실험에서 가져옴) + 피라미딩 4->6회(이번 탐색에서 찾은 최적점).
+JPEX_PARAMS = {**JPEX_V1_PARAMS,
+    "pyramid_max_count": 6,
+}
+# 최종 실측(2016-01-01~2026-10-08, 10.75년, 상장폐지 포함, 시드 5억원):
+# CAGR 31.67%, MDD -23.56%, CAGR/MDD 1.344(이 세션 전체 최고), 승률 27.4%,
+# 손익비 7.79, 거래 84건(연 7.8건), 평균보유 15.1일, 고유종목 68개.
+# 주의: 순위게이트(entry_rank_top_n)와 국면상실청산(exit_on_regime_loss)은
+# 실시간 모의투자 엔진(paper_trading.py)에 아직 이식되지 않았다 - 지금은
+# 백테스트 전용이고, 모의투자로 띄우면 이 두 규칙이 조용히 빠진 채 동작해
+# 다른 결과가 나온다. 라이브로 쓰려면 paper_trading.py에 먼저 이식해야 한다.
