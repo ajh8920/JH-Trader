@@ -53,6 +53,10 @@ sys.path.insert(0, str(PROJECT_DIR))
 # RESULTS.md 7단계 참고. v31부터는 버그 수정 + 성능 최적화 이후(2라운드)다.
 # v49 = 최종 채택(vcp_strategy.JPEX_PARAMS와 동일). v6(=JPEX_V2_PARAMS)은
 # 1라운드 최종이었지만 v49로 대체됐다.
+# V64 = 2026-10-08 밤 최종 채택 설정(JPEX_PARAMS와 동일) - 4라운드 변형들이 기준으로 삼는다.
+_V64 = {"pyramid_max_count": 4, "overheat_days": 5, "overheat_gain_pct": 50.0,
+        "chandelier_atr_mult": 3.0, "breakeven_r": 3.0, "max_initial_risk_pct": 4.0}
+
 VARIANTS = {
     "v1": {},  # 국면게이팅+국면상실청산만 추가 (베이스라인)
     "v2a": {"max_positions": 4, "max_position_weight_pct": 30.0},
@@ -154,7 +158,47 @@ VARIANTS = {
             "breakeven_r": 3.0, "max_initial_risk_pct": 4.0, "initial_stop_atr_mult": 1.5},
     "v70": {"pyramid_max_count": 5, "overheat_days": 5, "overheat_gain_pct": 50.0, "chandelier_atr_mult": 3.0,
             "breakeven_r": 3.0, "max_initial_risk_pct": 4.0},
+
+    # --- 4라운드(2026-10-09 새벽, CAGR 50% 목표 - 시총 밴드/소형주 탐색) ---
+    "v71": {**_V64, "min_market_cap": 150_000_000_000},
+    "v72": {**_V64, "min_eps_growth_pct": 10.0},
+    "v73": {**_V64, "min_revenue_growth": 10.0},
+    "v74": {**_V64, "min_pullback_pct": 1.0},
+    "v75": {**_V64, "min_market_cap": 30_000_000_000, "max_market_cap": 300_000_000_000},
+    "v76": {**_V64, "min_market_cap": 50_000_000_000, "max_market_cap": 200_000_000_000},
+    "v77": {**_V64, "min_market_cap": 100_000_000_000, "max_market_cap": 500_000_000_000},
+    "v78": {**_V64, "min_market_cap": 10_000_000_000, "max_market_cap": 100_000_000_000},
+    "v79": {**_V64, "min_market_cap": 30_000_000_000, "max_market_cap": 300_000_000_000,
+            "min_eps_growth_pct": 0.0, "min_revenue_growth": 0.0},
+    "v80": {**_V64, "min_market_cap": 10_000_000_000, "max_market_cap": 100_000_000_000,
+            "min_eps_growth_pct": 0.0, "min_revenue_growth": 0.0},
+    "v81": {**_V64, "min_market_cap": 30_000_000_000, "max_market_cap": 300_000_000_000,
+            "min_eps_growth_pct": 0.0, "min_revenue_growth": 0.0, "min_avg_trade_value": 50_000_000},
+    "v82": {**_V64, "min_market_cap": 50_000_000_000, "max_market_cap": 500_000_000_000,
+            "min_eps_growth_pct": 0.0, "min_revenue_growth": 0.0},
+    "v83": {**_V64, "min_market_cap": 50_000_000_000, "max_market_cap": 500_000_000_000,
+            "min_eps_growth_pct": 0.0, "min_revenue_growth": 0.0,
+            "evan_params": {"min_rs": 40.0}, "max_pct_of_avg_trade_value": 20},
+    "v84": {**_V64, "min_market_cap": 50_000_000_000, "max_market_cap": 500_000_000_000,
+            "min_eps_growth_pct": 0.0, "min_revenue_growth": 0.0, "evan_params": {"min_rs": 40.0}},
+    "v85": {**_V64, "min_market_cap": 50_000_000_000, "max_market_cap": 500_000_000_000,
+            "min_eps_growth_pct": 0.0, "min_revenue_growth": 0.0,
+            "min_pullback_pct": 1.0, "max_pullback_pct": 12.0},
+    "v86": {**_V64, "min_market_cap": 50_000_000_000, "max_market_cap": 500_000_000_000,
+            "min_eps_growth_pct": 0.0, "min_revenue_growth": 0.0, "chandelier_atr_mult": 5.0},
+    "v87": {**_V64, "min_market_cap": 50_000_000_000, "max_market_cap": 500_000_000_000,
+            "min_eps_growth_pct": 0.0, "min_revenue_growth": 0.0, "require_evan_stage2": False},
+    "v88": {**_V64, "min_market_cap": 50_000_000_000, "max_market_cap": 500_000_000_000,
+            "min_eps_growth_pct": 0.0, "min_revenue_growth": 0.0, "gate_entries_on_regime": False},
+    "v89": {**_V64, "min_market_cap": 50_000_000_000, "max_market_cap": 500_000_000_000,
+            "min_eps_growth_pct": 0.0, "min_revenue_growth": 0.0, "position_sizing_mode": "equal_weight"},
+    "v90": {**_V64, "min_market_cap": 50_000_000_000, "max_market_cap": 500_000_000_000,
+            "min_eps_growth_pct": 0.0, "min_revenue_growth": 0.0,
+            "require_evan_stage2": False, "gate_entries_on_regime": False},
+    "v91": {**_V64, "min_market_cap": 500_000_000_000},
+    "v92": {**_V64, "min_market_cap": 1_000_000_000_000},
 }
+del _V64
 
 # 구간검증(강건성 확인)용 - 변형은 기본 v49(JPEX_PARAMS) 기준으로 쓴다
 PERIOD_OVERRIDES = {

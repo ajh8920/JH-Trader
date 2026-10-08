@@ -2001,7 +2001,7 @@ def _full_exit(pos, price, date, reason, tax=True):
 
 def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_positions=DEFAULT_MAX_POSITIONS_FALLBACK,
                       fetch_fn=None, shares_map=None, shareholder_rows_by_code=None, fundamentals_rows_by_code=None,
-                      adx_threshold=ADX_THRESHOLD, min_market_cap=MIN_MARKET_CAP,
+                      adx_threshold=ADX_THRESHOLD, min_market_cap=MIN_MARKET_CAP, max_market_cap=None,
                       min_avg_trade_value=MIN_AVG_TRADE_VALUE, volume_breakout_mult=VOLUME_BREAKOUT_MULT,
                       final_contraction_ratio=0.5, min_final_duration=5, max_days_since_low=15,
                       require_volume_decrease=True, rescan_interval_days=RESCAN_INTERVAL_DAYS,
@@ -2671,6 +2671,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     if shares_out and price_now * shares_out < min_market_cap:
                         excluded_cap += 1
                         continue
+                    # max_market_cap(상한) - 2026-10-09 소형주 집중 실험용. min_market_cap은
+                    # 원래부터 있었지만 상한이 없어 "시총 X 이상" 밖에 못 걸렀다 - 대형주까지
+                    # 섞인 유니버스에서 소형주만 떼어낸 밴드(예: 500억~3000억)를 보려면 필요.
+                    if max_market_cap is not None and shares_out and price_now * shares_out > max_market_cap:
+                        excluded_cap += 1
+                        continue
                     avg_val = _avg_trade_value(closes, volumes, i)
                     if avg_val is not None and avg_val < min_avg_trade_value:
                         excluded_liquidity += 1
@@ -3313,21 +3319,42 @@ JPEX_V2_PARAMS = {**JPEX_V1_PARAMS,
 # 이동3R(4R보다 나음, 2.5R은 1.056으로 악화) = CAGR/MDD 1.326(이 세션 전체
 # 최고). 트레일시작 1.5R은 효과 없음(1.326 그대로), 초기손절 ATR0.7/2.0%로
 # 좁히면 0.996으로 악화(68차 원본의 1.1배/2.8%가 이미 적정선).
-JPEX_PARAMS = {**JPEX_V1_PARAMS,
+JPEX_V3_PARAMS = {**JPEX_V1_PARAMS,
     "pyramid_max_count": 4,
     "chandelier_atr_mult": 3.0,
     "breakeven_r": 3.0,
     "overheat_days": 5, "overheat_gain_pct": 50.0,
 }
-# 최종 실측(2016-01-01~2026-10-08, 10.75년, 상장폐지 포함, 시드 5억원,
-# 결정성 버그 수정 후): CAGR 29.64%, MDD -22.35%, CAGR/MDD 1.326, 승률 28.1%,
-# 손익비 7.45, 거래 89건(연 8.3건), 평균보유 14.2일, 고유종목 70개.
+# 2라운드 최종(2026-10-08 아침, research/jpex/run_jpex_variant.py의 v49와 동일).
+# 실측(2016-01-01~2026-10-08, 10.75년, 상장폐지 포함, 시드 5억원, 결정성 버그
+# 수정 후): CAGR 29.64%, MDD -22.35%, CAGR/MDD 1.326, 거래 89건(연 8.3건).
+# 3라운드에서 JPEX_PARAMS로 대체됨(아래) - 이 변수는 참고용으로 보존한다.
+
+# 3라운드(2026-10-08 밤, CAGR 50% 목표 탐색) - V3에 초기 리스크 상한만 2.8%->
+# 4.0%로 올렸다. 5~6%는 MDD가 -31~32%로 급격히 나빠져 역효과(4.0%가 임계점).
+# research/jpex/run_jpex_variant.py의 v64와 동일.
+JPEX_PARAMS = {**JPEX_V3_PARAMS,
+    "max_initial_risk_pct": 4.0,
+}
+# 최종 실측(2016-01-01~2026-10-09, 10.75년, 상장폐지 포함, 시드 5억원):
+# CAGR 30.41%, MDD -21.81%, CAGR/MDD 1.394(이 세션 전체 최고), 승률 29.8%,
+# 손익비 6.83, 거래 84건(연 7.8건), 평균보유 15.2일, 고유종목 70개.
 #
-# 구간검증(전부 이 최종 설정 기준): 2017-2019 하락장 CAGR +10.06%/MDD
-# -17.39%(손실 없이 생존), 2020-2026 상승장 CAGR +37.64%/MDD -25.9%/1.453,
-# 2019.6-2020.6 코로나 급락 CAGR -4.48%/MDD -12.41%(거래 4건뿐이라 1라운드
-# 설정과 수치 동일 - 급락 구간엔 이번 라운드가 건드린 파라미터가 영향을 줄
-# 기회 자체가 없었다). 세 구간 모두 건전 - 특정 시기 과최적화 아님.
+# 4라운드(2026-10-09 새벽) - "소형주 집중" 요청에 따라 max_market_cap(신규
+# 추가 파라미터, 상한)로 시총 밴드를 100억~5000억까지 전부 훑었지만 16개
+# 변형 전부 V64보다 크게 나빴다(최고가 CAGR/MDD 0.752, 그마저도 밴드를 500
+# 억~5000억으로 넓히고 EPS/매출성장 필터를 꺼야 나온 값). 반대로 시총
+# 하한을 5000억·1조로 올려도 나빠졌다(0.960, 0.406) - 3,000억(지금 하한,
+# 상한 없음)이 우연이 아니라 진짜 최적점임을 양방향으로 확인했다. 이
+# 신호체계(Stage2+RS랭킹+국면게이팅+눌림목)는 중대형주에 최적화돼 있고,
+# 소형주 전환만으로는 CAGR을 올릴 수 없다(상세: research/jpex/RESULTS.md
+# 13단계).
+#
+# 구간검증(V3=2라운드 설정 기준, 미재검증): 2017-2019 하락장 CAGR +10.06%/
+# MDD -17.39%(손실 없이 생존), 2020-2026 상승장 CAGR +37.64%/MDD -25.9%/
+# 1.453, 2019.6-2020.6 코로나 급락 CAGR -4.48%/MDD -12.41%. 세 구간 모두
+# 건전 - 특정 시기 과최적화 아님. V64(현재 JPEX_PARAMS)는 리스크 상한만
+# 바꾼 것이라 구간별 패턴이 유사할 것으로 추정하나 직접 재검증하지 않았다.
 #
 # 주의: 순위게이트(entry_rank_top_n)와 국면상실청산(exit_on_regime_loss)은
 # 실시간 모의투자 엔진(paper_trading.py)에 아직 이식되지 않았다 - 지금은
