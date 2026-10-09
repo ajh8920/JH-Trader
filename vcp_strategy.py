@@ -2043,7 +2043,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       entry_rank_top_n=None,
                       early_stop_days=None, early_stop_pct=None,
                       overheat_days=None, overheat_gain_pct=None,
-                      chandelier_wide_r=None, chandelier_atr_mult_wide=None):
+                      chandelier_wide_r=None, chandelier_atr_mult_wide=None,
+                      regime_adaptive_params=None, regime_strong_threshold_pct=10.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2095,6 +2096,24 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     (현재 R배수)가 chandelier_wide_r 이상이면 그 포지션의 챈들리어 폭만
     chandelier_atr_mult 대신 chandelier_atr_mult_wide(보통 더 큰 값)를 쓴다 -
     일반 승자는 기존 폭 그대로, 거대 승자만 더 여유를 준다.
+
+    regime_adaptive_params(기본 None=비활성)는 "국면이 좋을 때는 공격적으로,
+    나쁠 때는 방어적으로"를 같은 백테스트 안에서 동시에 적용한다 - 피라미딩
+    한도/챈들리어 폭/초기리스크 상한/비중상한/진입순위게이트 중 전부 또는
+    일부를 국면별로 다르게 쓸 수 있다. {"weak": {...}, "neutral": {...},
+    "strong": {...}} 형태로, 각 상태에서 적용할 오버라이드만 넣으면 된다(안
+    넣은 키는 기본 인자값 그대로). 국면은 매 재평가일마다 분류한다 - regime_ok
+    (코스피>200일선 and 200일선 상승)가 False면 "weak", True인데 코스피가
+    200일선 대비 regime_strong_threshold_pct%(기본 10%) 이상 위에 있으면
+    "strong", 그 사이는 "neutral". exit_on_regime_loss의 regime_ok와 같은
+    이유로 하루 지연(직전 재평가일 기준)이 있다 - pyramid_max_count/
+    chandelier_atr_mult처럼 "보유 포지션 관리" 로직에 쓰이는 값만 그렇고,
+    max_initial_risk_pct/max_position_weight_pct/entry_rank_top_n처럼 "신규
+    진입 결정"에만 쓰이는 값은 그 재평가일의 국면으로 즉시 적용된다(국면
+    판정이 신규진입 게이팅과 같은 시점에 끝나기 때문). 2026-10-09 "레버리지
+    없이 CAGR 50%" 목표로 추가 - 피라미딩/비중상한을 전체 기간에 똑같이
+    늘리면 역효과였지만(research/jpex/RESULTS.md 20단계), 국면이 좋을 때만
+    선택적으로 키우면 다를 수 있다는 가설을 검증하기 위함.
 
     regime_exit_min_r(기본 None=비활성, exit_on_regime_loss=True일 때만 의미있음)는
     국면상실청산이 "이미 R배수 기준으로 이만큼 벌어둔 포지션"까지 통째로 끊어버리는
@@ -2233,13 +2252,30 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         경합할 수 있는 전역 mutable state라 위험했다 - RULES.md 워커간 공유상태
         금지와 같은 이유). 인자로 받게 바꿔 스레드 안전하게 만들었다."""
         base = equity_value if position_cap_base == "equity" else seed_value
-        return base * max_position_weight_pct / 100
+        return base * eff_max_position_weight_pct / 100
+
+    def _regime_overrides(state):
+        """regime_adaptive_params에서 그 국면 상태의 오버라이드 딕셔너리를 돌려준다
+        (없으면 빈 딕셔너리 - 그 어떤 effective 값도 기본 인자값 그대로 유지됨)."""
+        if not regime_adaptive_params:
+            return {}
+        return regime_adaptive_params.get(state) or {}
 
     # exit_on_regime_loss가 참조할 regime_ok 초기값 - 매 rd 루프의 "3) 시장국면"
     # 단계에서 그 rd 기준으로 다시 계산되고, 포지션 처리(1단계)는 그보다 먼저
     # 실행되므로 직전 rd에서 계산된 값을 쓴다(rescan_interval_days=1이면 하루
-    # 지연 - exit_on_regime_loss 주석 참고).
+    # 지연 - exit_on_regime_loss 주석 참고). eff_pyramid_max_count/
+    # eff_chandelier_atr_mult도 regime_adaptive_params가 있으면 같은 이유로
+    # 하루 지연된(직전 rd 기준) 값을 쓴다 - 둘 다 "보유 포지션 관리" 로직
+    # (1단계)에서 쓰이기 때문. eff_max_initial_risk_pct/
+    # eff_max_position_weight_pct/eff_entry_rank_top_n은 "신규진입 결정"에만
+    # 쓰여 그 rd 안에서 바로 갱신된 값을 쓴다(지연 없음).
     regime_ok = True
+    eff_pyramid_max_count = pyramid_max_count
+    eff_chandelier_atr_mult = chandelier_atr_mult
+    eff_max_initial_risk_pct = max_initial_risk_pct
+    eff_max_position_weight_pct = max_position_weight_pct
+    eff_entry_rank_top_n = entry_rank_top_n
     for rd in rebalance_dates:
         idx_at_rd = {}
         evaluated = []
@@ -2362,8 +2398,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         # entry_rank_top_n(진입 게이트용, 42~43차에서 청산 쪽은 노이즈로 실패한
         # 뒤 42차에서 분리) - 매일 재평가하는 청산과 달리 "진입하는 그 순간"
         # 한 번만 확인하므로 같은 랭킹이라도 휩소 위험이 훨씬 적다.
+        # regime_adaptive_params의 어느 국면이든 entry_rank_top_n을 쓸 수 있으면
+        # 미리 계산해둔다 - 기본값(entry_rank_top_n)이 None이어도 특정 국면
+        # 오버라이드에서만 켤 수 있어, 그 경우까지 놓치지 않으려는 안전장치다.
+        _any_regime_entry_rank = regime_adaptive_params and any(
+            (v or {}).get("entry_rank_top_n") is not None for v in regime_adaptive_params.values())
         rank_of_ticker = None
-        if rank_exit_top_n is not None or entry_rank_top_n is not None:
+        if rank_exit_top_n is not None or entry_rank_top_n is not None or _any_regime_entry_rank:
             # rsRating은 1~99 백분위 정수값이라 trend_ok_set(수백 종목)에서 동률이
             # 흔하다. trend_ok_set은 set이라 순회 순서가 프로세스마다(해시 랜덤화로)
             # 달라지므로, 동률 구간의 정렬 순서가 바뀌면 Top40 경계의 종목이 실행할
@@ -2517,7 +2558,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         chandelier_atr_mult_wide
                         if chandelier_wide_r is not None and chandelier_atr_mult_wide is not None
                         and r_reached >= chandelier_wide_r
-                        else chandelier_atr_mult
+                        else eff_chandelier_atr_mult
                     )
                     chandelier = pos["highestHigh"] * (1 - trail_pct / 100) if trail_pct is not None \
                         else pos["highestHigh"] - effective_mult * pos["entryAtr"]
@@ -2525,7 +2566,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         pos["stopPrice"] = chandelier
                         pos["stopState"] = "trailingStop"
 
-                if pos["pyramidCount"] < pyramid_max_count and ticker in trend_ok_set:
+                if pos["pyramidCount"] < eff_pyramid_max_count and ticker in trend_ok_set:
                     # 장중에 목표가(lastEntryPrice+0.5R)를 스쳤는지가 아니라, 그날
                     # 종가가 그 목표가를 넘어섰는지로 판정하고 그 종가로 추가매수한다.
                     target = pos["lastEntryPrice"] + PYRAMID_INTERVAL_R * r
@@ -2664,14 +2705,32 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
 
         # 3) 시장국면(코스피>200일선 and 200일선 20일 기울기>0)
         regime_ok = True
+        regime_state = "neutral"
         if regime_dates:
             ri = bisect.bisect_right(regime_dates, rd) - 1
             if ri + 1 >= 220:
                 ma200 = sum(regime_closes[ri - 199:ri + 1]) / 200
                 ma200_20d_ago = sum(regime_closes[ri - 219:ri - 19]) / 200
                 regime_ok = regime_closes[ri] >= ma200 and ma200 > ma200_20d_ago
+                if not regime_ok:
+                    regime_state = "weak"
+                elif ma200 > 0 and (regime_closes[ri] / ma200 - 1) * 100 >= regime_strong_threshold_pct:
+                    regime_state = "strong"
             else:
                 regime_ok = False
+                regime_state = "weak"
+
+        # regime_adaptive_params(국면 적응형 파라미터, 2026-10-09 신규) - 국면별
+        # 오버라이드를 적용해 effective 값을 갱신한다. pyramid_max_count/
+        # chandelier_atr_mult는 다음 rd의 "1) 포지션 처리"에서 쓰여 하루 지연되고,
+        # 나머지 셋은 이 rd의 "4) 재평가(신규진입)"에서 바로 쓰인다(지연 없음) -
+        # run_vcp_backtest docstring의 regime_adaptive_params 설명 참고.
+        _ov = _regime_overrides(regime_state)
+        eff_pyramid_max_count = _ov.get("pyramid_max_count", pyramid_max_count)
+        eff_chandelier_atr_mult = _ov.get("chandelier_atr_mult", chandelier_atr_mult)
+        eff_max_initial_risk_pct = _ov.get("max_initial_risk_pct", max_initial_risk_pct)
+        eff_max_position_weight_pct = _ov.get("max_position_weight_pct", max_position_weight_pct)
+        eff_entry_rank_top_n = _ov.get("entry_rank_top_n", entry_rank_top_n)
 
         # 3.5) 현금 유휴화 방지(cash_equitize) - 국면이 꺼지면 지수 보유분 전량 현금화(방어)
         if cash_equitize and not regime_ok and index_units > 0 and index_price is not None:
@@ -2868,9 +2927,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     # 확인하는 건 휩소 위험이 훨씬 적다. "청산도 Top10 기준이었다"는
                     # 실측 UI와 대칭을 이루는 가설 - 눌림목/돌파 조건을 만족해도 그날
                     # RS 순위가 상위권이 아니면 거른다.
-                    if entry_rank_top_n is not None:
+                    if eff_entry_rank_top_n is not None:
                         cur_rank = (rank_of_ticker or {}).get(ticker)
-                        if cur_rank is None or cur_rank > entry_rank_top_n:
+                        if cur_rank is None or cur_rank > eff_entry_rank_top_n:
                             continue
                     candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality))
 
@@ -2954,10 +3013,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         # 명세서 문구("리스크폭이 8% 넘으면 셋업 기각")와 다르게, 손절폭을
                         # 8%로 줄여서라도 진입시킨다 - 변동성 큰 후보를 버리지 않아
                         # 거래수를 늘리려는 실험용 옵션(기본값 아님).
-                        risk_per_share = min(raw_risk, fill_price * max_initial_risk_pct / 100)
+                        risk_per_share = min(raw_risk, fill_price * eff_max_initial_risk_pct / 100)
                     else:
                         risk_per_share = raw_risk
-                        if (risk_per_share / fill_price * 100) > max_initial_risk_pct:
+                        if (risk_per_share / fill_price * 100) > eff_max_initial_risk_pct:
                             continue
                     if risk_per_share <= 0:
                         continue
