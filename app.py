@@ -1621,7 +1621,7 @@ def paper_trading_start():
         preset = {"anonymous": vcp.ANONYMOUS_PARAMS, "sweeper": vcp.SWEEPER_PARAMS,
                   "watcher": vcp.WATCHER_PARAMS, "watcher_v21": vcp.WATCHER_V21_PARAMS,
                   "apex": vcp.APEX_PARAMS, "apex_v2": vcp.APEX_V2_PARAMS,
-                  "apex_v3": vcp.APEX_V3_PARAMS, "jpex": vcp.JPEX_V6_PARAMS}[strategy]
+                  "apex_v3": vcp.APEX_V3_PARAMS, "jpex": vcp.JPEX_V7_PARAMS}[strategy]
     else:
         preset = pt.STRATEGY_PRESETS[strategy]
     account = PaperStrategyAccount.query.filter_by(user_id=current_user.id, strategy=strategy).first()
@@ -1727,7 +1727,7 @@ def paper_trading_watchlist():
         preset = {"anonymous": vcp.ANONYMOUS_PARAMS, "sweeper": vcp.SWEEPER_PARAMS,
                   "watcher": vcp.WATCHER_PARAMS, "watcher_v21": vcp.WATCHER_V21_PARAMS,
                   "apex": vcp.APEX_PARAMS, "apex_v2": vcp.APEX_V2_PARAMS,
-                  "apex_v3": vcp.APEX_V3_PARAMS, "jpex": vcp.JPEX_V6_PARAMS}[strategy]
+                  "apex_v3": vcp.APEX_V3_PARAMS, "jpex": vcp.JPEX_V7_PARAMS}[strategy]
         max_positions = preset["max_positions"]
     else:
         max_positions = pt.STRATEGY_PRESETS.get(strategy, {}).get("max_positions", 10)

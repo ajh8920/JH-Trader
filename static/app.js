@@ -4508,7 +4508,7 @@ const PAPER_STRATEGY_LIST = [
   // APEX_V3_PARAMS 정의부 주석 참고) - 거래빈도가 APEX 계열 중 가장 높다.
   { key: 'apex_v3', titleKey: 'stratApexV3Title', emoji: '⚡', defaultSeed: 50_000_000, group: 'apex' },
   // JPEX - APEX 계열의 눌림목/챈들리어 골격에 국면 방어(순위게이트+국면상실청산)를
-  // 더한 신규 전략(vcp_strategy.JPEX_V6_PARAMS.default_seed와 동일). 2026-10-09
+  // 더한 신규 전략(vcp_strategy.JPEX_V7_PARAMS.default_seed와 동일). 2026-10-09
   // "실전 엔진에도 이식" 요청으로 백테스트 전용이던 entry_rank_top_n/
   // exit_on_regime_loss/regime_exit_min_r/overheat_days를 이 모듈에 처음 반영했다.
   { key: 'jpex', titleKey: 'stratJpexTitle', emoji: '🧭', defaultSeed: 50_000_000, group: 'jpex' },

@@ -826,7 +826,7 @@ _WATCHER_FAMILY_PARAMS = {
     "apex": "APEX_PARAMS",
     "apex_v2": "APEX_V2_PARAMS",
     "apex_v3": "APEX_V3_PARAMS",
-    "jpex": "JPEX_V6_PARAMS",
+    "jpex": "JPEX_V7_PARAMS",
 }
 _APEX_STRATEGIES = ("apex", "apex_v2", "apex_v3")  # 전부 "매일 종가로 재계산" 필수조건 공유
 # JPEX는 이 "매일 종가로 재계산" 필수조건이 없다(APEX_PARAMS 계열만의 설계 제약) -
@@ -1096,9 +1096,14 @@ def run_watcher_daily_step(account):
                     .all()
                 )
                 rank_of_code = {r.code: idx + 1 for idx, r in enumerate(rank_rows)}
+            # quality_rank_weight(JPEX 7라운드 신규) - RS만으로 순위를 매기던 것에
+            # 기본적 분석 품질점수를 섞는다. vcp_strategy.run_vcp_backtest의
+            # candidates.sort(key=_rank_key)와 동일 규칙 - 신호 조건(순위게이트~EPS
+            # 성장)을 통과한 종목만 먼저 전부 모은 뒤, 사이징/체결은 그 정렬된
+            # 순서대로 진행한다(0이면 기존 RS 순서 그대로 - 하위호환).
+            quality_rank_weight = params.get("quality_rank_weight", 0.0) or 0.0
+            confirmed = []
             for row in candidate_rows:
-                if open_slots <= 0:
-                    break
                 if row.code in held_codes:
                     continue
                 if entry_rank_top_n is not None:
@@ -1144,6 +1149,21 @@ def run_watcher_daily_step(account):
                             min_growth_pct=params.get("min_eps_growth_pct"),
                             require_acceleration=params.get("require_eps_acceleration", False)):
                         continue
+                quality = vcp.fundamental_quality_score(
+                    fundamentals_rows_by_code.get(row.code, []), latest_date) if quality_rank_weight else None
+                confirmed.append((row, closes, highs, lows, j, quality))
+
+            if quality_rank_weight:
+                def _rank_key(item):
+                    row, _, _, _, _, quality = item
+                    rs = (row.rs_rating or 0) / 99
+                    q = quality if quality is not None else 0.5
+                    return -(rs * (1 - quality_rank_weight) + q * quality_rank_weight)
+                confirmed.sort(key=_rank_key)
+
+            for row, closes, highs, lows, j, _quality in confirmed:
+                if open_slots <= 0:
+                    break
                 atr20 = vcp._atr(highs, lows, closes, j)
                 price = closes[j]
                 if not atr20 or atr20 <= 0 or not price or price <= 0:
