@@ -2042,7 +2042,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       flat_halt_days=None, flat_halt_threshold_pct=0.5,
                       entry_rank_top_n=None,
                       early_stop_days=None, early_stop_pct=None,
-                      overheat_days=None, overheat_gain_pct=None):
+                      overheat_days=None, overheat_gain_pct=None,
+                      chandelier_wide_r=None, chandelier_atr_mult_wide=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2084,6 +2085,16 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     강제 보유일 상한(추세 진행도와 무관하게 도달하면 무조건 청산). gate_entries_on_regime
     =False면 시장국면과 무관하게 신규진입을 허용한다(현금유휴화방지 판단에는 국면을
     여전히 쓴다) - 국면필터 자체가 회전율을 깎는지 확인용.
+
+    chandelier_wide_r/chandelier_atr_mult_wide(기본 둘 다 None=비활성)는 "거대
+    승자"에게만 더 넓은 트레일링을 준다. 2026-10-09 JPEX_V6_PARAMS 월별 분해에서
+    피라미딩/비중상한을 키워 승자를 더 크게 태우는 시도가 전부 역효과였다
+    (research/jpex/RESULTS.md 20단계) - chandelier_atr_mult 하나로 모든 R구간을
+    커버하다 보니 "몇 배씩 번 거대 승자"에게도 평범한 승자와 같은 좁은 트레일링이
+    적용돼 조기 반납되는 것 아닌가 하는 가설을 테스트하기 위해 추가했다. r_reached
+    (현재 R배수)가 chandelier_wide_r 이상이면 그 포지션의 챈들리어 폭만
+    chandelier_atr_mult 대신 chandelier_atr_mult_wide(보통 더 큰 값)를 쓴다 -
+    일반 승자는 기존 폭 그대로, 거대 승자만 더 여유를 준다.
 
     regime_exit_min_r(기본 None=비활성, exit_on_regime_loss=True일 때만 의미있음)는
     국면상실청산이 "이미 R배수 기준으로 이만큼 벌어둔 포지션"까지 통째로 끊어버리는
@@ -2499,8 +2510,17 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 if r_reached >= trail_activate_r:
                     # trail_pct(퍼센트 트레일링, "고점 -10%" 식) - 설정되면 ATR
                     # 챈들리어 대신 이 값을 쓴다.
+                    # chandelier_wide_r 이상 번 거대 승자는 더 넓은 챈들리어
+                    # (chandelier_atr_mult_wide)를 써서 일반적인 되돌림에 조기
+                    # 반납하지 않도록 한다(둘 다 None이면 기존 동작과 동일).
+                    effective_mult = (
+                        chandelier_atr_mult_wide
+                        if chandelier_wide_r is not None and chandelier_atr_mult_wide is not None
+                        and r_reached >= chandelier_wide_r
+                        else chandelier_atr_mult
+                    )
                     chandelier = pos["highestHigh"] * (1 - trail_pct / 100) if trail_pct is not None \
-                        else pos["highestHigh"] - chandelier_atr_mult * pos["entryAtr"]
+                        else pos["highestHigh"] - effective_mult * pos["entryAtr"]
                     if chandelier > pos["stopPrice"]:
                         pos["stopPrice"] = chandelier
                         pos["stopState"] = "trailingStop"
