@@ -2496,7 +2496,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
 
                 r = pos["riskPerShare"]
                 highest_r = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
-                if pos["barsHeld"] >= time_stop_days and highest_r < time_stop_progress_r:
+                if time_stop_days is not None and pos["barsHeld"] >= time_stop_days and highest_r < time_stop_progress_r:
                     trade, proceeds = _full_exit(pos, close, dates[j], "timeStop")
                     trades.append(trade)
                     cash += proceeds
