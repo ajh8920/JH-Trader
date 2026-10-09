@@ -2014,7 +2014,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       time_stop_days=TIME_STOP_DAYS, time_stop_progress_r=TIME_STOP_PROGRESS_R,
                       entry_mode="vcp", donchian_period=20, initial_stop_atr_mult=INITIAL_STOP_ATR_MULT,
                       position_sizing_mode="risk", max_hold_days=None, gate_entries_on_regime=True,
-                      exit_on_regime_loss=False,
+                      exit_on_regime_loss=False, regime_exit_min_r=None,
                       max_pct_of_avg_trade_value=None, max_position_value_abs=None, include_delisted=False,
                       min_quality_score=None, quality_rank_weight=0.0, require_profitable=True,
                       position_cap_base="seed",
@@ -2084,6 +2084,18 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     강제 보유일 상한(추세 진행도와 무관하게 도달하면 무조건 청산). gate_entries_on_regime
     =False면 시장국면과 무관하게 신규진입을 허용한다(현금유휴화방지 판단에는 국면을
     여전히 쓴다) - 국면필터 자체가 회전율을 깎는지 확인용.
+
+    regime_exit_min_r(기본 None=비활성, exit_on_regime_loss=True일 때만 의미있음)는
+    국면상실청산이 "이미 R배수 기준으로 이만큼 벌어둔 포지션"까지 통째로 끊어버리는
+    부작용을 줄인다. JPEX+APEX68 블렌드의 연도별 분해(2026-10-09, research/jpex/
+    RESULTS.md 16단계)에서 exit_on_regime_loss=True가 2019/2022(승률·손익비 둘 다
+    붕괴하는 해)는 고쳤지만, 국면이 잠깐 흔들리는 틈에 2016의 44%짜리 대박 거래까지
+    같이 끊어버려 전체 CAGR을 깎는 부작용이 확인됐다 - 국면 신호는 "이 거래가
+    이길지"를 모르고 그냥 시장 전체만 보기 때문. 이 값을 예: 1.0으로 주면, 국면이
+    꺼져도 현재 R배수((종가-평단)/최초리스크)가 이 값 이상인 포지션은 강제청산을
+    건너뛰고 원래의 트레일링/챈들리어/타임스탑에 맡긴다(이미 본전 이상 번 거래는
+    시장 전체 판단보다 그 거래 자체의 추세를 믿는다는 뜻) - R배수가 이 값 미만인
+    포지션(아직 확신이 서지 않은 신규/소폭 거래)만 즉시 끊는다.
 
     max_pct_of_avg_trade_value(기본 None=비활성)는 포지션 금액을 그 종목의 평균거래대금
     대비 비율로 추가 캡핑한다. min_avg_trade_value(유동성 필터)는 "후보로 볼지"만
@@ -2540,11 +2552,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             # 확정시키더라도, 하락장에서 포지션을 계속 들고 가 더 크게 물리는
             # 것보다 낫다는 가설.
             if exit_on_regime_loss and not regime_ok:
-                trade, proceeds = _full_exit(pos, closes[i], dates[i], "regimeExit")
-                trades.append(trade)
-                cash += proceeds
-                del positions[ticker]
-                continue
+                current_r = ((closes[i] - pos["avgEntryPrice"]) / pos["riskPerShare"]
+                             if pos["riskPerShare"] else 0)
+                if regime_exit_min_r is None or current_r < regime_exit_min_r:
+                    trade, proceeds = _full_exit(pos, closes[i], dates[i], "regimeExit")
+                    trades.append(trade)
+                    cash += proceeds
+                    del positions[ticker]
+                    continue
             # 정체 청산(flat_halt_days, 2026-10 지인 실제 청산 UI 캡처 - "3일간
             # 가격이 안 움직이면 청산") - 최근 flat_halt_days 거래일의 일간
             # 등락률이 전부 flat_halt_threshold_pct% 이내면 "정체"로 보고 청산한다.
