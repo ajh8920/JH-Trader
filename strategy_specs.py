@@ -220,6 +220,36 @@ STRATEGY_SPECS = [
         ],
     },
     {
+        "key": "apex",
+        "name": "APEX (기본형)",
+        "engine": "vcp_strategy.run_vcp_backtest (APEX_PARAMS)",
+        "summary": (
+            "와쳐 계열과 무관하게 처음부터 새로 설계한 APEX 계열의 원조 설정 - 공시 촉매(최근 "
+            "catalyst_lookback_days일 내 긍정적 공시) 요구조건이 걸려 있다. APEX 2/3는 이 요구조건을 "
+            "뺀 변형. 모의투자 탭에서는 선택 가능한 전략인데 전략탭에는 항목이 없었다 - 2026-10-09 "
+            "처음 추가(최초 측정 시 catalyst_dates_by_code를 로드하지 않아 require_catalyst가 조용히 "
+            "무시돼 APEX 2와 동일한 결과가 나왔던 실수를 바로잡아 재측정)."
+        ),
+        "universe": "APEX_V2/V3와 동일 공통 조건(시총 3,000억 이상, RS 85 이상 등).",
+        "entry": ["APEX 2/3와 동일 눌림목 진입 + 최근 75일 내 긍정적 공시(촉매) 필수"],
+        "exit": ["ATR 1.1배/리스크 2.8% 손절, 챈들리어 3배 트레일링, 본전이동 2R, 시간손절 10일"],
+        "sizing": "슬롯 4개, 리스크 기반.",
+        "results": [
+            {
+                "label": "현재 엔진 측정값 (전략탭 신규 등록, 2026-10-09)",
+                "status": "VERIFIED",
+                "note": (
+                    "공시 촉매 조건이 승률을 30% 위로 끌어올리지만(30.3%) 거래를 연 11.1건으로 크게 "
+                    "묶는다 - static/app.js의 stratApexV2Note에 이미 적혀 있던 설명(\"촉매 조건이 "
+                    "거래를 연 10~11건으로 묶는다\")과 정확히 일치해 검증됐다."
+                ),
+                "period": "2016-01-01~2026-10-09, 캐시(2018~), 상장폐지 포함, 시드 5억원",
+                "metrics": {"CAGR": "18.97%", "MDD": "-18.75%", "CAGR/MDD": "1.012", "승률": "30.3%",
+                            "손익비": "7.37", "알파": "300.34%p(전체 기간 총수익 기준)", "거래": "119건(연 11.1건)"},
+            },
+        ],
+    },
+    {
         "key": "apex_v2",
         "name": "APEX 2",
         "engine": "vcp_strategy.run_vcp_backtest (APEX_V2_PARAMS = APEX_PARAMS + require_catalyst=False)",
