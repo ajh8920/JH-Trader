@@ -826,7 +826,7 @@ _WATCHER_FAMILY_PARAMS = {
     "apex": "APEX_PARAMS",
     "apex_v2": "APEX_V2_PARAMS",
     "apex_v3": "APEX_V3_PARAMS",
-    "jpex": "JPEX_V5_PARAMS",
+    "jpex": "JPEX_V6_PARAMS",
 }
 _APEX_STRATEGIES = ("apex", "apex_v2", "apex_v3")  # 전부 "매일 종가로 재계산" 필수조건 공유
 # JPEX는 이 "매일 종가로 재계산" 필수조건이 없다(APEX_PARAMS 계열만의 설계 제약) -
