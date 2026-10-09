@@ -853,6 +853,31 @@ test_jpex_v14_quality_refine.py`로 추가 검증 중. 직접 필터(max_per/
 min_roe)는 둘 다 후보를 너무 많이 걸러내 거래가 줄고(175건, 160건) CAGR도
 떨어진다 - "순위에 섞기"가 "하드 필터로 거르기"보다 나은 접근임을 보여줌.
 
+## 28단계 — quality_rank_weight 민감도 + trail_early 결합 (2026-10-10)
+
+`research/jpex/test_jpex_v14_quality_refine.py` 결과:
+
+| 변형 | CAGR | MDD | Calmar | 거래 |
+|---|---|---|---|---|
+| quality_rank_weight=0.1 | 40.04%(0.3/0.5와 완전 동일) | -32.61% | 1.228 | 231 |
+| quality_rank_weight=1.0(순수 품질, RS 무시) | 39.76% | -32.76% | 1.214 | 231 |
+| quality=0.3 + trail_early(25단계) | 39.83% | **-30.74%** | **1.296(최고)** | 230 |
+
+0.1부터 이미 0.3/0.5와 완전히 동일한 결과 - 품질 가중 효과가 매우 낮은
+가중치에서 이미 포화된다(그만큼 안정적인 효과라는 뜻, 민감하게 튜닝할
+필요 없음). 1.0(RS를 완전히 무시)은 소폭 더 나빠 - RS(모멘텀) 자체도
+여전히 가치가 있고 "블렌드"가 "순수 품질"보다 낫다는 결론. trail_early와
+결합하면 CAGR은 거의 그대로(39.83%)면서 MDD가 더 개선돼(-30.74%) 이번
+세션 전체 최고 Calmar(1.296)를 기록했다 - CAGR 극대화에는 quality 단독
+(40.04%)이, Calmar 극대화에는 quality+trail_early 조합(1.296)이 각각
+더 낫다.
+
+quality_rank_weight이 entry_rank_top_n 폭(60/25)·RS 하한(75)·성장률
+문턱(25%/30%)과 결합하면 추가로 개선되는지 `research/jpex/
+test_jpex_v15_quality_combo.py`로 검증 중 - 품질 가중이 junk를 걸러주는
+상태에서는 이전에 실패했던 "후보 확대"(Top60)가 다른 결과를 낼 수 있다는
+가설.
+
 ## 남은 과제 (2026-10-09 기준)
 
 1. **CAGR 50% + CAGR/MDD > 1 동시 달성은 이 프로젝트의 검증된 전략 범위
