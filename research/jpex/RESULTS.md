@@ -580,9 +580,15 @@ A가 CAGR은 가장 높지만(39.69%) Calmar가 0.952로 1 미달이라 기각.
    아직 미달 - 더 올리려면 entry_rank_top_n 확대(C 변형, Calmar 0.690으로
    악화 확인됨) 외의 다른 축이 필요하다. 블렌드(11단계 JPEX+MV21, 17단계
    JPEX+APEX68)로는 300~400건대 달성 가능했으나 현재는 보류 상태.
-3. 순위게이트(`entry_rank_top_n`)·국면상실청산(`exit_on_regime_loss`,
-   `regime_exit_min_r`)을 실시간 모의투자 엔진(`paper_trading.py`)에
-   이식 - 지금은 백테스트 전용. 실전 투입 전 반드시 선행해야 한다.
+3. ~~순위게이트(`entry_rank_top_n`)·국면상실청산(`exit_on_regime_loss`,
+   `regime_exit_min_r`)·과열청산(`overheat_days`)을 실시간 모의투자 엔진
+   (`paper_trading.py`)에 이식~~ - **완료(2026-10-09)**. `_process_anon_position_day`에
+   국면상실청산/과열청산 체크를 추가하고(regime_ok를 호출부에서 매일 미리
+   계산해 넘긴다), `run_watcher_daily_step`의 신규진입 루프에 entry_rank_top_n
+   순위게이트(TrendScreenCache의 all_pass=True 전체 모집단 기준 랭킹)를
+   추가했다. 모의투자 탭에 "JPEX" 그룹으로 등록(`app.py`/`static/app.js`).
+   단위테스트로 regime_exit_min_r 경계값(0.3R→청산, 2.0R→보호)과 overheat
+   (진입 3일째 +60%→청산) 둘 다 확인.
 4. 다른 APEX Stage3 프리셋(68차 등)도 결정성 수정 후 재검증이 필요하다.
 5. `require_catalyst` 축은 `catalyst_dates_by_code`를 실제로 로드해 재시험
    해야 유효한 결과가 나온다(이번 v33은 무효 시험).

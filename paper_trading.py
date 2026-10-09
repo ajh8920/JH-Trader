@@ -222,7 +222,7 @@ def get_watchlist(account, limit=15):
                 .filter(TrendScreenCache.market_cap >= min_market_cap)
         rows = query.order_by(TrendScreenCache.rs_rating.desc()).limit((limit + len(held_codes)) * 3).all()
         rows = [r for r in rows if not vcp.is_preferred_stock(r.name)]
-    elif account.strategy in ("watcher", "watcher_v21", "apex", "apex_v2", "apex_v3"):
+    elif account.strategy in ("watcher", "watcher_v21", "apex", "apex_v2", "apex_v3", "jpex"):
         # 조회 전용 근사치 - RS·시총·유동성만으로 좁힌다(지인 2단계 조건 전체와
         # 눌림목 확인은 실제 매매 판정(run_watcher_daily_step)에서만 정확히
         # 계산한다 - 캐시된 스냅샷 필드만으로는 52주 수익률/200일선이격도까지
@@ -271,7 +271,7 @@ def run_daily_step(account):
     리프레셔가 중복 처리하지 않도록)."""
     if account.strategy in ("anonymous", "sweeper"):
         return run_anonymous_daily_step(account)
-    if account.strategy in ("watcher", "watcher_v21", "apex", "apex_v2", "apex_v3"):
+    if account.strategy in ("watcher", "watcher_v21", "apex", "apex_v2", "apex_v3", "jpex"):
         return run_watcher_daily_step(account)
 
     preset = STRATEGY_PRESETS.get(account.strategy)
@@ -445,17 +445,26 @@ def _anon_market_index_and_regime():
 
 def _process_anon_position_day(pos, closes, highs, lows, j, params, dates=None, code=None,
                                 dividend_dates_by_code=None, dividend_gap_threshold_pct=-6.0,
-                                dividend_gap_max_pct=-20.0, dividend_gap_lookback_days=30):
-    """"어나니머스"/"스위퍼"/"와쳐" 포지션 하루치(인덱스 j)를 반영한다 - vcp_strategy.
+                                dividend_gap_max_pct=-20.0, dividend_gap_lookback_days=30,
+                                regime_ok=True):
+    """"어나니머스"/"스위퍼"/"와쳐"/"JPEX" 포지션 하루치(인덱스 j)를 반영한다 - vcp_strategy.
     run_vcp_backtest의 포지션 관리 블록과 동일한 규칙(배당락 갭 보정 > 손절 >
-    MA이탈 > 시간손절 > 트레일링 갱신 순), 동일하게 전부 종가(스위퍼/와쳐의
-    경우 14:30 실시간가로 만든 합성 "오늘 봉") 기준으로만 판정·체결한다 -
-    장중 저가/고가를 그 가격에 정확히 체결됐다고 가정하지 않는다. 청산되면
-    (청산가, 사유)를, 아니면 None을 돌려주며 pos를 그 자리에서 갱신한다.
+    MA이탈 > 시간손절 > 트레일링 갱신 > 국면상실청산 > 과열익절 순), 동일하게
+    전부 종가(스위퍼/와쳐/JPEX의 경우 14:30 실시간가로 만든 합성 "오늘 봉") 기준으로만
+    판정·체결한다 - 장중 저가/고가를 그 가격에 정확히 체결됐다고 가정하지 않는다.
+    청산되면 (청산가, 사유)를, 아니면 None을 돌려주며 pos를 그 자리에서 갱신한다.
 
     dividend_dates_by_code/dates/code는 와쳐만 넘긴다(어나니머스/스위퍼는
     호출부에서 안 넘기므로 이 인자들이 전부 None이라 기존 동작 그대로다) -
-    vcp_strategy.run_vcp_backtest의 배당락 갭 보정과 같은 로직."""
+    vcp_strategy.run_vcp_backtest의 배당락 갭 보정과 같은 로직.
+
+    regime_ok는 exit_on_regime_loss를 쓰는 전략(JPEX)만 의미가 있다 - 그 값이
+    없으면(기본 True) 아래 국면상실청산 블록이 "국면 OK"로 간주해 조용히
+    건너뛴다(exit_on_regime_loss 자체가 params에 없는 기존 전략은 영향이 없다).
+    vcp_strategy.run_vcp_backtest는 매 거래일마다 그날의 regime_ok를 다시 계산하지만,
+    이 함수는 하루씩 호출되는 실시간 모의투자 루프라 호출부(run_watcher_daily_step)가
+    그날그날의 최신 regime_ok 하나만 계산해 건네준다 - 재평가 간격이 1일(JPEX)이라
+    오차가 거의 없다(RESULTS.md 18단계 참고)."""
     close = closes[j]
     if dividend_dates_by_code and dates is not None and code is not None and j > 0 and closes[j - 1]:
         day_return = (close / closes[j - 1] - 1) * 100
@@ -503,6 +512,26 @@ def _process_anon_position_day(pos, closes, highs, lows, j, params, dates=None, 
         if chandelier > pos["stopPrice"]:
             pos["stopPrice"] = chandelier
             pos["stopState"] = "trailingStop"
+
+    # 국면상실청산(exit_on_regime_loss, JPEX 전용) - vcp_strategy.run_vcp_backtest의
+    # 같은 블록과 동일 규칙. regime_exit_min_r 이상(R배수) 번 포지션은 국면과
+    # 무관하게 위의 트레일링에 맡기고 건너뛴다(research/jpex/RESULTS.md 17~18단계 -
+    # 무조건 청산하면 좋은 거래의 대박까지 끊겨 CAGR이 깎이는 부작용이 확인됨).
+    if params.get("exit_on_regime_loss") and not regime_ok:
+        current_r = (close - pos["avgEntryPrice"]) / r if r > 0 else 0
+        regime_exit_min_r = params.get("regime_exit_min_r")
+        if regime_exit_min_r is None or current_r < regime_exit_min_r:
+            return close, "regimeExit"
+
+    # 과열 청산(overheat_days/overheat_gain_pct, JPEX 전용) - vcp_strategy.
+    # run_vcp_backtest의 같은 블록과 동일 규칙. 진입 후 N거래일 안에 수익률이
+    # gain% 이상이면 더 끌지 않고 바로 청산한다.
+    overheat_days = params.get("overheat_days")
+    if overheat_days is not None and 0 < pos["barsHeld"] <= overheat_days:
+        gain_pct = (close / pos["avgEntryPrice"] - 1) * 100
+        if gain_pct >= params.get("overheat_gain_pct", float("inf")):
+            return close, "overheat"
+
     return None
 
 
@@ -797,19 +826,26 @@ _WATCHER_FAMILY_PARAMS = {
     "apex": "APEX_PARAMS",
     "apex_v2": "APEX_V2_PARAMS",
     "apex_v3": "APEX_V3_PARAMS",
+    "jpex": "JPEX_V5_PARAMS",
 }
 _APEX_STRATEGIES = ("apex", "apex_v2", "apex_v3")  # 전부 "매일 종가로 재계산" 필수조건 공유
+# JPEX는 이 "매일 종가로 재계산" 필수조건이 없다(APEX_PARAMS 계열만의 설계 제약) -
+# 와쳐처럼 14:30 실시간가 합성(use_realtime=True)을 그대로 쓴다.
 
 
 def run_watcher_daily_step(account):
-    """"와쳐"/"와쳐 2.1"/"APEX" 계열(APEX/APEX 2/APEX 3) 계좌를 최신 거래일까지
+    """"와쳐"/"와쳐 2.1"/"APEX" 계열(APEX/APEX 2/APEX 3)/"JPEX" 계좌를 최신 거래일까지
     진행시킨다. run_daily_step/run_anonymous_daily_step과 같은 "이미 처리된
     상태면 조용히 반환" 규칙을 따른다. 전부 후보 선별 골격(지인 2단계 조건+
     눌림목)은 같고, 진입 필터 세부값과 재평가 간격이 다르다(vcp_strategy의
     각 *_PARAMS 정의부 주석 참고). APEX 계열만 14:30 실시간가 합성을 안 한다
     - "매일 종가로 재계산"이 필수조건이라 추정치가 아닌 확정 종가를 써야
     하기 때문이다(use_realtime=False면 그날 데이터가 아직 안 올라온 날은
-    latest_date가 전날에 머물러 자동으로 "확정 종가 나올 때까지 대기"가 된다)."""
+    latest_date가 전날에 머물러 자동으로 "확정 종가 나올 때까지 대기"가 된다).
+    JPEX는 이 제약이 없어(와쳐처럼 use_realtime=True) 14:30 실시간가를 쓰지만,
+    대신 다른 셋에는 없는 세 규칙(entry_rank_top_n·exit_on_regime_loss·
+    overheat_days)을 추가로 쓴다 - 2026-10-09 "실전 엔진에도 이식" 요청으로
+    처음 반영(research/jpex/RESULTS.md 18단계)."""
     param_name = _WATCHER_FAMILY_PARAMS.get(account.strategy)
     params = getattr(vcp, param_name) if param_name else vcp.WATCHER_PARAMS
     use_realtime = account.strategy not in _APEX_STRATEGIES
@@ -885,6 +921,18 @@ def run_watcher_daily_step(account):
         dividend_dates_by_code = vcp.load_dividend_dates(
             sorted((FUND_KR_DIR.parent / "disclosures_kr").glob("*.parquet")))
 
+    # 국면 판정 - 와쳐/APEX는 cash_equitize=False·gate_entries_on_regime=False라
+    # 대부분 필요 없어 조건부로만 지수를 조회했지만(불필요한 야후 호출 절약),
+    # JPEX는 exit_on_regime_loss=True라 "보유 포지션 처리" 루프(바로 아래, 1번)
+    # 안에서부터 매일 이 값이 필요하다 - 그래서 원래 2번 단계(평가액 계산)에
+    # 있던 계산을 1번보다 앞으로 옮겼다. exit_on_regime_loss는 regime_exit_min_r
+    # 이상 번 포지션을 봐주는 것만 다르고 국면이 꺼지면 보유 포지션을 강제청산하는
+    # 규칙 자체는 gate_entries_on_regime과 같은 지수를 쓴다(vcp_strategy.
+    # run_vcp_backtest의 regime_ok와 동일 조건 - 코스피>200일선 and 200일선 상승).
+    index_price, regime_ok = None, True
+    if params.get("cash_equitize") or params.get("gate_entries_on_regime") or params.get("exit_on_regime_loss"):
+        index_price, regime_ok = _anon_market_index_and_regime()
+
     # 1) 보유 포지션 - run_anonymous_daily_step의 같은 블록과 완전히 동일한
     #    규칙(손절 > MA이탈 > 시간손절 > 본전/분할익절/트레일링 갱신 > 피라미딩).
     #    entry_mode가 달라도 포지션이 일단 생기고 난 뒤의 관리 규칙은 어나니머스/
@@ -914,7 +962,7 @@ def run_watcher_daily_step(account):
                 break
             result = _process_anon_position_day(
                 pos, closes, highs, lows, j, params, dates=dates, code=pos_row.code,
-                dividend_dates_by_code=dividend_dates_by_code)
+                dividend_dates_by_code=dividend_dates_by_code, regime_ok=regime_ok)
             if result:
                 exit_price, reason = result
                 proceeds = pos["shares"] * exit_price * (1 - (vcp.SLIPPAGE_EXIT_PCT + vcp.SELL_TAX_PCT) / 100)
@@ -987,18 +1035,14 @@ def run_watcher_daily_step(account):
 
     db.session.flush()
 
-    # 2) 이 시점 평가액. 와쳐는 cash_equitize=False·gate_entries_on_regime=False라
-    #    국면 판정 자체가 필요 없는 경우가 대부분이라, 필요할 때만(둘 중 하나라도
-    #    True일 때만) 지수 데이터를 조회한다 - 불필요한 야후 호출을 줄인다.
+    # 2) 이 시점 평가액(국면 판정은 위에서 미리 계산해둔 regime_ok/index_price를
+    #    그대로 재사용한다 - 1번 루프 안에서 이미 필요해서 앞으로 옮겼다).
     remaining = PaperPosition.query.filter_by(account_id=account.id).all()
     held_value = 0.0
     for pos_row in remaining:
         bars = held_bars.get(pos_row.code)
         price = bars[-1]["close"] if bars else pos_row.entry_price
         held_value += pos_row.shares * price
-    index_price, regime_ok = None, True
-    if params.get("cash_equitize") or params.get("gate_entries_on_regime"):
-        index_price, regime_ok = _anon_market_index_and_regime()
     index_value = account.index_units * index_price if (index_price and account.index_units) else 0.0
     equity_now = account.cash + held_value + index_value
     if not remaining and account.index_units <= 0:
@@ -1037,11 +1081,30 @@ def run_watcher_daily_step(account):
                 from data_pipeline.common import FUND_KR_DIR
                 catalyst_dates_by_code = vcp.load_catalyst_dates(
                     sorted((FUND_KR_DIR.parent / "disclosures_kr").glob("*.parquet")))
+            # 진입 순위 게이트(entry_rank_top_n, JPEX 신규) - vcp_strategy.run_vcp_backtest의
+            # rank_of_ticker와 동일 규칙: 그날 트렌드템플릿(8조건) 전부 통과한 종목
+            # 전체(all_pass=True, candidate_rows처럼 RS62+로 좁힌 부분집합이 아니라
+            # 그 상위 전체 모집단)를 RS 내림차순(동률은 종목코드로 2차 정렬)으로
+            # 순위를 매겨, 그 순위가 entry_rank_top_n 이내인 종목만 진입을 허용한다.
+            entry_rank_top_n = params.get("entry_rank_top_n")
+            rank_of_code = {}
+            if entry_rank_top_n is not None:
+                rank_rows = (
+                    TrendScreenCache.query.filter_by(market=params["market"], all_pass=True)
+                    .filter(TrendScreenCache.rs_rating.isnot(None))
+                    .order_by(TrendScreenCache.rs_rating.desc(), TrendScreenCache.code.asc())
+                    .all()
+                )
+                rank_of_code = {r.code: idx + 1 for idx, r in enumerate(rank_rows)}
             for row in candidate_rows:
                 if open_slots <= 0:
                     break
                 if row.code in held_codes:
                     continue
+                if entry_rank_top_n is not None:
+                    cur_rank = rank_of_code.get(row.code)
+                    if cur_rank is None or cur_rank > entry_rank_top_n:
+                        continue
                 bars = candidate_bars.get(row.code)
                 if not bars or len(bars) < 253:  # passes_evan_stage2가 i>=252를 요구
                     continue
@@ -1145,11 +1208,12 @@ _ALERT_EXIT_REASON_LABEL = {
     "initialStop": "초기손절", "breakevenStop": "본전손절", "trailingStop": "트레일링손절",
     "timeStop": "시간손절", "maBreak": "이평선이탈", "maxHold": "최대보유도달",
     "partialProfit": "분할익절", "periodEnd": "기간종료",
+    "regimeExit": "국면상실청산", "overheat": "과열익절",
 }
 STRATEGY_LABEL_KO = {
     "sweeper": "스위퍼", "anonymous": "어나니머스", "watcher": "와쳐", "watcher_v21": "와쳐 2.1",
     "minervini_v2": "미너비니 v2", "minervini_v21": "미너비니 v2.1",
-    "apex": "APEX", "apex_v2": "APEX 2", "apex_v3": "APEX 3",
+    "apex": "APEX", "apex_v2": "APEX 2", "apex_v3": "APEX 3", "jpex": "JPEX",
 }
 
 

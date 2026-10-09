@@ -568,6 +568,17 @@ const I18N = {
     ko: 'APEX 계열에서 공시 촉매와 반등폭 문턱을 추가하기 전, 가장 먼저 정착됐던 원조 조합입니다 — APEX '
       + '계열 중 거래빈도가 가장 높고, 촉매 없는 조합 중 손익비가 가장 좋습니다.',
   },
+  stratJpexTitle: { en: 'JPEX', ko: 'JPEX' },
+  stratJpexNote: {
+    en: 'APEX\'s pullback-entry/chandelier-exit skeleton plus two defenses against weak-regime periods: '
+      + 'entries are gated to the top-40 RS rank, and positions get force-closed when the market regime turns '
+      + 'off (unless the position is already up 1.5R or more, in which case it rides its own trailing stop '
+      + 'instead) — the exact rules the "JPEX" paper-trading strategy uses.',
+    ko: 'APEX의 눌림목 진입/챈들리어 청산 골격에, 약한 국면 구간을 방어하는 두 규칙을 더했습니다 — 그날 RS '
+      + '순위 Top40 안에서만 진입을 허용하고, 시장 국면이 꺼지면 보유 포지션을 강제청산합니다(다만 이미 '
+      + '1.5R 이상 번 포지션은 봐주고 원래 트레일링에 맡깁니다) — 모의투자 "JPEX" 전략이 신규 진입/청산에 '
+      + '실제로 쓰는 조건과 동일합니다.',
+  },
   stratWatcherV21Title: { en: 'Watcher 2.1', ko: '와쳐 2.1' },
   stratWatcherV21Note: {
     en: 'Same entry conditions as "Watcher", plus: pullback must hold for 5+ consecutive trading days, wider '
@@ -588,6 +599,8 @@ const I18N = {
   exitMaBreak: { en: 'MA50 breakdown', ko: 'MA50 이탈' },
   exitMaxHold: { en: 'Max hold days', ko: '최대보유 도달' },
   exitDelisted: { en: 'Delisted', ko: '상장폐지' },
+  exitRegimeExit: { en: 'Regime-loss exit', ko: '국면상실 청산' },
+  exitOverheat: { en: 'Overheat profit-take', ko: '과열 익절' },
   ptWatchlistTitle: { en: 'Next-buy candidates', ko: '다음 매수 후보' },
   ptWatchlistFullTitle: { en: 'Waiting list (slots full)', ko: '슬롯 대기 종목' },
   ptWatchlistEmpty: { en: 'No qualifying candidates right now.', ko: '지금 조건을 만족하는 후보가 없습니다.' },
@@ -4463,7 +4476,7 @@ const PAPER_TRADING_EXIT_REASON_LABEL = r => ({
   initialStop: t('exitInitialStop'), breakevenStop: t('exitBreakevenStop'),
   trailingStop: t('exitTrailingStop'), timeStop: t('exitTimeStop'), periodEnd: t('periodEnd'),
   partialProfit: t('exitPartialProfit'), maBreak: t('exitMaBreak'), maxHold: t('exitMaxHold'),
-  delisted: t('exitDelisted'),
+  delisted: t('exitDelisted'), regimeExit: t('exitRegimeExit'), overheat: t('exitOverheat'),
 }[r] || r);
 
 // 표시 순서(요청: 스위퍼 -> 어나니머스 -> 미너비니) 그대로 배열 순서를 정한다 -
@@ -4494,6 +4507,11 @@ const PAPER_STRATEGY_LIST = [
   // 공시 촉매·반등폭 문턱 둘 다 없는, APEX 계열의 원조 조합(vcp_strategy.
   // APEX_V3_PARAMS 정의부 주석 참고) - 거래빈도가 APEX 계열 중 가장 높다.
   { key: 'apex_v3', titleKey: 'stratApexV3Title', emoji: '⚡', defaultSeed: 50_000_000, group: 'apex' },
+  // JPEX - APEX 계열의 눌림목/챈들리어 골격에 국면 방어(순위게이트+국면상실청산)를
+  // 더한 신규 전략(vcp_strategy.JPEX_V5_PARAMS.default_seed와 동일). 2026-10-09
+  // "실전 엔진에도 이식" 요청으로 백테스트 전용이던 entry_rank_top_n/
+  // exit_on_regime_loss/regime_exit_min_r/overheat_days를 이 모듈에 처음 반영했다.
+  { key: 'jpex', titleKey: 'stratJpexTitle', emoji: '🧭', defaultSeed: 50_000_000, group: 'jpex' },
 ];
 
 const PAPER_TRADING_GROUPS = [
@@ -4502,6 +4520,7 @@ const PAPER_TRADING_GROUPS = [
   { key: 'minervini', icon: '🎯', titleKey: 'ptGroupMinerviniTitle' },
   { key: 'watcher', icon: '🔭', titleKey: 'stratWatcherTitle' },
   { key: 'apex', icon: '⚡', titleKey: 'stratApexTitle' },
+  { key: 'jpex', icon: '🧭', titleKey: 'stratJpexTitle' },
 ];
 
 let ptActiveGroup = PAPER_TRADING_GROUPS[0].key;
