@@ -935,6 +935,7 @@ input[type="date"]:hover { border-color: var(--border-strong); }
 }
 .strat-trades-toggle:hover { border-color: var(--blue); }
 .strat-trades-box { margin-top: 10px; }
+.strat-others-box { margin-top: 10px; padding-top: 4px; border-top: 1px dashed var(--border); }
 .strat-trades-table-wrap {
   overflow-x: auto; max-height: 360px; overflow-y: scroll; border: 1px solid var(--border); border-radius: var(--radius-sm);
   scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;

@@ -737,6 +737,7 @@ const I18N = {
   strategyStatusVerified: { en: 'Verified', ko: '검증됨' },
   strategyStatusUnverified: { en: 'Unverified (recorded value)', ko: '검증 불가(과거 기록값)' },
   strategyShowTrades: { en: 'Show trade history', ko: '매매 내역 보기' },
+  strategyShowOtherResults: { en: 'Other records', ko: '다른 기록' },
   tabScreener: { en: 'Screener', ko: '스크리닝' },
   searchTickerPlaceholder: { en: 'Enter ticker (e.g. AAPL, TSLA, NVDA)', ko: '티커 입력 (예: AAPL, TSLA, NVDA)' },
   quickPicks: { en: 'Quick picks:', ko: '빠른 선택:' },
@@ -5531,7 +5532,7 @@ function renderStrategyDetail(key) {
   const list = (title, items) => (items && items.length)
     ? `<h4>${escapeHtml(title)}</h4><ul>${items.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : '';
 
-  const resultsHtml = (s.results || []).map((r, idx) => {
+  const renderResult = (r, idx) => {
     const statusKey = r.status === 'VERIFIED' ? 'strategyStatusVerified' : 'strategyStatusUnverified';
     const statusClass = r.status === 'VERIFIED' ? 'strat-badge-ok' : 'strat-badge-warn';
     const metrics = Object.entries(r.metrics || {}).map(([k, v]) =>
@@ -5552,7 +5553,23 @@ function renderStrategyDetail(key) {
           </button>
           <div class="strat-trades-box" id="${tradesId}" style="display:none"></div>` : ''}
       </div>`;
-  }).join('');
+  };
+
+  // 전략 하나에 여러 번 측정한 결과(버전)가 쌓여 있는 경우가 많다 - 기본으로는
+  // 가장 좋은 하나만 보여주고, 나머지는 "다른 기록 N건 더 보기" 뒤에 접어 둔다
+  // (과거 측정값을 지우지 않고 그대로 보존하는 기존 방침은 유지, 화면만 간결하게).
+  const results = s.results || [];
+  const bestIdx = pickBestResultIdx(results);
+  const bestHtml = results.length ? renderResult(results[bestIdx], bestIdx) : '';
+  const others = results.filter((_, idx) => idx !== bestIdx);
+  const otherBoxId = `strat-others-${s.key}`;
+  const othersHtml = others.length ? `
+    <button type="button" class="strat-trades-toggle" onclick="toggleStrategyOthers('${otherBoxId}')">
+      <i class="ti ti-history" aria-hidden="true"></i> ${escapeHtml(t('strategyShowOtherResults') || '다른 기록')} ${others.length}건 더 보기
+    </button>
+    <div class="strat-others-box" id="${otherBoxId}" style="display:none">
+      ${others.map((r) => renderResult(r, results.indexOf(r))).join('')}
+    </div>` : '';
 
   detailEl.innerHTML = `
     <h3>${escapeHtml(s.name)}</h3>
@@ -5566,10 +5583,47 @@ function renderStrategyDetail(key) {
     ${s.cash_management ? `<h4>현금 운용</h4><p>${escapeHtml(s.cash_management)}</p>` : ''}
     ${s.costs ? `<h4>비용 가정</h4><p>${escapeHtml(s.costs)}</p>` : ''}
     <h4>백테스트 결과</h4>
-    ${resultsHtml || '<p class="strat-empty">기록된 결과가 없습니다.</p>'}
+    ${bestHtml || '<p class="strat-empty">기록된 결과가 없습니다.</p>'}
+    ${othersHtml}
     ${s.limitations ? `<h4>한계</h4><p>${escapeHtml(s.limitations)}</p>` : ''}
     ${s.doc ? `<p class="strat-doc-ref">문서: <code>${escapeHtml(s.doc)}</code></p>` : ''}
   `;
+}
+
+function toggleStrategyOthers(boxId) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+// results 배열에서 "가장 좋은" 항목의 인덱스를 고른다. strategy_specs.py가
+// current:true로 명시해둔 항목을 최우선으로 쓴다 - apex_stage3_best68처럼
+// "CAGR이 더 높은 옛 기록(run68.log)보다 더 낮은 최신 재현값이 버그 수정 후라
+// 더 신뢰 가능하다"는 경우가 있어 CAGR 숫자만으로는 못 고르기 때문이다(작성자가
+// 직접 표시해둔 걸 신뢰). current가 없는 전략(대부분)은 VERIFIED 중 CAGR
+// 최댓값으로, 그래도 없으면 상태 불문 CAGR이 있는 것 중 최댓값, 그래도 없으면
+// (예: 구간별 수치라 단일 CAGR이 없는 "비고"형 항목뿐인 경우) 0번으로 fallback.
+function pickBestResultIdx(results) {
+  const markedIdx = results.findIndex((r) => r.current === true);
+  if (markedIdx !== -1) return markedIdx;
+  const parse = (r) => {
+    const raw = r.metrics && r.metrics['CAGR'];
+    if (typeof raw !== 'string') return null;
+    const n = parseFloat(raw.replace('%', ''));
+    return Number.isNaN(n) ? null : n;
+  };
+  let bestIdx = -1, bestVal = -Infinity;
+  results.forEach((r, idx) => {
+    if (r.status !== 'VERIFIED') return;
+    const n = parse(r);
+    if (n !== null && n > bestVal) { bestVal = n; bestIdx = idx; }
+  });
+  if (bestIdx !== -1) return bestIdx;
+  results.forEach((r, idx) => {
+    const n = parse(r);
+    if (n !== null && n > bestVal) { bestVal = n; bestIdx = idx; }
+  });
+  return bestIdx !== -1 ? bestIdx : 0;
 }
 
 // 결과 항목의 "매매 내역 보기" - tradesKey로 /api/admin/strategy-trades/<key>를 불러와
