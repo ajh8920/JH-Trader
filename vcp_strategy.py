@@ -2123,21 +2123,28 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
 
     regime_adaptive_params(기본 None=비활성)는 "국면이 좋을 때는 공격적으로,
     나쁠 때는 방어적으로"를 같은 백테스트 안에서 동시에 적용한다 - 피라미딩
-    한도/챈들리어 폭/초기리스크 상한/비중상한/진입순위게이트 중 전부 또는
-    일부를 국면별로 다르게 쓸 수 있다. {"weak": {...}, "neutral": {...},
-    "strong": {...}} 형태로, 각 상태에서 적용할 오버라이드만 넣으면 된다(안
-    넣은 키는 기본 인자값 그대로). 국면은 매 재평가일마다 분류한다 - regime_ok
-    (코스피>200일선 and 200일선 상승)가 False면 "weak", True인데 코스피가
-    200일선 대비 regime_strong_threshold_pct%(기본 10%) 이상 위에 있으면
-    "strong", 그 사이는 "neutral". exit_on_regime_loss의 regime_ok와 같은
-    이유로 하루 지연(직전 재평가일 기준)이 있다 - pyramid_max_count/
-    chandelier_atr_mult처럼 "보유 포지션 관리" 로직에 쓰이는 값만 그렇고,
-    max_initial_risk_pct/max_position_weight_pct/entry_rank_top_n처럼 "신규
-    진입 결정"에만 쓰이는 값은 그 재평가일의 국면으로 즉시 적용된다(국면
-    판정이 신규진입 게이팅과 같은 시점에 끝나기 때문). 2026-10-09 "레버리지
-    없이 CAGR 50%" 목표로 추가 - 피라미딩/비중상한을 전체 기간에 똑같이
-    늘리면 역효과였지만(research/jpex/RESULTS.md 20단계), 국면이 좋을 때만
-    선택적으로 키우면 다를 수 있다는 가설을 검증하기 위함.
+    한도/챈들리어 폭/초기리스크 상한/비중상한/진입순위게이트/슬롯수
+    (max_positions, 2026-10-10 추가) 중 전부 또는 일부를 국면별로 다르게
+    쓸 수 있다. {"weak": {...}, "neutral": {...}, "strong": {...}} 형태로,
+    각 상태에서 적용할 오버라이드만 넣으면 된다(안 넣은 키는 기본 인자값
+    그대로). 국면은 매 재평가일마다 분류한다 - regime_ok(코스피>200일선
+    and 200일선 상승)가 False면 "weak", True인데 코스피가 200일선 대비
+    regime_strong_threshold_pct%(기본 10%) 이상 위에 있으면 "strong", 그
+    사이는 "neutral". exit_on_regime_loss의 regime_ok와 같은 이유로 하루
+    지연(직전 재평가일 기준)이 있다 - pyramid_max_count/chandelier_atr_mult
+    처럼 "보유 포지션 관리" 로직에 쓰이는 값만 그렇고, max_initial_risk_pct/
+    max_position_weight_pct/entry_rank_top_n/max_positions처럼 "신규 진입
+    결정"에만 쓰이는 값은 그 재평가일의 국면으로 즉시 적용된다(국면 판정이
+    신규진입 게이팅과 같은 시점에 끝나기 때문). max_positions을 국면별로
+    바꾸면 슬롯당 배분(equal_weight 사이징의 target_value = equity_now /
+    eff_max_positions)도 그 국면의 슬롯수 기준으로 즉시 재계산된다 - 보유
+    중인 포지션 수가 새 상한보다 많아도 강제로 청산하지는 않는다(open_slots
+    가 0 이하가 되어 그냥 신규진입만 막힐 뿐). 2026-10-09 "레버리지 없이
+    CAGR 50%" 목표로 추가 - 피라미딩/비중상한을 전체 기간에 똑같이 늘리면
+    역효과였지만(research/jpex/RESULTS.md 20단계), 국면이 좋을 때만 선택적
+    으로 키우면 다를 수 있다는 가설을 검증하기 위함. max_positions 축은
+    2026-10-10에 사용자 제안으로 추가 - 슬롯수를 정적으로 늘리면 양방향
+    모두 나빴지만(22단계) 국면 조건부로는 다를 수 있다는 가설.
 
     regime_exit_min_r(기본 None=비활성, exit_on_regime_loss=True일 때만 의미있음)는
     국면상실청산이 "이미 R배수 기준으로 이만큼 벌어둔 포지션"까지 통째로 끊어버리는
@@ -2300,6 +2307,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     eff_max_initial_risk_pct = max_initial_risk_pct
     eff_max_position_weight_pct = max_position_weight_pct
     eff_entry_rank_top_n = entry_rank_top_n
+    eff_max_positions = max_positions
     for rd in rebalance_dates:
         idx_at_rd = {}
         evaluated = []
@@ -2755,6 +2763,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         eff_max_initial_risk_pct = _ov.get("max_initial_risk_pct", max_initial_risk_pct)
         eff_max_position_weight_pct = _ov.get("max_position_weight_pct", max_position_weight_pct)
         eff_entry_rank_top_n = _ov.get("entry_rank_top_n", entry_rank_top_n)
+        eff_max_positions = _ov.get("max_positions", max_positions)
 
         # 3.5) 현금 유휴화 방지(cash_equitize) - 국면이 꺼지면 지수 보유분 전량 현금화(방어)
         if cash_equitize and not regime_ok and index_units > 0 and index_price is not None:
@@ -2767,7 +2776,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         # False면 국면과 무관하게 신규진입을 허용한다(현금유휴화방지는 여전히 국면을
         # 본다) - 슬롯이 적을 때 국면필터가 재진입 기회 자체를 막아 회전율을 깎는지 실험용.
         if regime_ok or not gate_entries_on_regime:
-            open_slots = max_positions - len(positions)
+            open_slots = eff_max_positions - len(positions)
             if open_slots > 0:
                 candidates = []
                 # trend_ok_set은 파이썬 set이라 순회 순서가 프로세스마다(해시 랜덤화로)
@@ -3054,8 +3063,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         continue
                     if position_sizing_mode == "equal_weight":
                         # 슬롯당 동일 금액 배분 - 변동성과 무관하게 그 시점 총자산을
-                        # max_positions으로 나눈 만큼만 산다(리스크 기반 사이징 대신).
-                        target_value = equity_now / max_positions
+                        # eff_max_positions(국면 적응형이면 그 상태의 슬롯수, 아니면
+                        # max_positions 그대로)으로 나눈 만큼만 산다(리스크 기반 사이징 대신).
+                        target_value = equity_now / eff_max_positions
                         if max_position_value_abs is not None:
                             # 계좌가 복리로 계속 커져도 포지션 금액 자체는 이 고정
                             # 상한을 넘지 않는다 - "일정 규모 이상은 더 키우지 않는다"는
