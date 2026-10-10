@@ -2057,7 +2057,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       early_stop_days=None, early_stop_pct=None,
                       overheat_days=None, overheat_gain_pct=None,
                       chandelier_wide_r=None, chandelier_atr_mult_wide=None,
-                      regime_adaptive_params=None, regime_strong_threshold_pct=10.0):
+                      regime_adaptive_params=None, regime_strong_threshold_pct=10.0,
+                      conviction_weight_high_pct=None, conviction_weight_low_pct=None,
+                      conviction_score_threshold=0.7):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2145,6 +2147,19 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     으로 키우면 다를 수 있다는 가설을 검증하기 위함. max_positions 축은
     2026-10-10에 사용자 제안으로 추가 - 슬롯수를 정적으로 늘리면 양방향
     모두 나빴지만(22단계) 국면 조건부로는 다를 수 있다는 가설.
+
+    conviction_weight_high_pct/conviction_weight_low_pct(둘 다 기본 None=비활성,
+    position_sizing_mode="equal_weight"일 때만 의미있음)는 슬롯을 항상 균등배분
+    (equity_now/max_positions)하는 대신, 후보 자신의 순위 점수(quality_rank_weight
+    ·value_rank_weight와 같은 공식 - RS·품질·저평가 점수의 블렌드, 0~1)가
+    conviction_score_threshold(기본 0.7) 이상이면 high_pct를, 미만이면 low_pct를
+    비중으로 쓴다. 38~39단계에서 "슬롯 개수/비중 상한을 정적으로도 국면조건부로도
+    바꾸면 전부 역효과"였던 건 모든 포지션에 동일한 규칙을 적용했기 때문일 수
+    있다는 가설 - 이번엔 포지션 "구조"(슬롯수·전체 비중상한)는 그대로 두고 개별
+    후보의 신호 강도에 따라서만 배분을 달리한다(높은 확신 종목에 더 크게,
+    낮은 확신 종목에 더 작게). 두 값을 동시에 줘야 활성화된다(하나만 주면
+    비활성 - 의도치 않은 절반 적용 방지). 2026-10-10 "CAGR을 계속 높이라"는
+    요청에 따라 신규 추가.
 
     regime_exit_min_r(기본 None=비활성, exit_on_regime_loss=True일 때만 의미있음)는
     국면상실청산이 "이미 R배수 기준으로 이만큼 벌어둔 포지션"까지 통째로 끊어버리는
@@ -3065,7 +3080,21 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         # 슬롯당 동일 금액 배분 - 변동성과 무관하게 그 시점 총자산을
                         # eff_max_positions(국면 적응형이면 그 상태의 슬롯수, 아니면
                         # max_positions 그대로)으로 나눈 만큼만 산다(리스크 기반 사이징 대신).
-                        target_value = equity_now / eff_max_positions
+                        # conviction_weight_high_pct/low_pct가 설정되면 균등배분 대신
+                        # 이 후보의 순위 점수(_rank_key와 동일한 블렌드 공식)로 비중을
+                        # 정한다 - 점수가 conviction_score_threshold 이상이면 high,
+                        # 미만이면 low.
+                        if conviction_weight_high_pct is not None and conviction_weight_low_pct is not None:
+                            _rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight)
+                            _rs_score = (e.get("rsRating") or 0) / 99
+                            _q_score = quality if quality is not None else 0.5
+                            _v_score = value_score if value_score is not None else 0.5
+                            _blend = _rs_score * _rs_w + _q_score * quality_rank_weight + _v_score * value_rank_weight
+                            _weight_pct = (conviction_weight_high_pct if _blend >= conviction_score_threshold
+                                           else conviction_weight_low_pct)
+                            target_value = equity_now * _weight_pct / 100
+                        else:
+                            target_value = equity_now / eff_max_positions
                         if max_position_value_abs is not None:
                             # 계좌가 복리로 계속 커져도 포지션 금액 자체는 이 고정
                             # 상한을 넘지 않는다 - "일정 규모 이상은 더 키우지 않는다"는
