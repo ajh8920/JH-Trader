@@ -5626,6 +5626,23 @@ function pickBestResultIdx(results) {
   return bestIdx !== -1 ? bestIdx : 0;
 }
 
+// "18243" 같은 원 단위 숫자를 "1만 8,243원" 식 한국어 단위 표기로 바꾼다 -
+// 전략탭 매매내역 표가 자릿수 많은 숫자를 그대로 보여줘 읽기 어렵다는 피드백에 따름.
+function formatKoreanWon(n) {
+  if (n == null || Number.isNaN(Number(n))) return '-';
+  n = Math.round(Number(n));
+  const sign = n < 0 ? '-' : '';
+  n = Math.abs(n);
+  const eok = Math.floor(n / 100000000);
+  const man = Math.floor((n % 100000000) / 10000);
+  const rest = n % 10000;
+  const parts = [];
+  if (eok > 0) parts.push(`${eok.toLocaleString('ko-KR')}억`);
+  if (man > 0) parts.push(`${man.toLocaleString('ko-KR')}만`);
+  if (rest > 0 || parts.length === 0) parts.push(rest.toLocaleString('ko-KR'));
+  return `${sign}${parts.join(' ')}원`;
+}
+
 // 결과 항목의 "매매 내역 보기" - tradesKey로 /api/admin/strategy-trades/<key>를 불러와
 // 토글 방식으로 접었다 펼쳤다 한다(같은 key는 한 번만 fetch하고 캐시해서 재사용).
 const _strategyTradesCache = {};
@@ -5649,9 +5666,9 @@ async function toggleStrategyTrades(key, boxId) {
           <td>${escapeHtml(tr.code || '')}</td>
           <td>${escapeHtml(tr.name || '-')}</td>
           <td>${escapeHtml(tr.entryDate || '')}</td>
-          <td>${tr.entryPrice != null ? escapeHtml(String(tr.entryPrice)) : '-'}</td>
+          <td>${formatKoreanWon(tr.entryPrice)}</td>
           <td>${escapeHtml(tr.exitDate || '')}</td>
-          <td>${tr.exitPrice != null ? escapeHtml(String(tr.exitPrice)) : '-'}</td>
+          <td>${formatKoreanWon(tr.exitPrice)}</td>
           <td class="${(tr.pnlPct || 0) >= 0 ? 'strat-pnl-pos' : 'strat-pnl-neg'}">${tr.pnlPct != null ? tr.pnlPct.toFixed(2) + '%' : '-'}</td>
           <td>${escapeHtml(tr.exitReason || '-')}</td>
           <td>${tr.holdDays != null ? escapeHtml(String(tr.holdDays)) : '-'}</td>
