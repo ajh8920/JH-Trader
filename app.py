@@ -1984,6 +1984,27 @@ def list_strategy_specs():
     return jsonify({"common": ss.COMMON_INFO, "strategies": ss.STRATEGY_SPECS})
 
 
+@app.route("/api/admin/strategy-trades/<key>", methods=["GET"])
+@admin_required
+def get_strategy_trades(key):
+    """관리자 "전략" 탭에서 "매매 내역 보기"를 눌렀을 때 실제 거래 목록을
+    돌려준다. strategy_specs.py의 각 결과 항목이 가진 tradesKey와 1:1로
+    대응하는 strategy_trades/<key>.json(research/strategy_tab/
+    backfill_metrics.py·backfill_new_strategies.py가 생성)을 그대로 읽어
+    돌려준다 - 백테스트를 다시 돌리지 않는 읽기 전용 스냅샷.
+
+    key는 영문자/숫자/밑줄만 허용한다(경로 조작 방지 - 파일 경로를 그대로
+    만드는 자리라 화이트리스트가 필요하다)."""
+    if not re.fullmatch(r"[a-zA-Z0-9_]+", key):
+        return jsonify({"error": "잘못된 key입니다"}), 400
+    path = Path(__file__).resolve().parent / "strategy_trades" / f"{key}.json"
+    if not path.exists():
+        return jsonify({"trades": [], "message": "이 결과는 매매 내역을 보존하지 않았습니다(재현 불가능한 구버전 기록이거나 비공식 스크립트)."})
+    with open(path, encoding="utf-8") as f:
+        trades = json.load(f)
+    return jsonify({"trades": trades})
+
+
 @app.route("/api/admin/trend-screen-refresh", methods=["POST"])
 @admin_required
 def force_trend_screen_refresh():

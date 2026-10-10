@@ -1,14 +1,29 @@
 # -*- coding: utf-8 -*-
 """관리자 "전략" 탭(strategy_specs.py)의 각 전략별 결과 항목에서 빠져 있던 지표
-(CAGR/MDD, 손익비, 알파)를 현재 엔진으로 재실행해 채운다.
+(CAGR/MDD, 손익비, 알파, 평균보유일)를 현재 엔진으로 재실행해 채우고, 전략탭에서
+실제 매매 내역을 조회할 수 있게 거래 단위 데이터도 strategy_trades/<key>.json에
+저장한다.
 
 목적:
   사용자 요청: "전략탭의 모든 전략들은 CAGR, MDD, CAGR/MDD, 승률, 손익비, 알파,
-  거래량이 포함되어야 한다. 빠진 데이터가 있다면 채워 놓으십쇼." strategy_specs.py의
-  기존 결과 항목들을 점검한 결과, 거의 전부 CAGR/MDD(Calmar)와 알파(benchmark 대비
-  초과수익)가 비어 있었다. CAGR/MDD는 이미 있는 CAGR·MDD로 바로 나눌 수 있어
-  재실행 없이 채웠지만(strategy_specs.py를 직접 수정), 알파·손익비는 벤치마크
-  곡선과 거래 로그가 필요해 재실행이 불가피하다.
+  거래량이 포함되어야 한다. 빠진 데이터가 있다면 채워 놓으십쇼." + 2026-10-10
+  추가 요청 두 건: "평균 보유일도 포함해주세요." / "전략 탭에서 실제 매매 내역도
+  확인할 수 있게 추가해 주세요." strategy_specs.py의 기존 결과 항목들을 점검한
+  결과, 거의 전부 CAGR/MDD(Calmar)와 알파(benchmark 대비 초과수익)가 비어
+  있었다. CAGR/MDD는 이미 있는 CAGR·MDD로 바로 나눌 수 있어 재실행 없이
+  채웠지만, 알파·손익비·평균보유일·매매내역은 벤치마크 곡선과 거래 로그가
+  필요해 재실행이 불가피하다 - avgHoldDays는 엔진이 이미 내부적으로 계산해서
+  결과 dict에 돌려주는데, 1차 백필 때는 출력/저장을 안 해둬서 이번에 다시
+  돈다(엔진을 다시 돌리는 게 아니라 "캡처를 놓쳤던 필드를 추가로 저장"하는
+  것 - 재발 방지 차원에서 이 스크립트 자체에 영구히 추가).
+
+  매매내역은 strategy_trades/(저장소 루트, git 추적 - data/는 .gitignore 대상
+  이라 여기 두면 프로덕션에 배포되지 않는다)에 전략별로 JSON 파일 하나씩
+  저장한다. app.py의 신규 라우트(/api/admin/strategy-trades/<key>)가 이
+  파일을 그대로 읽어 돌려준다 - DB에 넣지 않은 이유는 이 데이터가 "그 시점
+  백테스트의 스냅샷"이라 수정/갱신이 거의 없고(재실행하면 파일을 다시
+  덮어쓰면 됨), 매매 건수가 전략당 많아야 수백 건이라 정적 파일로도 충분히
+  가볍기 때문.
 
 배경:
   vcp_strategy.run_vcp_backtest / screening_backtest.run_risk_managed_backtest
@@ -37,9 +52,9 @@
 
 데이터: 로컬 전용. data/price_cache/*.parquet, data/app.db, 000.Data/ 전부 필요.
 
-산출(결과물): 콘솔에 전략별 CAGR/MDD/CAGR-MDD/승률/손익비/알파/거래 전체 출력,
-  research/strategy_tab/backfill_results.json에 저장(이후 strategy_specs.py
-  수정 시 참고).
+산출(결과물): 콘솔에 전략별 CAGR/MDD/CAGR-MDD/승률/손익비/알파/평균보유일/거래
+  전체 출력, research/strategy_tab/backfill_results.json에 저장(이후
+  strategy_specs.py 수정 시 참고).
 
 사용법: python -m research.strategy_tab.backfill_metrics
 """
@@ -47,7 +62,7 @@ import io
 import json
 import sys
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
@@ -77,6 +92,26 @@ quarterly_rows = vcp.load_quarterly_rows(quarter_paths)
 
 TODAY = date.today().isoformat()
 fetch_fn = cached_fetch_ohlc_history_batches("KR", include_delisted=True, max_age_hours=99999)
+TRADES_DIR = PROJECT_DIR / "strategy_trades"
+TRADES_DIR.mkdir(exist_ok=True)
+
+
+def save_trades(key, trades):
+    """code/name/entryDate/entryPrice/exitDate/exitPrice/pnlPct/exitReason/
+    holdDays만 추려 저장한다(shares/pyramidCount 등 UI에 안 쓰는 필드는 뺐다 -
+    파일 용량과 화면에 보여줄 열 수를 맞추기 위함). 날짜 오름차순으로 정렬해
+    "매매 내역" 표가 시간순으로 보이게 한다."""
+    rows = sorted(trades, key=lambda t: t["entryDate"])
+    out = [{
+        "code": t["code"], "name": t.get("name"), "entryDate": t["entryDate"],
+        "entryPrice": t.get("entryPrice"), "exitDate": t["exitDate"], "exitPrice": t.get("exitPrice"),
+        "pnlPct": t["pnlPct"], "exitReason": t.get("exitReason"),
+        "holdDays": t.get("holdDays") or (datetime.fromisoformat(t["exitDate"])
+                                           - datetime.fromisoformat(t["entryDate"])).days,
+    } for t in rows]
+    with open(TRADES_DIR / f"{key}.json", "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False)
+    print(f"  매매내역 {len(out)}건 저장: strategy_trades/{key}.json", flush=True)
 
 VCP_RERUNS = {
     "anonymous": (vcp.ANONYMOUS_PARAMS, "2017-01-01", vcp.ANONYMOUS_PARAMS["default_seed"]),
@@ -108,15 +143,17 @@ def summarize(key, r, start, seed):
     wr = r.get("winRatePct")
     plr = r.get("profitLossRatio")
     alpha = r.get("alphaPct")
+    avg_hold = r.get("avgHoldDays")
     out = {
         "CAGR": round(cagr, 2), "MDD": mdd, "CAGR_MDD": round(calmar, 3),
-        "winRatePct": wr, "profitLossRatio": plr, "alphaPct": alpha,
+        "winRatePct": wr, "profitLossRatio": plr, "alphaPct": alpha, "avgHoldDays": avg_hold,
         "tradeCount": n, "tradesPerYear": round(n / years_span(start), 1),
         "period": f"{start}~{TODAY}",
     }
     results[key] = out
     print(f"[{key}] CAGR {out['CAGR']}% MDD {mdd}% CAGR/MDD {out['CAGR_MDD']} "
-          f"승률 {wr}% 손익비 {plr} 알파 {alpha}%p 거래 {n}건(연 {out['tradesPerYear']}건)", flush=True)
+          f"승률 {wr}% 손익비 {plr} 알파 {alpha}%p 평균보유 {avg_hold}일 거래 {n}건(연 {out['tradesPerYear']}건)", flush=True)
+    save_trades(key, trades)
 
 
 for key, (preset, start, seed) in VCP_RERUNS.items():
@@ -181,17 +218,42 @@ try:
         _, bench_return = sb._fetch_benchmark_curve("KR", dates, seed)
         alpha = round(return_pct - bench_return, 2) if bench_return is not None else None
         plr = sb._profit_loss_ratio(trades)
-        return alpha, plr
+        holds = [(datetime.fromisoformat(t["exitDate"]) - datetime.fromisoformat(t["entryDate"])).days
+                 for t in trades]
+        avg_hold = round(sum(holds) / len(holds), 1) if holds else None
+        return alpha, plr, avg_hold
 
-    alpha_v64, plr_v64 = jpex_alpha_and_plr(v64_data["jpex"], v64_data["jpex_trades"], v64_data["seed"])
-    print(f"[jpex V64] 알파 {alpha_v64}%p 손익비 {plr_v64}", flush=True)
-    results["jpex_v64"] = {"alphaPct": alpha_v64, "profitLossRatio": plr_v64}
+    alpha_v64, plr_v64, hold_v64 = jpex_alpha_and_plr(v64_data["jpex"], v64_data["jpex_trades"], v64_data["seed"])
+    print(f"[jpex V64] 알파 {alpha_v64}%p 손익비 {plr_v64} 평균보유 {hold_v64}일", flush=True)
+    results["jpex_v64"] = {"alphaPct": alpha_v64, "profitLossRatio": plr_v64, "avgHoldDays": hold_v64}
+    save_trades("jpex_v64", v64_data["jpex_trades"])
 
-    alpha_v5, plr_v5 = jpex_alpha_and_plr(v5_data["B_curve"], v5_data["B_trades"], v5_data["seed"])
-    print(f"[jpex V5(최종채택)] 알파 {alpha_v5}%p 손익비 {plr_v5}", flush=True)
-    results["jpex_v5"] = {"alphaPct": alpha_v5, "profitLossRatio": plr_v5}
+    alpha_v5, plr_v5, hold_v5 = jpex_alpha_and_plr(v5_data["B_curve"], v5_data["B_trades"], v5_data["seed"])
+    print(f"[jpex V5(최종채택)] 알파 {alpha_v5}%p 손익비 {plr_v5} 평균보유 {hold_v5}일", flush=True)
+    results["jpex_v5"] = {"alphaPct": alpha_v5, "profitLossRatio": plr_v5, "avgHoldDays": hold_v5}
+    save_trades("jpex_v5", v5_data["B_trades"])
 except FileNotFoundError as e:
-    print("JPEX 캐시 파일 없음 - 건너뜀:", e, flush=True)
+    print("JPEX 캐시 파일(V64/V5) 없음 - 건너뜀:", e, flush=True)
+
+# JPEX V7(현재 최종 채택, quality_rank_weight=0.3)/V6(7라운드 이전) - 각각
+# 다른 세션 결과 파일에 캐시돼 있다(둘 다 research/jpex/에 있어 경로가 안정적).
+try:
+    v7_data = json.load(open(jpex_cache_dir / "jpex_v13_quality_blend_trades.json", encoding="utf-8"))
+    v6_data = json.load(open(jpex_cache_dir / "jpex_v7_regime_adaptive_trades.json", encoding="utf-8"))
+
+    alpha_v7, plr_v7, hold_v7 = jpex_alpha_and_plr(
+        v7_data["quality30_curve"], v7_data["quality30_trades"], v7_data["seed"])
+    print(f"[jpex V7(현재 최종채택)] 알파 {alpha_v7}%p 손익비 {plr_v7} 평균보유 {hold_v7}일", flush=True)
+    results["jpex_v7"] = {"alphaPct": alpha_v7, "profitLossRatio": plr_v7, "avgHoldDays": hold_v7}
+    save_trades("jpex_v7", v7_data["quality30_trades"])
+
+    alpha_v6, plr_v6, hold_v6 = jpex_alpha_and_plr(
+        v6_data["baseline_curve"], v6_data["baseline_trades"], v6_data["seed"])
+    print(f"[jpex V6] 알파 {alpha_v6}%p 손익비 {plr_v6} 평균보유 {hold_v6}일", flush=True)
+    results["jpex_v6"] = {"alphaPct": alpha_v6, "profitLossRatio": plr_v6, "avgHoldDays": hold_v6}
+    save_trades("jpex_v6", v6_data["baseline_trades"])
+except FileNotFoundError as e:
+    print("JPEX 캐시 파일(V7/V6) 없음 - 건너뜀:", e, flush=True)
 
 out_path = Path(__file__).parent / "backfill_results.json"
 with open(out_path, "w", encoding="utf-8") as f:

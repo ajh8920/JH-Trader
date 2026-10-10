@@ -16,7 +16,7 @@
 
 데이터: 로컬 전용. data/price_cache/*.parquet, data/app.db, 000.Data/ 전부 필요.
 
-산출(결과물): 콘솔에 CAGR/MDD/CAGR-MDD/승률/손익비/알파/거래 출력,
+산출(결과물): 콘솔에 CAGR/MDD/CAGR-MDD/승률/손익비/알파/평균보유일/거래 출력,
   research/strategy_tab/backfill_new_strategies_results.json에 저장.
 
 사용법: python -m research.strategy_tab.backfill_new_strategies
@@ -51,9 +51,30 @@ with app.app_context():
     fundamentals_rows = vcp.load_fundamentals_rows(KrFundamental)
 quarter_paths = sorted((FUND_KR_DIR.parent / "kr_quarter").glob("*.parquet"))
 quarterly_rows = vcp.load_quarterly_rows(quarter_paths)
+# APEX_PARAMS(require_catalyst=True)가 실제로 작동하려면 이 데이터를 반드시
+# 로드해서 넘겨야 한다 - 안 그러면 run_vcp_backtest가 require_catalyst를
+# 조용히 무시한다(strategy_specs.py에 이미 기록된 바로 그 버그, 2026-10-09에
+# 한 번 잡았지만 이 스크립트에서 재발했다 - 2026-10-10 재수정).
+catalyst_dates_by_code = vcp.load_catalyst_dates(sorted((FUND_KR_DIR.parent / "disclosures_kr").glob("*.parquet")))
+print(f"공시 촉매 보유 종목수: {len(catalyst_dates_by_code)}", flush=True)
 
 TODAY = date.today().isoformat()
 fetch_fn = cached_fetch_ohlc_history_batches("KR", include_delisted=True, max_age_hours=99999)
+TRADES_DIR = PROJECT_DIR / "strategy_trades"
+TRADES_DIR.mkdir(exist_ok=True)
+
+
+def save_trades(key, trades):
+    rows = sorted(trades, key=lambda t: t["entryDate"])
+    out = [{
+        "code": t["code"], "name": t.get("name"), "entryDate": t["entryDate"],
+        "entryPrice": t.get("entryPrice"), "exitDate": t["exitDate"], "exitPrice": t.get("exitPrice"),
+        "pnlPct": t["pnlPct"], "exitReason": t.get("exitReason"), "holdDays": t.get("holdDays"),
+    } for t in rows]
+    with open(TRADES_DIR / f"{key}.json", "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False)
+    print(f"  매매내역 {len(out)}건 저장: strategy_trades/{key}.json", flush=True)
+
 
 RERUNS = {
     "apex": (vcp.APEX_PARAMS, "2016-01-01", 500_000_000),
@@ -71,7 +92,8 @@ for key, (preset, start, seed) in RERUNS.items():
     t0 = time.time()
     r = vcp.run_vcp_backtest(
         "KR", start, TODAY, seed=seed, fetch_fn=fetch_fn, shares_map=shares_map,
-        shareholder_rows_by_code=shareholder_rows, fundamentals_rows_by_code=fundamentals_rows, **kw)
+        shareholder_rows_by_code=shareholder_rows, fundamentals_rows_by_code=fundamentals_rows,
+        catalyst_dates_by_code=catalyst_dates_by_code, **kw)
     print(f"{key} 완료 ({round(time.time() - t0)}s)", flush=True)
     if "error" in r:
         print("오류:", r.get("error"), flush=True)
@@ -85,11 +107,12 @@ for key, (preset, start, seed) in RERUNS.items():
     out = {
         "CAGR": round(cagr, 2), "MDD": mdd, "CAGR_MDD": round(calmar, 3),
         "winRatePct": r.get("winRatePct"), "profitLossRatio": r.get("profitLossRatio"),
-        "alphaPct": r.get("alphaPct"), "tradeCount": len(trades),
+        "alphaPct": r.get("alphaPct"), "avgHoldDays": r.get("avgHoldDays"), "tradeCount": len(trades),
         "tradesPerYear": round(len(trades) / years, 1), "period": f"{start}~{TODAY}",
     }
     results[key] = out
     print(f"[{key}] {out}", flush=True)
+    save_trades(key, trades)
 
 out_path = Path(__file__).parent / "backfill_new_strategies_results.json"
 with open(out_path, "w", encoding="utf-8") as f:

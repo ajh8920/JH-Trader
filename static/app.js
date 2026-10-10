@@ -736,6 +736,7 @@ const I18N = {
   strategyCommonTitle: { en: 'Common to all strategies', ko: '전략 공통 정보' },
   strategyStatusVerified: { en: 'Verified', ko: '검증됨' },
   strategyStatusUnverified: { en: 'Unverified (recorded value)', ko: '검증 불가(과거 기록값)' },
+  strategyShowTrades: { en: 'Show trade history', ko: '매매 내역 보기' },
   tabScreener: { en: 'Screener', ko: '스크리닝' },
   searchTickerPlaceholder: { en: 'Enter ticker (e.g. AAPL, TSLA, NVDA)', ko: '티커 입력 (예: AAPL, TSLA, NVDA)' },
   quickPicks: { en: 'Quick picks:', ko: '빠른 선택:' },
@@ -5473,13 +5474,45 @@ function renderStrategyTab() {
     </dl>`;
 
   const listEl = document.getElementById('strat-list');
-  listEl.innerHTML = data.strategies.map(s => `
+  const sorted = [...data.strategies].sort((a, b) => strategyBestCagr(b) - strategyBestCagr(a));
+  listEl.innerHTML = sorted.map(s => {
+    const cagr = strategyBestCagr(s);
+    const cagrBadge = cagr > -Infinity
+      ? `<span class="strat-list-cagr${cagr >= 0 ? ' strat-pnl-pos' : ' strat-pnl-neg'}">CAGR ${cagr.toFixed(1)}%</span>` : '';
+    return `
     <button type="button" class="strat-list-item${s.key === _strategyActiveKey ? ' active' : ''}" data-key="${escapeHtml(s.key)}" onclick="selectStrategy('${escapeHtml(s.key)}')">
-      <span class="strat-list-name">${escapeHtml(s.name)}</span>
+      <span class="strat-list-head"><span class="strat-list-name">${escapeHtml(s.name)}</span>${cagrBadge}</span>
       <span class="strat-list-summary">${escapeHtml(s.summary || '')}</span>
-    </button>`).join('');
+    </button>`;
+  }).join('');
 
   if (_strategyActiveKey) renderStrategyDetail(_strategyActiveKey);
+}
+
+// 전략 리스트를 "결과가 좋은 순서"(CAGR 내림차순)로 정렬하기 위한 대표값 계산.
+// 각 전략의 results 배열에서 VERIFIED 상태이면서 CAGR이 숫자로 파싱되는 첫
+// 항목을 그 전략의 대표 성과로 삼는다(작성자가 최신/최종 채택 결과를 보통
+// results[0]에 두는 기존 관례와 맞춤). VERIFIED가 하나도 없으면 상태를
+// 따지지 않고 CAGR이 있는 첫 항목으로, 그래도 없으면 정렬 최하위(-Infinity).
+function strategyBestCagr(s) {
+  const results = s.results || [];
+  const parse = (r) => {
+    const raw = r.metrics && r.metrics['CAGR'];
+    if (typeof raw !== 'string') return null;
+    const n = parseFloat(raw.replace('%', ''));
+    return Number.isNaN(n) ? null : n;
+  };
+  for (const r of results) {
+    if (r.status === 'VERIFIED') {
+      const n = parse(r);
+      if (n !== null) return n;
+    }
+  }
+  for (const r of results) {
+    const n = parse(r);
+    if (n !== null) return n;
+  }
+  return -Infinity;
 }
 
 function selectStrategy(key) {
@@ -5498,11 +5531,12 @@ function renderStrategyDetail(key) {
   const list = (title, items) => (items && items.length)
     ? `<h4>${escapeHtml(title)}</h4><ul>${items.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : '';
 
-  const resultsHtml = (s.results || []).map(r => {
+  const resultsHtml = (s.results || []).map((r, idx) => {
     const statusKey = r.status === 'VERIFIED' ? 'strategyStatusVerified' : 'strategyStatusUnverified';
     const statusClass = r.status === 'VERIFIED' ? 'strat-badge-ok' : 'strat-badge-warn';
     const metrics = Object.entries(r.metrics || {}).map(([k, v]) =>
       `<div class="strat-metric"><span>${escapeHtml(k)}</span><strong>${escapeHtml(v)}</strong></div>`).join('');
+    const tradesId = `strat-trades-${s.key}-${idx}`;
     return `
       <div class="strat-result">
         <div class="strat-result-head">
@@ -5512,6 +5546,11 @@ function renderStrategyDetail(key) {
         <div class="strat-result-period">${escapeHtml(r.period || '')}</div>
         <div class="strat-metrics">${metrics}</div>
         ${r.note ? `<p class="strat-result-note">${escapeHtml(r.note)}</p>` : ''}
+        ${r.tradesKey ? `
+          <button type="button" class="strat-trades-toggle" onclick="toggleStrategyTrades('${escapeHtml(r.tradesKey)}', '${tradesId}')">
+            <i class="ti ti-list-details" aria-hidden="true"></i> ${escapeHtml(t('strategyShowTrades') || '매매 내역 보기')}
+          </button>
+          <div class="strat-trades-box" id="${tradesId}" style="display:none"></div>` : ''}
       </div>`;
   }).join('');
 
@@ -5531,4 +5570,52 @@ function renderStrategyDetail(key) {
     ${s.limitations ? `<h4>한계</h4><p>${escapeHtml(s.limitations)}</p>` : ''}
     ${s.doc ? `<p class="strat-doc-ref">문서: <code>${escapeHtml(s.doc)}</code></p>` : ''}
   `;
+}
+
+// 결과 항목의 "매매 내역 보기" - tradesKey로 /api/admin/strategy-trades/<key>를 불러와
+// 토글 방식으로 접었다 펼쳤다 한다(같은 key는 한 번만 fetch하고 캐시해서 재사용).
+const _strategyTradesCache = {};
+
+async function toggleStrategyTrades(key, boxId) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  if (_strategyTradesCache[key]) { box.innerHTML = _strategyTradesCache[key]; return; }
+  box.innerHTML = `<p class="strat-empty">${escapeHtml(t('loading') || '불러오는 중...')}</p>`;
+  try {
+    const data = await api('GET', `/api/admin/strategy-trades/${encodeURIComponent(key)}`);
+    const trades = data.trades || [];
+    let html;
+    if (!trades.length) {
+      html = `<p class="strat-empty">${escapeHtml(data.message || '매매 내역이 없습니다.')}</p>`;
+    } else {
+      const rows = trades.map(tr => `
+        <tr>
+          <td>${escapeHtml(tr.code || '')}</td>
+          <td>${escapeHtml(tr.name || '-')}</td>
+          <td>${escapeHtml(tr.entryDate || '')}</td>
+          <td>${tr.entryPrice != null ? escapeHtml(String(tr.entryPrice)) : '-'}</td>
+          <td>${escapeHtml(tr.exitDate || '')}</td>
+          <td>${tr.exitPrice != null ? escapeHtml(String(tr.exitPrice)) : '-'}</td>
+          <td class="${(tr.pnlPct || 0) >= 0 ? 'strat-pnl-pos' : 'strat-pnl-neg'}">${tr.pnlPct != null ? tr.pnlPct.toFixed(2) + '%' : '-'}</td>
+          <td>${escapeHtml(tr.exitReason || '-')}</td>
+          <td>${tr.holdDays != null ? escapeHtml(String(tr.holdDays)) : '-'}</td>
+        </tr>`).join('');
+      html = `
+        <div class="strat-trades-table-wrap">
+          <table class="strat-trades-table">
+            <thead><tr>
+              <th>코드</th><th>종목명</th><th>진입일</th><th>진입가</th>
+              <th>청산일</th><th>청산가</th><th>수익률</th><th>청산이유</th><th>보유일</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    }
+    _strategyTradesCache[key] = html;
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = `<p class="strat-empty">${escapeHtml(e.message)}</p>`;
+  }
 }

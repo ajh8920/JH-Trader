@@ -903,7 +903,9 @@ input[type="date"]:hover { border-color: var(--border-strong); }
 }
 .strat-list-item:hover { border-color: var(--border-strong); }
 .strat-list-item.active { border-color: var(--blue); background: var(--blue-bg); }
+.strat-list-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .strat-list-name { font-weight: 600; }
+.strat-list-cagr { font-size: 11px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .strat-list-summary { font-size: 12px; color: var(--text-muted); }
 .strat-detail {
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg);
@@ -926,3 +928,19 @@ input[type="date"]:hover { border-color: var(--border-strong); }
 .strat-metric { display: flex; flex-direction: column; font-size: 12px; color: var(--text-muted); }
 .strat-metric strong { font-size: 14px; color: var(--text); }
 .strat-result-note { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; line-height: 1.5; }
+.strat-trades-toggle {
+  margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--blue); background: var(--blue-bg);
+  border: 1px solid transparent; border-radius: var(--radius-sm); padding: 5px 10px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.strat-trades-toggle:hover { border-color: var(--blue); }
+.strat-trades-box { margin-top: 10px; }
+.strat-trades-table-wrap { overflow-x: auto; max-height: 360px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.strat-trades-table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+.strat-trades-table th, .strat-trades-table td { padding: 5px 10px; text-align: right; border-bottom: 1px solid var(--border); }
+.strat-trades-table th:nth-child(1), .strat-trades-table th:nth-child(2), .strat-trades-table th:nth-child(8),
+.strat-trades-table td:nth-child(1), .strat-trades-table td:nth-child(2), .strat-trades-table td:nth-child(8) { text-align: left; }
+.strat-trades-table thead th { position: sticky; top: 0; background: var(--bg); color: var(--text-secondary); font-weight: 600; }
+.strat-trades-table tbody tr:hover { background: var(--bg-hover, var(--blue-bg)); }
+.strat-pnl-pos { color: var(--green); font-weight: 600; }
+.strat-pnl-neg { color: var(--red); font-weight: 600; }
