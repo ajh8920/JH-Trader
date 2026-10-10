@@ -1085,6 +1085,26 @@ require_evan_stage2(passes_evan_stage2)는 종가/고가/RS만 쓰는 순수
 test_jpex_v19_value_rank.py`로 검증 중(quality 없이 PER만 블렌드한
 버전과, 기존 quality=0.3에 PER 0.2를 더한 버전 비교).
 
+## 35단계 — PER 블렌딩은 사실상 무효과 (2026-10-10)
+
+`research/jpex/test_jpex_v19_value_rank.py` 결과:
+
+| 변형 | CAGR | MDD | Calmar | 거래 |
+|---|---|---|---|---|
+| baseline(=V7, quality=0.3/value=0) | 40.04% | -32.61% | 1.228 | 231 |
+| value_only(quality=0/value=0.3) | 40.03% | -32.70% | 1.224 | 231 |
+| quality_value(quality=0.3/value=0.2) | 40.04%(baseline과 완전 동일) | -32.61% | 1.228 | 231 |
+
+**PER 블렌딩은 후보 선택에 거의 영향이 없다** - quality_value는 baseline과
+거래수부터 전 지표가 완전히 동일(소수점까지 일치), value_only도 거의
+동일(노이즈 수준 차이). 추정 원인: JPEX의 필터(RS62+/Stage2/매출성장
+15%+)를 통과하는 고모멘텀 성장주는 PER이 아예 계산 불가(순이익 적자 -
+estimate_per가 None 반환, 중립 0.5 처리)이거나 이미 고PER인 경우가
+많아, Top40 풀 안에서 PER 기준 재정렬이 실질적으로 순서를 거의 안 바꾼다
+- 품질점수(quality_rank_weight)는 수익성/부채비율 등 "통과/불통과" 이분
+항목이 많아 변별력이 있었지만, PER은 연속값인데 데이터 자체가 이 모멘텀
+풀에서는 쓸모가 없는 것으로 보인다.
+
 ## 남은 과제 (2026-10-10 기준)
 
 1. **CAGR 50% + Calmar > 1 동시 달성은 레버리지 없이는 이 신호체계의
