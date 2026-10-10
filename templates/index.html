@@ -70,6 +70,9 @@
 
     <nav class="tabs" role="tablist">
       <button class="tab active" data-tab="macro" onclick="switchTab('macro')" role="tab"><i class="ti ti-world" aria-hidden="true"></i> <span data-i18n="tabMacro">Macro</span></button>
+      {% if show_all_tabs %}
+      <button class="tab" data-tab="strategy" onclick="switchTab('strategy')" role="tab"><i class="ti ti-clipboard-list" aria-hidden="true"></i> <span data-i18n="tabStrategy">Strategy</span></button>
+      {% endif %}
       <button class="tab" data-tab="screener" onclick="switchTab('screener')" role="tab"><i class="ti ti-trending-up" aria-hidden="true"></i> <span data-i18n="tabScreener">Screener</span></button>
       <button class="tab" data-tab="screenbt" onclick="switchTab('screenbt')" role="tab"><i class="ti ti-replace" aria-hidden="true"></i> <span data-i18n="tabScreenBacktest">Screen Backtest</span></button>
       <button class="tab" data-tab="papertrade" onclick="switchTab('papertrade')" role="tab"><i class="ti ti-robot" aria-hidden="true"></i> <span data-i18n="tabPaperTrading">Paper Trading</span></button>
@@ -83,7 +86,6 @@
       <button class="tab" data-tab="live" onclick="switchTab('live')" role="tab"><i class="ti ti-infinity" aria-hidden="true"></i> <span data-i18n="tabLive">Live</span></button>
       <button class="tab" data-tab="lab" onclick="switchTab('lab')" role="tab"><i class="ti ti-flask" aria-hidden="true"></i> <span data-i18n="tabLab">Lab</span></button>
       <button class="tab" data-tab="krswing" onclick="switchTab('krswing')" role="tab"><i class="ti ti-chart-candle" aria-hidden="true"></i> <span data-i18n="tabKrSwing">KR Swing</span></button>
-      <button class="tab" data-tab="strategy" onclick="switchTab('strategy')" role="tab"><i class="ti ti-clipboard-list" aria-hidden="true"></i> <span data-i18n="tabStrategy">Strategy</span></button>
       <button class="tab" data-tab="krquant" onclick="switchTab('krquant')" role="tab"><i class="ti ti-filter" aria-hidden="true"></i> <span data-i18n="tabKrQuant">KR Quant</span></button>
       {% endif %}
     </nav>
