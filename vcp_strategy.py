@@ -1843,6 +1843,19 @@ def estimate_per(price, shares_out, rows_for_code, as_of_date):
     return market_cap / ni
 
 
+def _value_score_from_per(per_v):
+    """PER(estimate_per 결과)을 0.0(비쌈)~1.0(저평가) 점수로 바꾼다 -
+    quality_rank_weight와 같은 패턴으로 value_rank_weight가 쓴다(27단계에서
+    "하드 필터보다 순위에 블렌드가 낫다"는 게 확인돼 PER도 같은 방식으로
+    시도). PER<=10이면 1.0, PER>=40이면 0.0, 그 사이는 선형 보간. 계산
+    불가(적자 등)면 None을 돌려줘 호출부가 0.5(중립)로 처리하게 한다 -
+    "데이터 없음은 불리하게 치지 않는다"는 fundamental_quality_score와
+    같은 원칙."""
+    if per_v is None or per_v <= 0:
+        return None
+    return max(0.0, min(1.0, (40.0 - per_v) / 30.0))
+
+
 def load_fundamentals_rows(KrFundamental):
     """KrFundamental 테이블 전체를 읽어 {stock_code: [{...}, ...]}로 묶는다.
     shareholder_rows처럼 백테스트 시작 전에 한 번만 로드해둔다(일별 루프 안에서
@@ -2016,7 +2029,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       position_sizing_mode="risk", max_hold_days=None, gate_entries_on_regime=True,
                       exit_on_regime_loss=False, regime_exit_min_r=None,
                       max_pct_of_avg_trade_value=None, max_position_value_abs=None, include_delisted=False,
-                      min_quality_score=None, quality_rank_weight=0.0, require_profitable=True,
+                      min_quality_score=None, quality_rank_weight=0.0, value_rank_weight=0.0, require_profitable=True,
                       position_cap_base="seed",
                       catalyst_dates_by_code=None, require_catalyst=False, catalyst_lookback_days=60,
                       quarterly_rows_by_code=None, min_eps_growth_pct=None,
@@ -2086,6 +2099,17 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     강제 보유일 상한(추세 진행도와 무관하게 도달하면 무조건 청산). gate_entries_on_regime
     =False면 시장국면과 무관하게 신규진입을 허용한다(현금유휴화방지 판단에는 국면을
     여전히 쓴다) - 국면필터 자체가 회전율을 깎는지 확인용.
+
+    value_rank_weight(기본 0.0=비활성, 2026-10-10 신규)는 quality_rank_weight와
+    같은 패턴으로 PER(estimate_per 근사, _value_score_from_per로 0~1 변환) 저평가
+    종목을 후보 순위에서 우선시한다. max_per(하드 필터)는 27단계 실측에서
+    오히려 CAGR을 깎았는데(후보를 너무 많이 제거), quality_rank_weight는 같은
+    방식(하드 필터 대신 순위에 블렌드)으로 성공했으므로 PER도 같은 방식을
+    시도한다. _rank_key가 RS·quality_rank_weight·value_rank_weight 세 점수를
+    함께 블렌드한다 - 가중치 합이 1을 넘으면 RS 비중이 0 밑으로 내려갈 수
+    있으니 둘을 합쳐 1 이하로 쓸 것(1을 넘기면 RS 가중치가 음수로 계산돼
+    오히려 RS가 낮은 종목을 우선시하게 된다 - 호출부 책임으로 둠, 엔진에서
+    강제 클램프하지 않음).
 
     chandelier_wide_r/chandelier_atr_mult_wide(기본 둘 다 None=비활성)는 "거대
     승자"에게만 더 넓은 트레일링을 준다. 2026-10-09 JPEX_V6_PARAMS 월별 분해에서
@@ -2931,21 +2955,29 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         cur_rank = (rank_of_ticker or {}).get(ticker)
                         if cur_rank is None or cur_rank > eff_entry_rank_top_n:
                             continue
-                    candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality))
+                    value_score = None
+                    if value_rank_weight:
+                        per_v = estimate_per(price_now, shares_out, fund_rows, rd)
+                        value_score = _value_score_from_per(per_v)
+                    candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality, value_score))
 
                 # 슬롯보다 후보가 많을 때 누구를 먼저 담을지 정하는 순위.
-                # quality_rank_weight=0이면 기존대로 RS등급(기술적 상대강도)만 본다.
-                # 0보다 크면 그 비중만큼 기본적 분석 점수를 섞는다 - 둘 다 0~1로
-                # 정규화해서 더한다(RS는 1~99라 99로 나눔). 재무데이터가 없는 종목은
-                # 점수를 0.5(중립)로 둔다 - 없다는 이유로 뒤로 밀지 않기 위함.
-                # 동점일 때는 티커 순으로 잘라 실행할 때마다 결과가 달라지지 않게 한다.
+                # quality_rank_weight·value_rank_weight 둘 다 0이면 기존대로
+                # RS등급(기술적 상대강도)만 본다. 0보다 크면 그 비중만큼 기본적
+                # 분석 점수(quality)·저평가 점수(value, _value_score_from_per)를
+                # 섞는다 - 셋 다 0~1로 정규화해서 더한다(RS는 1~99라 99로 나눔).
+                # 재무데이터가 없는 종목은 점수를 0.5(중립)로 둔다 - 없다는
+                # 이유로 뒤로 밀지 않기 위함. 동점일 때는 티커 순으로 잘라
+                # 실행할 때마다 결과가 달라지지 않게 한다.
                 def _rank_key(c):
+                    rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight)
                     rs = (c[1].get("rsRating") or 0) / 99
                     q = c[5] if c[5] is not None else 0.5
-                    return (-(rs * (1 - quality_rank_weight) + q * quality_rank_weight), c[0])
+                    v = c[6] if c[6] is not None else 0.5
+                    return (-(rs * rs_w + q * quality_rank_weight + v * value_rank_weight), c[0])
 
                 candidates.sort(key=_rank_key)
-                for ticker, e, pivot, avg_vol50, avg_trade_val, quality in candidates:
+                for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score in candidates:
                     if open_slots <= 0:
                         break
                     dates, closes, highs, lows, volumes, opens = series[ticker]
