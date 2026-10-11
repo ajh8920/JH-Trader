@@ -2076,7 +2076,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       conviction_weight_high_pct=None, conviction_weight_low_pct=None,
                       conviction_score_threshold=0.7, regime_loss_persist_days=1,
                       min_blend_score=None, quality_use_eps_accel=False,
-                      breadth_min_pct=None):
+                      breadth_min_pct=None, breadth50_min_pct=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2208,6 +2208,11 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     10-11 "다른 축으로"라는 요청에 따라, 지금까지 코스피 200일선 신호 자체를
     조건부로 다르게 쓰는 축(regime_adaptive_params 등)은 전부 실패했지만 신호
     자체를 더 정밀하게 만드는 축은 아직 안 해봤다는 점에서 추가.
+
+    breadth50_min_pct(기본 None=비활성)는 breadth_min_pct와 AND로 같이 결합되는
+    더 빠른 시장폭 신호 - 150/200일선(장기) 대신 50일선 하나만 본다. 2026-10-12
+    "CAGR 50% 계속 시도"에 따라 신규 추가, breadth_min_pct 단독보다 더 이른
+    경보가 가능한지 시험용.
 
     regime_exit_min_r(기본 None=비활성, exit_on_regime_loss=True일 때만 의미있음)는
     국면상실청산이 "이미 R배수 기준으로 이만큼 벌어둔 포지션"까지 통째로 끊어버리는
@@ -2829,6 +2834,17 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             breadth_pass = sum(1 for e in evaluated if e["conditions"].get("priceAboveMa150And200"))
             breadth_pct = breadth_pass / len(evaluated) * 100
             if breadth_pct < breadth_min_pct:
+                regime_ok = False
+                regime_state = "weak"
+        # breadth50_min_pct(기본 None=비활성, 2026-10-12 신규) - breadth_min_pct와
+        # 같은 AND 결합이지만 150/200일선 대신 50일선 하나만 본다. 150/200일선은
+        # 느리게 움직여(장기 추세) breadth_min_pct가 실제 약세 수일~수주 뒤에야
+        # 반응할 수 있다는 가설 - 50일선 기준 비율은 더 빨리(단기 조정 초입부터)
+        # 꺾여 조기경보를 더 당길 수 있는지 시험한다.
+        if breadth50_min_pct is not None and evaluated:
+            breadth50_pass = sum(1 for e in evaluated if e["conditions"].get("priceAboveMa50"))
+            breadth50_pct = breadth50_pass / len(evaluated) * 100
+            if breadth50_pct < breadth50_min_pct:
                 regime_ok = False
                 regime_state = "weak"
         regime_weak_streak = regime_weak_streak + 1 if regime_state == "weak" else 0
