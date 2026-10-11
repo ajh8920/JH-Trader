@@ -2077,7 +2077,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       conviction_score_threshold=0.7, regime_loss_persist_days=1,
                       min_blend_score=None, quality_use_eps_accel=False,
                       breadth_min_pct=None, breadth50_min_pct=None,
-                      gate_pyramid_on_regime=False, pyramid_gate_breadth_min_pct=None):
+                      gate_pyramid_on_regime=False, pyramid_gate_breadth_min_pct=None,
+                      gate_entries_breadth_min_pct=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2215,6 +2216,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     때는 추가매수(피라미딩)만은 막는다 - 지금까지는 보호 포지션에 제한 없이
     계속 추가매수가 가능했다(exit_on_regime_loss는 "청산"만 보고 "추가매수"는
     안 봤음). "버틸 땐 버텨도 더 태우진 말자"는 가설. 2026-10-12 신규 추가.
+
+    gate_entries_breadth_min_pct(기본 None=비활성)는 gate_entries_on_regime(코스피
+    지수 전체 국면으로 신규진입 차단, 5라운드에서 거래가 연 7.8건으로 과도하게
+    줄어 기각됨)과 달리 breadth 단독으로만 신규진입을 거른다 - 피라미딩에
+    breadth 게이트가 통했던 논리(53~54단계)를 신규진입에도 적용하는 실험.
+    gate_entries_on_regime과 독립적으로 켤 수 있다(둘 다 AND).
 
     pyramid_gate_breadth_min_pct(기본 None=비활성)는 gate_pyramid_on_regime보다
     더 이른 피라미딩 차단 - 코스피 조건과 무관하게 breadth(150/200일선) 단독
@@ -2897,7 +2904,15 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         #    직전~이번 재평가 사이에서 찾아 피벗가*1.005 지정가로 체결. gate_entries_on_regime=
         # False면 국면과 무관하게 신규진입을 허용한다(현금유휴화방지는 여전히 국면을
         # 본다) - 슬롯이 적을 때 국면필터가 재진입 기회 자체를 막아 회전율을 깎는지 실험용.
-        if regime_ok or not gate_entries_on_regime:
+        # gate_entries_breadth_min_pct(기본 None=비활성, 2026-10-12 신규) -
+        # gate_entries_on_regime(코스피 지수 전체 국면)은 5라운드에서 이미
+        # 실패했지만(entries_cap 연 7.8건으로 과도하게 줄어듦), breadth 단독으로
+        # 신규진입만 거르는 건 아직 시도 안 함 - 53~54단계에서 피라미딩(리스크
+        # 추가)에 breadth 게이트가 통했던 것과 같은 논리를 신규진입(역시 새
+        # 리스크 추가)에도 적용해보는 실험.
+        entries_breadth_ok = (gate_entries_breadth_min_pct is None or breadth_pct is None
+                               or breadth_pct >= gate_entries_breadth_min_pct)
+        if (regime_ok or not gate_entries_on_regime) and entries_breadth_ok:
             open_slots = eff_max_positions - len(positions)
             if open_slots > 0:
                 candidates = []
