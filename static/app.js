@@ -570,14 +570,16 @@ const I18N = {
   },
   stratJpexTitle: { en: 'JPEX', ko: 'JPEX' },
   stratJpexNote: {
-    en: 'APEX\'s pullback-entry/chandelier-exit skeleton plus two defenses against weak-regime periods: '
+    en: 'APEX\'s pullback-entry/chandelier-exit skeleton plus defenses against weak-regime periods: '
       + 'entries are gated to the top-40 RS rank, and positions get force-closed when the market regime turns '
-      + 'off (unless the position is already up 1.5R or more, in which case it rides its own trailing stop '
-      + 'instead) — the exact rules the "JPEX" paper-trading strategy uses.',
-    ko: 'APEX의 눌림목 진입/챈들리어 청산 골격에, 약한 국면 구간을 방어하는 두 규칙을 더했습니다 — 그날 RS '
-      + '순위 Top40 안에서만 진입을 허용하고, 시장 국면이 꺼지면 보유 포지션을 강제청산합니다(다만 이미 '
-      + '1.5R 이상 번 포지션은 봐주고 원래 트레일링에 맡깁니다) — 모의투자 "JPEX" 전략이 신규 진입/청산에 '
-      + '실제로 쓰는 조건과 동일합니다.',
+      + 'off — the KOSPI 200-day MA check is now ANDed with market breadth (share of the universe above its '
+      + 'own 150/200-day MA, min 30%) — unless the position is already up 1.25R or more, in which case it '
+      + 'rides its own trailing stop instead) — the exact rules the "JPEX" paper-trading strategy uses.',
+    ko: 'APEX의 눌림목 진입/챈들리어 청산 골격에, 약한 국면 구간을 방어하는 규칙들을 더했습니다 — 그날 RS '
+      + '순위 Top40 안에서만 진입을 허용하고, 시장 국면이 꺼지면 보유 포지션을 강제청산합니다(코스피 200일선 '
+      + '조건에 시장폭(전체 유니버스 중 150/200일선 둘 다 위인 종목 비율 30% 이상) 조건을 추가로 더함 - '
+      + '다만 이미 1.25R 이상 번 포지션은 봐주고 원래 트레일링에 맡깁니다) — 모의투자 "JPEX" 전략이 신규 '
+      + '진입/청산에 실제로 쓰는 조건과 동일합니다.',
   },
   stratWatcherV21Title: { en: 'Watcher 2.1', ko: '와쳐 2.1' },
   stratWatcherV21Note: {
@@ -4509,10 +4511,12 @@ const PAPER_STRATEGY_LIST = [
   // 공시 촉매·반등폭 문턱 둘 다 없는, APEX 계열의 원조 조합(vcp_strategy.
   // APEX_V3_PARAMS 정의부 주석 참고) - 거래빈도가 APEX 계열 중 가장 높다.
   { key: 'apex_v3', titleKey: 'stratApexV3Title', emoji: '⚡', defaultSeed: 50_000_000, group: 'apex' },
-  // JPEX - APEX 계열의 눌림목/챈들리어 골격에 국면 방어(순위게이트+국면상실청산)를
-  // 더한 신규 전략(vcp_strategy.JPEX_V7_PARAMS.default_seed와 동일). 2026-10-09
+  // JPEX - APEX 계열의 눌림목/챈들리어 골격에 국면 방어(순위게이트+국면상실청산+시장폭)를
+  // 더한 신규 전략(vcp_strategy.JPEX_V8_PARAMS.default_seed와 동일). 2026-10-09
   // "실전 엔진에도 이식" 요청으로 백테스트 전용이던 entry_rank_top_n/
-  // exit_on_regime_loss/regime_exit_min_r/overheat_days를 이 모듈에 처음 반영했다.
+  // exit_on_regime_loss/regime_exit_min_r/overheat_days를 이 모듈에 처음 반영했고,
+  // 2026-10-11에 breadth_min_pct(시장폭)도 추가로 이식했다(paper_trading.py
+  // _market_breadth_pct).
   { key: 'jpex', titleKey: 'stratJpexTitle', emoji: '🧭', defaultSeed: 50_000_000, group: 'jpex' },
 ];
 
