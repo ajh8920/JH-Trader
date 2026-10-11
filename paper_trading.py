@@ -850,7 +850,7 @@ _WATCHER_FAMILY_PARAMS = {
     "apex": "APEX_PARAMS",
     "apex_v2": "APEX_V2_PARAMS",
     "apex_v3": "APEX_V3_PARAMS",
-    "jpex": "JPEX_V9_PARAMS",
+    "jpex": "JPEX_V10_PARAMS",
 }
 _APEX_STRATEGIES = ("apex", "apex_v2", "apex_v3")  # 전부 "매일 종가로 재계산" 필수조건 공유
 # JPEX는 이 "매일 종가로 재계산" 필수조건이 없다(APEX_PARAMS 계열만의 설계 제약) -
@@ -954,16 +954,23 @@ def run_watcher_daily_step(account):
     # 규칙 자체는 gate_entries_on_regime과 같은 지수를 쓴다(vcp_strategy.
     # run_vcp_backtest의 regime_ok와 동일 조건 - 코스피>200일선 and 200일선 상승).
     index_price, regime_ok = None, True
+    breadth_pct = None
+    gate_entries_breadth_min_pct = params.get("gate_entries_breadth_min_pct")
     if params.get("cash_equitize") or params.get("gate_entries_on_regime") or params.get("exit_on_regime_loss"):
         index_price, regime_ok = _anon_market_index_and_regime()
         # breadth_min_pct(JPEX_V8_PARAMS 신규) - 코스피 조건과 AND 결합, breadth는
         # 국면을 "더 나쁘게"만 만들 수 있다(vcp_strategy.run_vcp_backtest와 동일
-        # 원칙). 이미 regime_ok가 False면 breadth를 볼 필요가 없어 건너뛴다.
+        # 원칙). breadth_pct는 아래 신규진입 게이트(gate_entries_breadth_min_pct,
+        # JPEX_V10_PARAMS 신규)에도 재사용하므로 regime_ok가 이미 False라도 그 값이
+        # 필요하면(gate_entries_breadth_min_pct가 설정된 경우) 계속 계산해둔다.
         breadth_min_pct = params.get("breadth_min_pct")
-        if breadth_min_pct is not None and regime_ok:
+        if (breadth_min_pct is not None or gate_entries_breadth_min_pct is not None) and (
+                regime_ok or gate_entries_breadth_min_pct is not None):
             breadth_pct = _market_breadth_pct(params["market"])
-            if breadth_pct is not None and breadth_pct < breadth_min_pct:
+            if breadth_min_pct is not None and breadth_pct is not None and breadth_pct < breadth_min_pct:
                 regime_ok = False
+    elif gate_entries_breadth_min_pct is not None:
+        breadth_pct = _market_breadth_pct(params["market"])
 
     # 1) 보유 포지션 - run_anonymous_daily_step의 같은 블록과 완전히 동일한
     #    규칙(손절 > MA이탈 > 시간손절 > 본전/분할익절/트레일링 갱신 > 피라미딩).
@@ -1102,7 +1109,12 @@ def run_watcher_daily_step(account):
     should_rescan = account.last_rescan_date is None or (
         datetime.fromisoformat(latest_date) - datetime.fromisoformat(account.last_rescan_date)
     ).days >= params["rescan_interval_days"]
-    if should_rescan and (regime_ok or not params.get("gate_entries_on_regime", True)):
+    # gate_entries_breadth_min_pct(JPEX_V10_PARAMS 신규) - gate_entries_on_regime
+    # (코스피 전체 국면)과 별개로 breadth 단독으로만 신규진입을 거른다(vcp_strategy.
+    # run_vcp_backtest와 동일 원칙 - breadth_pct는 위에서 이미 계산해둔 값 재사용).
+    entries_breadth_ok = (gate_entries_breadth_min_pct is None or breadth_pct is None
+                           or breadth_pct >= gate_entries_breadth_min_pct)
+    if should_rescan and (regime_ok or not params.get("gate_entries_on_regime", True)) and entries_breadth_ok:
         open_slots = params["max_positions"] - len(remaining)
         if open_slots > 0:
             from models import KrFundamental
