@@ -1436,16 +1436,23 @@ def latest_fundamentals_as_of(rows_for_code, as_of_date):
     return by_year[years[-1]], prev
 
 
-def fundamental_quality_score(rows_for_code, as_of_date):
+def fundamental_quality_score(rows_for_code, as_of_date, quarterly_rows_for_code=None):
     """기본적 분석 점수(0.0~1.0). 수익성 2개(영업이익·순이익 흑자), 자본효율
     1개(ROE 5% 이상), 안정성 1개(부채비율 200% 이하), 성장성 1개(매출 전년 대비
-    증가) - 총 5개 항목의 통과 비율이다.
+    증가) - 총 5개 항목의 통과 비율이다. quarterly_rows_for_code를 넘기면
+    6번째 항목(분기 EPS 가속, quarterly_eps_growth 기준 최근 분기 증가율이
+    직전 분기보다 높은지)이 추가된다 - 기본값 None이면 기존 5개 항목 그대로라
+    호출부에서 넘기지 않는 한(즉 quality_use_eps_accel=False인 run_vcp_backtest
+    호출 전부) 결과가 전혀 안 바뀐다.
 
     "적자면 무조건 제외" 같은 이분법 하드 필터가 아니라 점수로 만든 이유:
     그 방식을 실측해보니 24만 건을 걸러내면서 성과가 오히려 나빠졌다(제외된
     종목 중에 나중에 크게 오른 것도 함께 버려졌다). 점수로 두면 후보 순위에
     반영하거나(quality_rank_weight) 하위 구간만 잘라내는(min_quality_score)
-    식으로 강도를 조절할 수 있다.
+    식으로 강도를 조절할 수 있다. EPS 가속을 하드 필터(require_eps_acceleration)
+    로 걸면 JPEX에서 CAGR이 40.04%->29.05%로 붕괴했지만(research/jpex/
+    RESULTS.md 40단계), quality_rank_weight처럼 점수에 녹이면 다를 수 있다는
+    가설로 2026-10-11 추가(44단계 후속, 45단계).
 
     판정에 필요한 값이 없는 항목은 분모에서 빼서, 데이터가 덜 채워진 종목이
     그 이유만으로 낮은 점수를 받지 않게 한다(예: 상장 첫 해라 전년 매출이 없으면
@@ -1482,6 +1489,12 @@ def fundamental_quality_score(rows_for_code, as_of_date):
     if revenue is not None and prev_revenue is not None and prev_revenue > 0:
         applicable += 1
         passed += revenue > prev_revenue
+
+    if quarterly_rows_for_code:
+        eps_latest, eps_prior = quarterly_eps_growth(quarterly_rows_for_code, as_of_date)
+        if eps_latest is not None:
+            applicable += 1
+            passed += eps_prior is None or eps_latest > eps_prior
 
     if applicable == 0:
         return None
@@ -2062,7 +2075,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       regime_adaptive_params=None, regime_strong_threshold_pct=10.0,
                       conviction_weight_high_pct=None, conviction_weight_low_pct=None,
                       conviction_score_threshold=0.7, regime_loss_persist_days=1,
-                      min_blend_score=None):
+                      min_blend_score=None, quality_use_eps_accel=False):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2945,7 +2958,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     if require_profitable and latest_is_profitable(fund_rows, rd) is False:
                         excluded_unprofitable += 1
                         continue
-                    quality = fundamental_quality_score(fund_rows, rd)
+                    quality = fundamental_quality_score(
+                        fund_rows, rd,
+                        (quarterly_rows_by_code.get(code) if quality_use_eps_accel and quarterly_rows_by_code else None))
                     if min_quality_score is not None and quality is not None and quality < min_quality_score:
                         excluded_low_quality += 1
                         continue
