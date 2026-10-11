@@ -2078,7 +2078,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       min_blend_score=None, quality_use_eps_accel=False,
                       breadth_min_pct=None, breadth50_min_pct=None,
                       gate_pyramid_on_regime=False, pyramid_gate_breadth_min_pct=None,
-                      gate_entries_breadth_min_pct=None):
+                      gate_entries_breadth_min_pct=None, sector_rank_weight=0.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2216,6 +2216,17 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     때는 추가매수(피라미딩)만은 막는다 - 지금까지는 보호 포지션에 제한 없이
     계속 추가매수가 가능했다(exit_on_regime_loss는 "청산"만 보고 "추가매수"는
     안 봤음). "버틸 땐 버텨도 더 태우진 말자"는 가설. 2026-10-12 신규 추가.
+
+    sector_rank_weight(기본 0.0=비활성)는 quality_rank_weight와 같은 방식(0~1
+    정규화해 블렌드)으로 섹터 모멘텀을 후보 순위에 섞는다 - 그 rd 시점 유니버스
+    전체(evaluated, 트렌드템플릿 통과 여부 무관)에서 종목의 섹터별 평균 RS등급을
+    구해 "지금 이 섹터가 전반적으로 강한가"를 점수화한다. 섹터 분석(44단계 직후
+    세션 내 분석)에서 헬스케어가 유독 좋았던 패턴을 봤지만, "특정 섹터가 좋았다"는
+    전체 기간 결과를 그대로 전략에 박아넣으면 미래 예측이 아니라 과거 결과에
+    끼워 맞추는 것이다 - 그래서 그 시점까지의 데이터만 쓰는 동적 버전으로
+    설계했다(quality_rank_weight와 완전히 같은 원칙, 미래 정보 없음). 섹터
+    정보가 없는 종목(상장폐지 등 kr_stocks.json 스냅샷에 없는 경우)은 0.5(중립).
+    2026-10-12 "계속 진행" 요청에 58단계로 신규 추가.
 
     gate_entries_breadth_min_pct(기본 None=비활성)는 gate_entries_on_regime(코스피
     지수 전체 국면으로 신규진입 차단, 5라운드에서 거래가 연 7.8건으로 과도하게
@@ -2425,6 +2436,24 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 evaluated.append(result)
         ts.compute_universe_screen(evaluated)
         by_ticker = {e["_ticker"]: e for e in evaluated}
+        # sector_rank_weight(2026-10-12 신규, 57단계 이후 "다른 데이터축" 요청)용 -
+        # 그 시점(이 rd) 기준 섹터별 평균 RS등급. "헬스케어가 좋았다"처럼 전체 기간
+        # 결과를 보고 거꾸로 끼워 맞추는 과최적화를 피하려고, 미래 정보 없이 그날그날
+        # 계산되는 점수만 쓴다(quality_rank_weight와 같은 방식 - 매 rd 그 시점까지의
+        # 데이터만으로 산출). evaluated 전체(트렌드템플릿 통과 여부와 무관)를 모집단으로
+        # 삼아야 섹터당 표본이 너무 적어지지 않는다.
+        if sector_rank_weight:
+            sector_rs_sum = {}
+            sector_rs_n = {}
+            for e in evaluated:
+                sec = e.get("sector")
+                rs = e.get("rsRating")
+                if sec and rs is not None:
+                    sector_rs_sum[sec] = sector_rs_sum.get(sec, 0) + rs
+                    sector_rs_n[sec] = sector_rs_n.get(sec, 0) + 1
+            sector_avg_rs = {sec: sector_rs_sum[sec] / sector_rs_n[sec] for sec in sector_rs_sum}
+        else:
+            sector_avg_rs = {}
         # min_trend_pass_count가 None이면 원안대로 8개 조건 전부 통과(allPass)만 후보로 삼는다.
         # 값을 주면(예: 6) 그 개수 이상만 통과해도 후보 풀에 넣어 거래빈도를 늘릴 수 있다 -
         # 트렌드템플릿 자체가 진입을 막는 게 아니라 VCP+ADX가 최종 필터 역할을 한다.
@@ -3133,11 +3162,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 # 이유로 뒤로 밀지 않기 위함. 동점일 때는 티커 순으로 잘라
                 # 실행할 때마다 결과가 달라지지 않게 한다.
                 def _rank_key(c):
-                    rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight)
+                    rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight - sector_rank_weight)
                     rs = (c[1].get("rsRating") or 0) / 99
                     q = c[5] if c[5] is not None else 0.5
                     v = c[6] if c[6] is not None else 0.5
-                    return (-(rs * rs_w + q * quality_rank_weight + v * value_rank_weight), c[0])
+                    sec_avg_rs = sector_avg_rs.get(c[1].get("sector"))
+                    s = (sec_avg_rs / 99) if sec_avg_rs is not None else 0.5
+                    return (-(rs * rs_w + q * quality_rank_weight + v * value_rank_weight
+                              + s * sector_rank_weight), c[0])
 
                 candidates.sort(key=_rank_key)
                 for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score in candidates:
