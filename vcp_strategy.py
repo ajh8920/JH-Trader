@@ -2059,7 +2059,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       chandelier_wide_r=None, chandelier_atr_mult_wide=None,
                       regime_adaptive_params=None, regime_strong_threshold_pct=10.0,
                       conviction_weight_high_pct=None, conviction_weight_low_pct=None,
-                      conviction_score_threshold=0.7):
+                      conviction_score_threshold=0.7, regime_loss_persist_days=1):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2160,6 +2160,18 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     낮은 확신 종목에 더 작게). 두 값을 동시에 줘야 활성화된다(하나만 주면
     비활성 - 의도치 않은 절반 적용 방지). 2026-10-10 "CAGR을 계속 높이라"는
     요청에 따라 신규 추가.
+
+    regime_loss_persist_days(기본 1=기존 동작과 동일, exit_on_regime_loss=True일
+    때만 의미있음)는 국면상실청산이 하루짜리 휩쏘에도 바로 발동하는 문제를
+    줄인다. JPEX_V7 실측(2026-10-11)에서 regimeExit 청산이 231건 중 126건
+    (54.5%, 10.75년에 걸쳐 119개 서로 다른 날짜 - 2021/2024처럼 전반적으로
+    괜찮았던 해에도 발생)이나 돼, 코스피 종가가 200일선을 하루이틀 넘나드는
+    노이즈에도 매번 미성숙 포지션(아직 regime_exit_min_r 미달)이 끊기는 것으로
+    보였다. 이 값을 N(>1)으로 주면 regime_state가 "weak"로 연속 N일(재평가
+    주기 기준) 이상 유지돼야 실제 청산이 발동한다 - regime_ok/eff_* 값과 같은
+    자리에서 매 rd마다 regime_weak_streak을 갱신하고, 포지션 처리(1단계)는
+    직전 rd 기준 값을 쓰므로 기존 하루 지연 구조와 동일하게 맞물린다.
+    기본값 1은 "weak 판정 당일 바로 청산"이라는 기존 동작과 bit-identical.
 
     regime_exit_min_r(기본 None=비활성, exit_on_regime_loss=True일 때만 의미있음)는
     국면상실청산이 "이미 R배수 기준으로 이만큼 벌어둔 포지션"까지 통째로 끊어버리는
@@ -2317,6 +2329,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     # eff_max_position_weight_pct/eff_entry_rank_top_n은 "신규진입 결정"에만
     # 쓰여 그 rd 안에서 바로 갱신된 값을 쓴다(지연 없음).
     regime_ok = True
+    regime_weak_streak = 0
     eff_pyramid_max_count = pyramid_max_count
     eff_chandelier_atr_mult = chandelier_atr_mult
     eff_max_initial_risk_pct = max_initial_risk_pct
@@ -2659,7 +2672,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             # 여부와 무관하게 그 시점 종가로 전량 청산한다 - 손실을 그대로
             # 확정시키더라도, 하락장에서 포지션을 계속 들고 가 더 크게 물리는
             # 것보다 낫다는 가설.
-            if exit_on_regime_loss and not regime_ok:
+            if exit_on_regime_loss and not regime_ok and regime_weak_streak >= regime_loss_persist_days:
                 current_r = ((closes[i] - pos["avgEntryPrice"]) / pos["riskPerShare"]
                              if pos["riskPerShare"] else 0)
                 if regime_exit_min_r is None or current_r < regime_exit_min_r:
@@ -2766,6 +2779,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             else:
                 regime_ok = False
                 regime_state = "weak"
+        regime_weak_streak = regime_weak_streak + 1 if regime_state == "weak" else 0
 
         # regime_adaptive_params(국면 적응형 파라미터, 2026-10-09 신규) - 국면별
         # 오버라이드를 적용해 effective 값을 갱신한다. pyramid_max_count/
