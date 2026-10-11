@@ -2076,7 +2076,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       conviction_weight_high_pct=None, conviction_weight_low_pct=None,
                       conviction_score_threshold=0.7, regime_loss_persist_days=1,
                       min_blend_score=None, quality_use_eps_accel=False,
-                      breadth_min_pct=None, breadth50_min_pct=None):
+                      breadth_min_pct=None, breadth50_min_pct=None,
+                      gate_pyramid_on_regime=False):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2208,6 +2209,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     10-11 "다른 축으로"라는 요청에 따라, 지금까지 코스피 200일선 신호 자체를
     조건부로 다르게 쓰는 축(regime_adaptive_params 등)은 전부 실패했지만 신호
     자체를 더 정밀하게 만드는 축은 아직 안 해봤다는 점에서 추가.
+
+    gate_pyramid_on_regime(기본 False=기존 동작과 동일)은 regime_exit_min_r로
+    보호돼(이미 R배수 이상 번) 국면상실청산을 피한 포지션도 국면이 weak일
+    때는 추가매수(피라미딩)만은 막는다 - 지금까지는 보호 포지션에 제한 없이
+    계속 추가매수가 가능했다(exit_on_regime_loss는 "청산"만 보고 "추가매수"는
+    안 봤음). "버틸 땐 버텨도 더 태우진 말자"는 가설. 2026-10-12 신규 추가.
 
     breadth50_min_pct(기본 None=비활성)는 breadth_min_pct와 AND로 같이 결합되는
     더 빠른 시장폭 신호 - 150/200일선(장기) 대신 50일선 하나만 본다. 2026-10-12
@@ -2668,7 +2675,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         pos["stopPrice"] = chandelier
                         pos["stopState"] = "trailingStop"
 
-                if pos["pyramidCount"] < eff_pyramid_max_count and ticker in trend_ok_set:
+                if (pos["pyramidCount"] < eff_pyramid_max_count and ticker in trend_ok_set
+                        and (not gate_pyramid_on_regime or regime_ok)):
                     # 장중에 목표가(lastEntryPrice+0.5R)를 스쳤는지가 아니라, 그날
                     # 종가가 그 목표가를 넘어섰는지로 판정하고 그 종가로 추가매수한다.
                     target = pos["lastEntryPrice"] + PYRAMID_INTERVAL_R * r
