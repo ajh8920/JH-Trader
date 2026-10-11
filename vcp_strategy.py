@@ -2077,7 +2077,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       conviction_score_threshold=0.7, regime_loss_persist_days=1,
                       min_blend_score=None, quality_use_eps_accel=False,
                       breadth_min_pct=None, breadth50_min_pct=None,
-                      gate_pyramid_on_regime=False):
+                      gate_pyramid_on_regime=False, pyramid_gate_breadth_min_pct=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2215,6 +2215,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     때는 추가매수(피라미딩)만은 막는다 - 지금까지는 보호 포지션에 제한 없이
     계속 추가매수가 가능했다(exit_on_regime_loss는 "청산"만 보고 "추가매수"는
     안 봤음). "버틸 땐 버텨도 더 태우진 말자"는 가설. 2026-10-12 신규 추가.
+
+    pyramid_gate_breadth_min_pct(기본 None=비활성)는 gate_pyramid_on_regime보다
+    더 이른 피라미딩 차단 - 코스피 조건과 무관하게 breadth(150/200일선) 단독
+    값이 이 문턱 미만이면 피라미딩만 막는다(청산/신규진입에는 영향 없음).
+    gate_pyramid_on_regime(코스피 AND breadth)과 별도로 켤 수 있다. 2026-10-12
+    "CAGR 50% 계속 시도"에 따라 53단계 성공(gate_pyramid_on_regime)의 더 민감한
+    버전으로 추가.
 
     breadth50_min_pct(기본 None=비활성)는 breadth_min_pct와 AND로 같이 결합되는
     더 빠른 시장폭 신호 - 150/200일선(장기) 대신 50일선 하나만 본다. 2026-10-12
@@ -2379,6 +2386,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     # 쓰여 그 rd 안에서 바로 갱신된 값을 쓴다(지연 없음).
     regime_ok = True
     regime_weak_streak = 0
+    pyramid_gate_ok = True
     eff_pyramid_max_count = pyramid_max_count
     eff_chandelier_atr_mult = chandelier_atr_mult
     eff_max_initial_risk_pct = max_initial_risk_pct
@@ -2676,7 +2684,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         pos["stopState"] = "trailingStop"
 
                 if (pos["pyramidCount"] < eff_pyramid_max_count and ticker in trend_ok_set
-                        and (not gate_pyramid_on_regime or regime_ok)):
+                        and (not gate_pyramid_on_regime or regime_ok)
+                        and pyramid_gate_ok):
                     # 장중에 목표가(lastEntryPrice+0.5R)를 스쳤는지가 아니라, 그날
                     # 종가가 그 목표가를 넘어섰는지로 판정하고 그 종가로 추가매수한다.
                     target = pos["lastEntryPrice"] + PYRAMID_INTERVAL_R * r
@@ -2838,12 +2847,20 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         # breadth가 기준 미달이면 지수 조건과 무관하게 regime_ok를 False로
         # 덮어쓴다(AND 결합 - breadth가 국면을 "더 좋게" 만들 수는 없고 "더
         # 나쁘게"만 만들 수 있다).
-        if breadth_min_pct is not None and evaluated:
+        breadth_pct = None
+        if (breadth_min_pct is not None or pyramid_gate_breadth_min_pct is not None) and evaluated:
             breadth_pass = sum(1 for e in evaluated if e["conditions"].get("priceAboveMa150And200"))
             breadth_pct = breadth_pass / len(evaluated) * 100
-            if breadth_pct < breadth_min_pct:
-                regime_ok = False
-                regime_state = "weak"
+        if breadth_min_pct is not None and breadth_pct is not None and breadth_pct < breadth_min_pct:
+            regime_ok = False
+            regime_state = "weak"
+        # pyramid_gate_breadth_min_pct(기본 None=비활성, 2026-10-12 신규) - 53단계
+        # gate_pyramid_on_regime(코스피+breadth AND 결합 regime_ok 기준)의 더 이른
+        # 버전 - breadth 단독(코스피 조건과 무관)으로 피라미딩만 먼저 막는다.
+        # breadth_min_pct와 별개 문턱을 쓸 수 있다(재계산 비용 없이 breadth_pct 재사용).
+        pyramid_gate_ok = True
+        if pyramid_gate_breadth_min_pct is not None and breadth_pct is not None:
+            pyramid_gate_ok = breadth_pct >= pyramid_gate_breadth_min_pct
         # breadth50_min_pct(기본 None=비활성, 2026-10-12 신규) - breadth_min_pct와
         # 같은 AND 결합이지만 150/200일선 대신 50일선 하나만 본다. 150/200일선은
         # 느리게 움직여(장기 추세) breadth_min_pct가 실제 약세 수일~수주 뒤에야
