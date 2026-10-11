@@ -850,7 +850,7 @@ _WATCHER_FAMILY_PARAMS = {
     "apex": "APEX_PARAMS",
     "apex_v2": "APEX_V2_PARAMS",
     "apex_v3": "APEX_V3_PARAMS",
-    "jpex": "JPEX_V8_PARAMS",
+    "jpex": "JPEX_V9_PARAMS",
 }
 _APEX_STRATEGIES = ("apex", "apex_v2", "apex_v3")  # 전부 "매일 종가로 재계산" 필수조건 공유
 # JPEX는 이 "매일 종가로 재계산" 필수조건이 없다(APEX_PARAMS 계열만의 설계 제약) -
@@ -1034,7 +1034,12 @@ def run_watcher_daily_step(account):
                             pos["totalCost"] -= sell_shares * pos["avgEntryPrice"]
                             pos["shares"] -= sell_shares
                         pos["partialTaken"] = True
-            if pos["pyramidCount"] < params["pyramid_max_count"]:
+            # gate_pyramid_on_regime(JPEX_V9_PARAMS 신규) - 국면이 weak일 때는
+            # regime_exit_min_r로 보호받는 포지션이라도 추가매수(피라미딩)는 막는다
+            # (vcp_strategy.run_vcp_backtest와 동일 원칙 - "버틸 땐 버텨도 더
+            # 태우진 말자").
+            if pos["pyramidCount"] < params["pyramid_max_count"] and (
+                    not params.get("gate_pyramid_on_regime") or regime_ok):
                 target = pos["lastEntryPrice"] + vcp.PYRAMID_INTERVAL_R * pos["riskPerShare"]
                 if close >= target:
                     add_shares = max(1, int(pos["initialShares"] * vcp.PYRAMID_SIZE_FRACTION))
