@@ -2075,7 +2075,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       regime_adaptive_params=None, regime_strong_threshold_pct=10.0,
                       conviction_weight_high_pct=None, conviction_weight_low_pct=None,
                       conviction_score_threshold=0.7, regime_loss_persist_days=1,
-                      min_blend_score=None, quality_use_eps_accel=False):
+                      min_blend_score=None, quality_use_eps_accel=False,
+                      breadth_min_pct=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2196,6 +2197,17 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     빼보는 실험용. 이 세션에서 하드 필터(require_eps_acceleration/require_new_pivot/
     pullback_min_volume_mult 등)가 거의 항상 역효과였던 전례가 있어(좋은 후보까지
     같이 잘려나감) 기대값은 낮게 잡고 시험한다.
+
+    breadth_min_pct(기본 None=비활성)는 코스피 지수 하나만 보던 국면 판정에
+    "시장폭"(전체 유니버스 중 150/200일선 둘 다 위인 종목 비율) 확인을 AND로
+    추가한다 - 지수는 소수 대형주에 좌우돼 괜찮아 보여도 개별 종목 전반이 이미
+    무너진 구간(속빈 상승)을 못 잡는다는 가설. 전체 유니버스 트렌드템플릿 평가는
+    이미 매 rd마다 하고 있어(evaluated) 새 계산 비용이 거의 없다. breadth가
+    이 값(%) 미만이면 코스피 조건과 무관하게 regime_ok를 False로 덮어쓴다(AND
+    결합 - breadth가 국면을 "더 좋게"는 못 만들고 "더 나쁘게"만 만든다). 2026-
+    10-11 "다른 축으로"라는 요청에 따라, 지금까지 코스피 200일선 신호 자체를
+    조건부로 다르게 쓰는 축(regime_adaptive_params 등)은 전부 실패했지만 신호
+    자체를 더 정밀하게 만드는 축은 아직 안 해봤다는 점에서 추가.
 
     regime_exit_min_r(기본 None=비활성, exit_on_regime_loss=True일 때만 의미있음)는
     국면상실청산이 "이미 R배수 기준으로 이만큼 벌어둔 포지션"까지 통째로 끊어버리는
@@ -2802,6 +2814,21 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 elif ma200 > 0 and (regime_closes[ri] / ma200 - 1) * 100 >= regime_strong_threshold_pct:
                     regime_state = "strong"
             else:
+                regime_ok = False
+                regime_state = "weak"
+        # breadth_min_pct(기본 None=비활성, 2026-10-11 신규) - 시장폭(전체 유니버스
+        # 중 150/200일선 둘 다 위인 종목 비율) 확인을 국면 판정에 AND로 추가한다.
+        # 코스피 지수 하나만 보면 지수는 소수 대형주에 좌우돼 괜찮아 보여도 개별
+        # 종목 전반이 이미 무너진 "속빈" 상승(breadth 약화) 구간을 못 잡는다는
+        # 가설 - evaluated는 이 rd에 이미 전체 유니버스를 대상으로 트렌드템플릿을
+        # 계산해둔 것이라(바로 위 for rd 루프 시작부) 새 계산 비용 없이 재사용한다.
+        # breadth가 기준 미달이면 지수 조건과 무관하게 regime_ok를 False로
+        # 덮어쓴다(AND 결합 - breadth가 국면을 "더 좋게" 만들 수는 없고 "더
+        # 나쁘게"만 만들 수 있다).
+        if breadth_min_pct is not None and evaluated:
+            breadth_pass = sum(1 for e in evaluated if e["conditions"].get("priceAboveMa150And200"))
+            breadth_pct = breadth_pass / len(evaluated) * 100
+            if breadth_pct < breadth_min_pct:
                 regime_ok = False
                 regime_state = "weak"
         regime_weak_streak = regime_weak_streak + 1 if regime_state == "weak" else 0
