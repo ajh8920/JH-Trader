@@ -2008,6 +2008,8 @@ def _full_exit(pos, price, date, reason, tax=True):
         "shares": pos["shares"], "pnlPct": pnl_pct, "exitReason": reason,
         "pyramidCount": pos["pyramidCount"], "partialTaken": pos["partialTaken"],
         "holdDays": (datetime.fromisoformat(date) - datetime.fromisoformat(pos["entryDate"])).days,
+        "entryRsRating": pos.get("entryRsRating"), "entryQuality": pos.get("entryQuality"),
+        "entryBlendScore": pos.get("entryBlendScore"),
     }
     return trade, proceeds
 
@@ -2059,7 +2061,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       chandelier_wide_r=None, chandelier_atr_mult_wide=None,
                       regime_adaptive_params=None, regime_strong_threshold_pct=10.0,
                       conviction_weight_high_pct=None, conviction_weight_low_pct=None,
-                      conviction_score_threshold=0.7, regime_loss_persist_days=1):
+                      conviction_score_threshold=0.7, regime_loss_persist_days=1,
+                      min_blend_score=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2172,6 +2175,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     자리에서 매 rd마다 regime_weak_streak을 갱신하고, 포지션 처리(1단계)는
     직전 rd 기준 값을 쓰므로 기존 하루 지연 구조와 동일하게 맞물린다.
     기본값 1은 "weak 판정 당일 바로 청산"이라는 기존 동작과 bit-identical.
+
+    min_blend_score(기본 None=비활성)는 min_quality_score(품질 점수 단독)와 달리
+    _rank_key와 동일한 RS+품질+저평가 블렌드 전체 점수로 하위 구간을 잘라낸다.
+    jpex_v7 실거래 231건을 블렌드 점수 사분위로 나눠보니 최하위 사분위(Q1)만
+    유일하게 승률 28.1%/합계손익 음수였다(44단계) - 그 구간을 후보에서 아예
+    빼보는 실험용. 이 세션에서 하드 필터(require_eps_acceleration/require_new_pivot/
+    pullback_min_volume_mult 등)가 거의 항상 역효과였던 전례가 있어(좋은 후보까지
+    같이 잘려나감) 기대값은 낮게 잡고 시험한다.
 
     regime_exit_min_r(기본 None=비활성, exit_on_regime_loss=True일 때만 의미있음)는
     국면상실청산이 "이미 R배수 기준으로 이만큼 벌어둔 포지션"까지 통째로 끊어버리는
@@ -2287,6 +2298,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     excluded_preferred = excluded_cap = excluded_liquidity = excluded_shareholder = excluded_unprofitable = 0
     excluded_low_quality = excluded_no_catalyst = excluded_eps_growth = 0
     excluded_volatility = excluded_evan = excluded_fin_quality = 0
+    excluded_low_blend = 0
     excluded_cooldown = 0
     shareholder_rows_by_code = shareholder_rows_by_code or {}
     fundamentals_rows_by_code = fundamentals_rows_by_code or {}
@@ -2997,6 +3009,21 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     if value_rank_weight:
                         per_v = estimate_per(price_now, shares_out, fund_rows, rd)
                         value_score = _value_score_from_per(per_v)
+                    # min_blend_score(기본 None=비활성, 2026-10-11 추가) - min_quality_score와
+                    # 달리 품질 단독이 아니라 _rank_key와 동일한 RS+품질+저평가 블렌드 전체
+                    # 점수로 하위 구간을 잘라낸다. jpex_v7 실거래 231건을 블렌드 점수
+                    # 사분위로 나눠보니 최하위 사분위(Q1, 0.666~0.800)만 유일하게 승률
+                    # 28.1%/합계손익 음수(-15.6%p)였고 나머지 세 사분위는 전부 양수였다
+                    # (research/jpex/RESULTS.md 44단계) - 그 하위 구간을 아예 걸러보는 실험.
+                    if min_blend_score is not None:
+                        _rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight)
+                        _rs_score = (e.get("rsRating") or 0) / 99
+                        _q_score = quality if quality is not None else 0.5
+                        _v_score = value_score if value_score is not None else 0.5
+                        _blend = _rs_score * _rs_w + _q_score * quality_rank_weight + _v_score * value_rank_weight
+                        if _blend < min_blend_score:
+                            excluded_low_blend += 1
+                            continue
                     candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality, value_score))
 
                 # 슬롯보다 후보가 많을 때 누구를 먼저 담을지 정하는 순위.
@@ -3090,21 +3117,27 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             continue
                     if risk_per_share <= 0:
                         continue
+                    # 후보의 순위 점수(_rank_key와 동일한 블렌드 공식 - RS/품질/저평가
+                    # 0~1 정규화 합) - conviction 사이징에 쓰고, 어느 사이징 모드든
+                    # 포지션에 저장해둬서(entryRsRating/entryQuality/entryBlendScore)
+                    # 나중에 "진입 시점 신호 강도와 결과(초기손절 vs 트레일링청산)의
+                    # 상관관계"를 거래 로그만으로 분석할 수 있게 한다(2026-10-11 추가 -
+                    # 43단계까지 "구조를 바꾸는" 축이 거의 막혀 다음엔 "이미 있는 신호를
+                    # 더 잘 읽어내는" 방향을 데이터로 찾으려는 목적).
+                    _rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight)
+                    _rs_score = (e.get("rsRating") or 0) / 99
+                    _q_score = quality if quality is not None else 0.5
+                    _v_score = value_score if value_score is not None else 0.5
+                    _entry_blend_score = _rs_score * _rs_w + _q_score * quality_rank_weight + _v_score * value_rank_weight
                     if position_sizing_mode == "equal_weight":
                         # 슬롯당 동일 금액 배분 - 변동성과 무관하게 그 시점 총자산을
                         # eff_max_positions(국면 적응형이면 그 상태의 슬롯수, 아니면
                         # max_positions 그대로)으로 나눈 만큼만 산다(리스크 기반 사이징 대신).
                         # conviction_weight_high_pct/low_pct가 설정되면 균등배분 대신
-                        # 이 후보의 순위 점수(_rank_key와 동일한 블렌드 공식)로 비중을
-                        # 정한다 - 점수가 conviction_score_threshold 이상이면 high,
-                        # 미만이면 low.
+                        # 위 블렌드 점수로 비중을 정한다 - 점수가 conviction_score_threshold
+                        # 이상이면 high, 미만이면 low.
                         if conviction_weight_high_pct is not None and conviction_weight_low_pct is not None:
-                            _rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight)
-                            _rs_score = (e.get("rsRating") or 0) / 99
-                            _q_score = quality if quality is not None else 0.5
-                            _v_score = value_score if value_score is not None else 0.5
-                            _blend = _rs_score * _rs_w + _q_score * quality_rank_weight + _v_score * value_rank_weight
-                            _weight_pct = (conviction_weight_high_pct if _blend >= conviction_score_threshold
+                            _weight_pct = (conviction_weight_high_pct if _entry_blend_score >= conviction_score_threshold
                                            else conviction_weight_low_pct)
                             target_value = equity_now * _weight_pct / 100
                         else:
@@ -3161,6 +3194,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         "stopPrice": entry_fill - risk_per_share, "stopState": "initialStop",
                         "highestHigh": entry_fill, "partialTaken": False, "pyramidCount": 0,
                         "lastEntryPrice": entry_fill, "maBelowCount": 0, "barsHeld": 0,
+                        "entryRsRating": e.get("rsRating"), "entryQuality": quality,
+                        "entryBlendScore": round(_entry_blend_score, 4),
                     }
                     open_slots -= 1
 
@@ -3233,6 +3268,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         "excludedLiquidity": excluded_liquidity, "excludedShareholder": excluded_shareholder,
         "excludedUnprofitable": excluded_unprofitable,
         "excludedLowQuality": excluded_low_quality,
+        "excludedLowBlend": excluded_low_blend,
         "excludedNoCatalyst": excluded_no_catalyst,
         "excludedEpsGrowth": excluded_eps_growth,
         "excludedVolatility": excluded_volatility,
