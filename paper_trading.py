@@ -443,6 +443,30 @@ def _anon_market_index_and_regime():
     return price, regime_ok
 
 
+def _market_breadth_pct(market):
+    """전체 유니버스 중 150/200일선 둘 다 위인 종목 비율(%) - vcp_strategy.
+    run_vcp_backtest의 breadth_min_pct(evaluated 재사용)와 동일한 조건
+    (priceAboveMa150And200)이지만, 실시간 쪽은 매일 전체 유니버스를 다시
+    계산하는 대신 trend_screen_refresher가 12시간 주기로 미리 채워둔
+    TrendScreenCache를 그대로 읽는다(JPEX 모의투자 계정은 어차피 이 테이블의
+    rs_rating/market_cap 등을 후보 조회에 이미 쓰고 있어 같은 신선도를
+    공유한다). 캐시가 비어 있으면(초기 배포 직후 등) None을 돌려줘
+    호출부가 breadth 조건을 건너뛰게 한다 - 데이터가 없다고 신규진입/청산을
+    막으면 안 되기 때문(다른 필터들과 같은 원칙)."""
+    rows = (
+        TrendScreenCache.query.filter_by(market=market)
+        .filter(TrendScreenCache.price.isnot(None))
+        .filter(TrendScreenCache.ma150.isnot(None))
+        .filter(TrendScreenCache.ma200.isnot(None))
+        .with_entities(TrendScreenCache.price, TrendScreenCache.ma150, TrendScreenCache.ma200)
+        .all()
+    )
+    if not rows:
+        return None
+    above = sum(1 for price, ma150, ma200 in rows if price > ma150 and price > ma200)
+    return above / len(rows) * 100
+
+
 def _process_anon_position_day(pos, closes, highs, lows, j, params, dates=None, code=None,
                                 dividend_dates_by_code=None, dividend_gap_threshold_pct=-6.0,
                                 dividend_gap_max_pct=-20.0, dividend_gap_lookback_days=30,
@@ -826,7 +850,7 @@ _WATCHER_FAMILY_PARAMS = {
     "apex": "APEX_PARAMS",
     "apex_v2": "APEX_V2_PARAMS",
     "apex_v3": "APEX_V3_PARAMS",
-    "jpex": "JPEX_V7_PARAMS",
+    "jpex": "JPEX_V8_PARAMS",
 }
 _APEX_STRATEGIES = ("apex", "apex_v2", "apex_v3")  # 전부 "매일 종가로 재계산" 필수조건 공유
 # JPEX는 이 "매일 종가로 재계산" 필수조건이 없다(APEX_PARAMS 계열만의 설계 제약) -
@@ -932,6 +956,14 @@ def run_watcher_daily_step(account):
     index_price, regime_ok = None, True
     if params.get("cash_equitize") or params.get("gate_entries_on_regime") or params.get("exit_on_regime_loss"):
         index_price, regime_ok = _anon_market_index_and_regime()
+        # breadth_min_pct(JPEX_V8_PARAMS 신규) - 코스피 조건과 AND 결합, breadth는
+        # 국면을 "더 나쁘게"만 만들 수 있다(vcp_strategy.run_vcp_backtest와 동일
+        # 원칙). 이미 regime_ok가 False면 breadth를 볼 필요가 없어 건너뛴다.
+        breadth_min_pct = params.get("breadth_min_pct")
+        if breadth_min_pct is not None and regime_ok:
+            breadth_pct = _market_breadth_pct(params["market"])
+            if breadth_pct is not None and breadth_pct < breadth_min_pct:
+                regime_ok = False
 
     # 1) 보유 포지션 - run_anonymous_daily_step의 같은 블록과 완전히 동일한
     #    규칙(손절 > MA이탈 > 시간손절 > 본전/분할익절/트레일링 갱신 > 피라미딩).
