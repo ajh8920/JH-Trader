@@ -50,10 +50,12 @@ DEFAULT_STOP_LOSS_PCT = -8.0
 DEFAULT_MAX_POSITIONS = 10
 RESCAN_INTERVAL_DAYS = 7
 WARMUP_DAYS = 450  # MIN_BARS(200일선) + RS 계산용 12개월 수익률 확보
-BENCHMARK_TICKER = {"KR": "^KS11", "US": "^GSPC", "KR_KOSDAQ": "^KQ11"}  # KOSPI / S&P 500 / 코스닥
-# "KR_KOSDAQ"는 실제 백테스트 시장 구분이 아니라 _fetch_index_series를 그대로
+BENCHMARK_TICKER = {"KR": "^KS11", "US": "^GSPC", "KR_KOSDAQ": "^KQ11", "OIL": "CL=F"}
+# "KR_KOSDAQ"/"OIL"은 실제 백테스트 시장 구분이 아니라 _fetch_index_series를 그대로
 # 재사용하려고 추가한 별도 키다(vcp_strategy.py의 대형주 오버레이 - 코스피 vs
-# 코스닥 상대강도 신호용, 2026-10-12 추가).
+# 코스닥 상대강도 신호용, 2026-10-12 추가 / 유가 국면필터 - WTI 원유 선물
+# CL=F, 지인 채팅 "유가 110 이상이면 투자중지 -> 20일 이평선 돌파로 진화"
+# 로직 재현용, 2026-10-12 추가).
 BENCHMARK_LABEL = {"KR": "KOSPI Buy & Hold", "US": "S&P 500 Buy & Hold"}
 
 

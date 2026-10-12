@@ -2083,7 +2083,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       continuation_min_volume_mult=None,
                       large_cap_overlay_tickers=None, large_cap_overlay_slots=0,
                       large_cap_overlay_lookback_days=60, large_cap_overlay_cooldown_days=0,
-                      large_cap_overlay_persist_days=1):
+                      large_cap_overlay_persist_days=1, large_cap_overlay_total_slots=None,
+                      oil_regime_enabled=False, oil_ma_days=20, oil_fixed_threshold=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2247,6 +2248,22 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     917건이 오버레이였고 CAGR이 12.63%로 무너졌다(MDD -78.89%) - 반드시
     같이 켜야 한다.
 
+    large_cap_overlay_total_slots(기본 None=기존처럼 완전히 별개 슬롯풀, 62단계
+    신규)는 지인 채팅 2차 공개 내용대로 메인(소형주)과 오버레이(대형주)가 하나의
+    공유 슬롯풀(예: 4)을 나눠 쓰게 한다 - 오버레이가 꺼져 있으면 소형주가 4개를
+    전부 쓰고, 오버레이가 켜져 N개를 차지하면 소형주는 남은 (4-N)개만 쓴다.
+
+    oil_regime_enabled/oil_ma_days/oil_fixed_threshold(기본 False=비활성,
+    62단계 신규)는 지인 채팅에서 공개된 또 다른 로직("유가 110 이상이면
+    투자중지만 생각했다가... 유가 이동평균선을 가상으로 그려서 20일 이평선
+    넘어가면 트리거 발생")을 재현한다 - WTI 선물(screening_backtest.py의
+    BENCHMARK_TICKER["OIL"]="CL=F")을 받아, oil_fixed_threshold가 주어지면
+    "그 값 이상이면 신규진입 차단"(원안), None이면 "oil_ma_days일 이평선
+    위로 올라서면 신규진입 차단"(진화형)으로 판정한다. gate_entries_breadth_min_pct
+    와 같은 자리에서 신규진입에만 AND로 결합한다(regime_ok 자체는 건드리지
+    않음 - 보유 포지션 강제청산/현금유휴화 등 기존 로직에 영향 없이 이 축만
+    분리해서 효과를 본다).
+
     continuation_reentry(기본 False=비활성, 2026-10-12 신규)는 entry_mode="pullback"
     에서 깨끗한 되돌림을 못 찾은 후보(trend_ok_set 통과·Top-N 이내인데 쉬지 않고
     쭉 올라 3~8% 눌림을 안 만드는 종목)에 continuation_lookback_days일(기본 20)
@@ -2353,6 +2370,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     kosdaq_dates, kosdaq_closes = ([], [])
     if large_cap_overlay_tickers and market == "KR":
         kosdaq_dates, kosdaq_closes = _fetch_index_series_local("KR_KOSDAQ", fetch_start, fetch_end)
+    oil_dates, oil_closes = ([], [])
+    if oil_regime_enabled:
+        oil_dates, oil_closes = _fetch_index_series_local("OIL", fetch_start, fetch_end)
 
     series = {}
     for ticker, bars in fetch_fn(tickers, fetch_start, fetch_end):
@@ -2454,6 +2474,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     kospi_vs_kosdaq_ok = False
     kospi_vs_kosdaq_true_streak = 0
     kospi_vs_kosdaq_false_streak = 0
+    oil_ok = True
     eff_pyramid_max_count = pyramid_max_count
     eff_chandelier_atr_mult = chandelier_atr_mult
     eff_max_initial_risk_pct = max_initial_risk_pct
@@ -3001,6 +3022,20 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             kospi_vs_kosdaq_true_streak = kospi_vs_kosdaq_true_streak + 1 if kospi_vs_kosdaq_ok else 0
             kospi_vs_kosdaq_false_streak = 0 if kospi_vs_kosdaq_ok else kospi_vs_kosdaq_false_streak + 1
 
+        # oil_ok(유가 국면필터용, 62단계) - oil_fixed_threshold가 있으면 그 값
+        # 이상에서, 없으면 자체 oil_ma_days일 이평선 위로 올라서면 False(신규진입
+        # 차단). 데이터가 없는 구간(워밍업 부족 등)은 보수적으로 "문제없음"으로
+        # 본다(필터를 켰다고 백테스트 자체가 막혀서는 안 된다는 기존 원칙과 동일).
+        if oil_regime_enabled and oil_dates:
+            oil_ok = True
+            ri_o = bisect.bisect_right(oil_dates, rd) - 1
+            if oil_fixed_threshold is not None:
+                if ri_o >= 0:
+                    oil_ok = oil_closes[ri_o] < oil_fixed_threshold
+            elif ri_o - oil_ma_days >= 0:
+                oil_ma = sum(oil_closes[ri_o - oil_ma_days + 1:ri_o + 1]) / oil_ma_days
+                oil_ok = oil_closes[ri_o] <= oil_ma
+
         # regime_adaptive_params(국면 적응형 파라미터, 2026-10-09 신규) - 국면별
         # 오버라이드를 적용해 effective 값을 갱신한다. pyramid_max_count/
         # chandelier_atr_mult는 다음 rd의 "1) 포지션 처리"에서 쓰여 하루 지연되고,
@@ -3013,6 +3048,20 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         eff_max_position_weight_pct = _ov.get("max_position_weight_pct", max_position_weight_pct)
         eff_entry_rank_top_n = _ov.get("entry_rank_top_n", entry_rank_top_n)
         eff_max_positions = _ov.get("max_positions", max_positions)
+        # large_cap_overlay_total_slots(기본 None=기존 동작과 동일 - 메인/오버레이가
+        # 완전히 별개 슬롯풀, 62단계 신규) - 지인 채팅 2차 공개("슬롯 4개가 max로
+        # 했고, 4개 중 대형주 로직 조건이 부합되지 않으면 소형주로 4개 꽉채우고,
+        # 대형주 로직 on되었고 그 로직에서 나온 종목이 1개면 4개 슬롯 중 1개만
+        # 차지")를 재현 - 지금까지는 소형주 2슬롯+오버레이 2슬롯을 항상 고정으로
+        # 더해써서, 오버레이가 꺼져 있는 대부분의 기간에도 소형주가 4슬롯을 전부
+        # 못 쓰고 2슬롯만 쓰고 있었다. 이 값을 주면(예: 4) 소형주 슬롯수를
+        # "총 슬롯 - 현재 보유 중인 오버레이 포지션 수"로 매 rd 다시 계산한다
+        # (large_cap_overlay_slots는 오버레이 쪽 자체 상한으로 여전히 유효 - 둘을
+        # 합친 총 보유 포지션 수가 이 값을 넘지는 않는다).
+        if large_cap_overlay_tickers and large_cap_overlay_total_slots is not None:
+            _ov_tickers_now = [f"{c}.KS" for c in large_cap_overlay_tickers]
+            _ov_held_now = sum(1 for t in _ov_tickers_now if t in positions)
+            eff_max_positions = large_cap_overlay_total_slots - _ov_held_now
 
         # 3.5) 현금 유휴화 방지(cash_equitize) - 국면이 꺼지면 지수 보유분 전량 현금화(방어)
         if cash_equitize and not regime_ok and index_units > 0 and index_price is not None:
@@ -3032,7 +3081,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         # 리스크 추가)에도 적용해보는 실험.
         entries_breadth_ok = (gate_entries_breadth_min_pct is None or breadth_pct is None
                                or breadth_pct >= gate_entries_breadth_min_pct)
-        if (regime_ok or not gate_entries_on_regime) and entries_breadth_ok:
+        if (regime_ok or not gate_entries_on_regime) and entries_breadth_ok and oil_ok:
             open_slots = eff_max_positions - len(positions)
             if open_slots > 0:
                 candidates = []
@@ -3467,7 +3516,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             ov_tickers = [f"{code}.KS" for code in large_cap_overlay_tickers]
             ov_held = sum(1 for t in ov_tickers if t in positions)
             open_ov_slots = large_cap_overlay_slots - ov_held
-            if open_ov_slots > 0 and kospi_vs_kosdaq_true_streak >= large_cap_overlay_persist_days:
+            if (open_ov_slots > 0 and oil_ok
+                    and kospi_vs_kosdaq_true_streak >= large_cap_overlay_persist_days):
                 # large_cap_overlay_cooldown_days(기본 0=비활성) - 조건(kospi_vs_kosdaq_ok)이
                 # 며칠씩 유지되는 동안, 손절당한 종목을 바로 다음날 또 사고 또 털리는
                 # 휩쏘 루프를 막는다(1차 구현에서 실측 - 쿨다운 없이 하니 917건이
