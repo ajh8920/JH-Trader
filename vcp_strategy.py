@@ -2128,7 +2128,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       large_cap_overlay_lookback_days=60, large_cap_overlay_cooldown_days=0,
                       large_cap_overlay_persist_days=1, large_cap_overlay_total_slots=None,
                       oil_regime_enabled=False, oil_ma_days=20, oil_fixed_threshold=None,
-                      low_break_days=None, elder_impulse_exit=False, elder_impulse_persist_days=1):
+                      low_break_days=None, elder_impulse_exit=False, elder_impulse_persist_days=1,
+                      flow_rank_weight=0.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2312,6 +2313,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     연속 유지돼야 청산을 인정한다 - 63단계 1차 실측(즉시청산)에서 평균손익이
     +1.2%로 목표(+18.0%)에 한참 못 미쳐, 너무 일찍 끊는 게 원인이라는 가설로
     추가.
+
+    flow_rank_weight(기본 0.0=비활성, 67단계 신규)는 min_flow_percentile(하드
+    필터, APEX_STAGE3 14/18차에서 이미 실패 확인)과 달리 quality_rank_weight와
+    같은 방식으로 외국인+기관 순매수(flow_lookback_days일 합)를 그날 후보군
+    내 백분위 점수(0~1)로 변환해 _rank_key에 블렌드한다. "하드 필터보다 순위
+    블렌드가 낫다"는 27단계(quality) 패턴이 수급에도 적용되는지 보는 시험 -
+    sector_rank_weight(58단계, 완전 무효과)처럼 블렌드도 실패할 수 있다.
 
     oil_regime_enabled/oil_ma_days/oil_fixed_threshold(기본 False=비활성,
     62단계 신규)는 지인 채팅에서 공개된 또 다른 로직("유가 110 이상이면
@@ -2642,7 +2650,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         # 시가총액 규모가 달라 거래대금(원) 절대값으로는 비교가 안 되므로,
         # 반드시 percentile로만 쓴다(절대 문턱 모드는 의미가 없어 아예 안 둠).
         flow_percentile_cutoff = None
-        if min_flow_percentile is not None and flow_rows_by_code:
+        flow_vals_sorted = []
+        if (min_flow_percentile is not None or flow_rank_weight) and flow_rows_by_code:
             flow_vals = []
             for t in trend_ok_set:
                 code_t, *_ = info_by_ticker.get(t, (t,))
@@ -2651,8 +2660,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     flow_vals.append(v)
             if flow_vals:
                 flow_vals.sort()
-                idx = min(int(len(flow_vals) * min_flow_percentile / 100), len(flow_vals) - 1)
-                flow_percentile_cutoff = flow_vals[idx]
+                flow_vals_sorted = flow_vals
+                if min_flow_percentile is not None:
+                    idx = min(int(len(flow_vals) * min_flow_percentile / 100), len(flow_vals) - 1)
+                    flow_percentile_cutoff = flow_vals[idx]
 
         # 12개월 수익률 백분위 - 위 ROE 백분위와 같은 논리를 가격 모멘텀에
         # 적용한 것(38차 신규). evan_stage2의 min_return_12m(절대 문턱, 40%)은
@@ -3386,6 +3397,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     if value_rank_weight:
                         per_v = estimate_per(price_now, shares_out, fund_rows, rd)
                         value_score = _value_score_from_per(per_v)
+                    flow_score = None
+                    if flow_rank_weight and flow_vals_sorted:
+                        code_f, *_ = info_by_ticker.get(ticker, (ticker,))
+                        fv = flow_net_sum(flow_rows_by_code.get(code_f) if flow_rows_by_code else None,
+                                           rd, flow_lookback_days)
+                        if fv is not None:
+                            flow_score = bisect.bisect_right(flow_vals_sorted, fv) / len(flow_vals_sorted)
                     # min_blend_score(기본 None=비활성, 2026-10-11 추가) - min_quality_score와
                     # 달리 품질 단독이 아니라 _rank_key와 동일한 RS+품질+저평가 블렌드 전체
                     # 점수로 하위 구간을 잘라낸다. jpex_v7 실거래 231건을 블렌드 점수
@@ -3401,7 +3419,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         if _blend < min_blend_score:
                             excluded_low_blend += 1
                             continue
-                    candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality, value_score, is_continuation))
+                    candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality, value_score, is_continuation,
+                                       flow_score))
 
                 # 슬롯보다 후보가 많을 때 누구를 먼저 담을지 정하는 순위.
                 # quality_rank_weight·value_rank_weight 둘 다 0이면 기존대로
@@ -3412,17 +3431,19 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 # 이유로 뒤로 밀지 않기 위함. 동점일 때는 티커 순으로 잘라
                 # 실행할 때마다 결과가 달라지지 않게 한다.
                 def _rank_key(c):
-                    rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight - sector_rank_weight)
+                    rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight - sector_rank_weight
+                               - flow_rank_weight)
                     rs = (c[1].get("rsRating") or 0) / 99
                     q = c[5] if c[5] is not None else 0.5
                     v = c[6] if c[6] is not None else 0.5
                     sec_avg_rs = sector_avg_rs.get(c[1].get("sector"))
                     s = (sec_avg_rs / 99) if sec_avg_rs is not None else 0.5
+                    f = c[8] if c[8] is not None else 0.5
                     return (-(rs * rs_w + q * quality_rank_weight + v * value_rank_weight
-                              + s * sector_rank_weight), c[0])
+                              + s * sector_rank_weight + f * flow_rank_weight), c[0])
 
                 candidates.sort(key=_rank_key)
-                for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score, is_continuation in candidates:
+                for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score, is_continuation, flow_score in candidates:
                     if open_slots <= 0:
                         break
                     dates, closes, highs, lows, volumes, opens = series[ticker]
