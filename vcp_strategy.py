@@ -3124,6 +3124,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                                              min_eps_growth_pct, require_eps_acceleration):
                             excluded_eps_growth += 1
                             continue
+                    is_continuation = False
                     if entry_mode == "donchian":
                         brk = detect_donchian_breakout(highs, closes, i, period=donchian_period)
                         if not brk:
@@ -3137,9 +3138,24 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                                              min_uptick_pct=pullback_min_uptick_pct,
                                              min_persist_days=pullback_min_persist_days,
                                              volumes=volumes, max_pullback_vol_ratio=max_pullback_vol_ratio)
-                        if not pb:
+                        if pb:
+                            pivot = pb["pivot"]
+                        elif continuation_reentry:
+                            # 눌림목이 안 나왔어도(쉬지 않고 쭉 오르는 종목), 오늘 종가가
+                            # continuation_lookback_days일 신고가를 경신했으면 대체 신호로
+                            # 후보에 넣는다(60단계 - 지인 실매매 분석의 "거대 승자 반납" 대응).
+                            lb_start = max(0, i - continuation_lookback_days)
+                            if i == 0 or closes[i] < max(closes[lb_start:i]):
+                                continue
+                            if continuation_min_volume_mult is not None:
+                                vol50_c = _avg_volume(volumes, i)
+                                vol_i = volumes[i]
+                                if vol50_c and vol_i is not None and vol_i < vol50_c * continuation_min_volume_mult:
+                                    continue
+                            pivot = closes[i]
+                            is_continuation = True
+                        else:
                             continue
-                        pivot = pb["pivot"]
                     else:
                         adx = _adx(highs, lows, closes, i)
                         if not adx or adx < adx_threshold:
@@ -3183,7 +3199,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         if _blend < min_blend_score:
                             excluded_low_blend += 1
                             continue
-                    candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality, value_score))
+                    candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality, value_score, is_continuation))
 
                 # 슬롯보다 후보가 많을 때 누구를 먼저 담을지 정하는 순위.
                 # quality_rank_weight·value_rank_weight 둘 다 0이면 기존대로
@@ -3204,7 +3220,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                               + s * sector_rank_weight), c[0])
 
                 candidates.sort(key=_rank_key)
-                for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score in candidates:
+                for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score, is_continuation in candidates:
                     if open_slots <= 0:
                         break
                     dates, closes, highs, lows, volumes, opens = series[ticker]
