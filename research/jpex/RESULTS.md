@@ -2025,6 +2025,37 @@ Calmar는 모든 문턱에서 V10보다 낮다(1.33~1.35 vs 1.404) - 지금까�
 근거로 기록만 해두고, V10을 그대로 최종 채택 유지한다 - CAGR을 조금이라도
 더 우선하고 싶다면 rank_exit_top_n=60이 유일하게 검증된 대안.
 
+## 70단계 — JPEX_V11_PARAMS 채택 완료 (rank_exit_top_n=60 + rank_exit_persist_days=2) (2026-10-13)
+
+69단계에서 검증한 `rank_exit_top_n=60`/`rank_exit_persist_days=2`를
+JPEX_V11_PARAMS로 정식 채택했다. 최종 재확인(시드 5억원, 2016-01-01~
+2026-10-13, 10.75년): **CAGR 41.52%, MDD -29.43%, Calmar 1.411, 승률
+35.9%, 손익비 5.18, 거래 192건(연 17.8건), 평균보유 8.3일** - V10(CAGR
+41.31%/Calmar 1.404) 대비 CAGR·Calmar 둘 다(또는 최소 동률로) 개선.
+
+반영 범위:
+- `vcp_strategy.py`: `JPEX_V11_PARAMS` 신규(V10에 이 두 파라미터만 추가,
+  기존 엔진 코드 변경 없음 - 둘 다 이미 존재하던 파라미터라 하위호환
+  리스크 자체가 없음).
+- `strategy_specs.py`: 전략탭에 11라운드 결과 추가(current=True), 10라운드
+  (V10)는 과거 기록으로 보존.
+- `strategy_trades/jpex_v11.json`: 전체 거래 192건 커밋(전략탭 매매내역
+  보기용).
+- `app.py`: `/api/paper-trading/start`·`/watchlist` 두 라우트의
+  `vcp.JPEX_V10_PARAMS` 참조를 `vcp.JPEX_V11_PARAMS`로 교체.
+- `paper_trading.py`: `_WATCHER_FAMILY_PARAMS["jpex"]`를
+  `"JPEX_V11_PARAMS"`로 교체.
+
+**중요한 미해결 공백**: 실시간 모의투자 엔진(`paper_trading.py`
+`run_watcher_daily_step`)은 `rank_exit_top_n`/`rank_exit_persist_days`를
+아직 실제로 구현하지 않았다 - JPEX_V11_PARAMS를 가리키도록만 바꿨을 뿐,
+딕셔너리에 이 키가 있어도 코드가 안 읽으면 조용히 무시되므로 크래시는
+안 나지만 실제 모의투자 동작은 V10과 동일하게 돈다. 백테스트 엔진은
+재평가일마다 전체 유니버스의 RS 순위를 다시 계산하는데, 모의투자는
+`TrendScreenCache`(현재 시점 스냅샷 1개)만 들고 있어 "순위이탈이 N일
+연속"을 그대로 재현하려면 일별 RS 순위 이력을 쌓는 인프라가 새로
+필요하다 - 이번 라운드 범위 밖이라 보류, 다음 작업 후보로 남긴다.
+
 ## 남은 과제 (2026-10-10 기준)
 
 1. **CAGR 50% + Calmar > 1 동시 달성은 레버리지 없이는 이 신호체계의
