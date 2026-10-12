@@ -54,12 +54,15 @@ fetch_fn = cached_fetch_ohlc_history_batches("KR", include_delisted=True, max_ag
 
 OVERLAY_TICKERS = ["005930", "000660"]
 GRID = {
-    "overlay_lb60": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
-                      "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 60},
-    "overlay_lb20": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
-                      "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 20},
-    "overlay_lb120": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
-                       "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 120},
+    "overlay_lb60_cd5": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
+                          "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 60,
+                          "large_cap_overlay_cooldown_days": 5},
+    "overlay_lb60_cd10": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
+                           "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 60,
+                           "large_cap_overlay_cooldown_days": 10},
+    "overlay_lb120_cd10": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
+                            "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 120,
+                            "large_cap_overlay_cooldown_days": 10},
 }
 
 

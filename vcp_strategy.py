@@ -2082,7 +2082,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       continuation_reentry=False, continuation_lookback_days=20,
                       continuation_min_volume_mult=None,
                       large_cap_overlay_tickers=None, large_cap_overlay_slots=0,
-                      large_cap_overlay_lookback_days=60):
+                      large_cap_overlay_lookback_days=60, large_cap_overlay_cooldown_days=0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2232,6 +2232,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     안 본다 - "지금 이 종목을 사도 되는 시점인가"가 아니라 "지금 대형주
     사이클인가"만 본다. 일단 진입하면 이후 손절/트레일링/국면상실청산 등은
     나머지 포지션과 완전히 동일한 규칙을 따른다(별도 종료 조건 없음).
+
+    large_cap_overlay_cooldown_days(기본 0=비활성)는 오버레이 종목이 손절당한
+    뒤 쿨다운 기간 동안은 조건(kospi_vs_kosdaq_ok)이 계속 참이어도 재진입을
+    막는다 - 1차 구현(쿨다운 없음)을 그대로 돌려보니 조건이 며칠씩 유지되는
+    동안 당일 손절→다음날 재진입을 반복하는 휩쏘 루프로 거래 1059건 중
+    917건이 오버레이였고 CAGR이 12.63%로 무너졌다(MDD -78.89%) - 반드시
+    같이 켜야 한다.
 
     continuation_reentry(기본 False=비활성, 2026-10-12 신규)는 entry_mode="pullback"
     에서 깨끗한 되돌림을 못 찾은 후보(trend_ok_set 통과·Top-N 이내인데 쉬지 않고
@@ -3417,11 +3424,26 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 kosdaq_ret = kosdaq_closes[ri_q] / kosdaq_closes[ri_q - lb] - 1
                 kospi_vs_kosdaq_ok = kospi_ret > kosdaq_ret
             if open_ov_slots > 0 and kospi_vs_kosdaq_ok:
+                # large_cap_overlay_cooldown_days(기본 0=비활성) - 조건(kospi_vs_kosdaq_ok)이
+                # 며칠씩 유지되는 동안, 손절당한 종목을 바로 다음날 또 사고 또 털리는
+                # 휩쏘 루프를 막는다(1차 구현에서 실측 - 쿨다운 없이 하니 917건이
+                # 오버레이 거래였고 CAGR 12.63%로 재앙). trades 끝부분 몇 개만 봐도
+                # 최근 청산은 충분히 잡힌다(전체 리스트를 매번 스캔하지 않음).
+                ov_last_exit = {}
+                if large_cap_overlay_cooldown_days > 0:
+                    for t in trades[-10:]:
+                        if t["code"] in large_cap_overlay_tickers:
+                            ov_last_exit[t["code"]] = t["exitDate"]
                 for ot in ov_tickers:
                     if open_ov_slots <= 0:
                         break
                     if ot in positions or ot not in series or ot not in idx_at_rd:
                         continue
+                    ov_code_only = ot.split(".")[0]
+                    if large_cap_overlay_cooldown_days > 0:
+                        last_exit = ov_last_exit.get(ov_code_only)
+                        if last_exit and (datetime.fromisoformat(rd) - datetime.fromisoformat(last_exit)).days < large_cap_overlay_cooldown_days:
+                            continue
                     dates, closes, highs, lows, volumes, opens = series[ot]
                     i2 = idx_at_rd[ot]
                     close = closes[i2]
