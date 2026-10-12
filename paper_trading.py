@@ -268,7 +268,22 @@ def get_watchlist(account, limit=15):
 def run_daily_step(account):
     """계좌 하나를 최신 거래일까지 진행시킨다. 이미 최신 거래일까지 처리된
     상태면 아무 것도 하지 않고 조용히 반환한다(하루에 여러 번 깨어나는
-    리프레셔가 중복 처리하지 않도록)."""
+    리프레셔가 중복 처리하지 않도록).
+
+    gunicorn 워커 2개가 14:30에 동시에 깨어나면, 둘 다 run_all_accounts에서
+    같은 계좌의 last_processed_date를 "아직 전날"로 읽은 뒤 거의 동시에 이
+    함수에 들어올 수 있다 - 매매 생성 자체는 끝까지 아무 잠금도 없어서
+    (last_processed_date 갱신은 각 하위 함수 맨 끝, 외부 API 조회로 수초~
+    수십초 걸리는 처리 도중) 이 "확인 후 사용" 사이의 경합으로 같은 날 같은
+    계좌에 매수/매도가 중복 생성됐다(2026-10-12 메일 중복 발견으로 확인 -
+    _send_one_trade_alert는 이미 행 잠금으로 막아놔서 메일은 1통만 갔지만,
+    그 메일에 담긴 거래 내역 자체가 두 워커가 각각 만든 중복 레코드였다).
+    같은 계좌 행에 행 잠금을 걸어(_send_one_trade_alert와 동일 패턴) 두
+    워커 중 하나가 끝날 때까지 다른 하나를 대기시킨다 - 하위 함수들은 전부
+    끝에서 한 번만 커밋해(line 395/832/1260) 잠금이 처리 내내 유지된다."""
+    account = PaperStrategyAccount.query.filter_by(id=account.id).with_for_update().first()
+    if not account:
+        return
     if account.strategy in ("anonymous", "sweeper"):
         return run_anonymous_daily_step(account)
     if account.strategy in ("watcher", "watcher_v21", "apex", "apex_v2", "apex_v3", "jpex"):
