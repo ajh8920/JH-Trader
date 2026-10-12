@@ -2082,7 +2082,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       continuation_reentry=False, continuation_lookback_days=20,
                       continuation_min_volume_mult=None,
                       large_cap_overlay_tickers=None, large_cap_overlay_slots=0,
-                      large_cap_overlay_lookback_days=60, large_cap_overlay_cooldown_days=0):
+                      large_cap_overlay_lookback_days=60, large_cap_overlay_cooldown_days=0,
+                      large_cap_overlay_persist_days=1):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2232,6 +2233,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     안 본다 - "지금 이 종목을 사도 되는 시점인가"가 아니라 "지금 대형주
     사이클인가"만 본다. 일단 진입하면 이후 손절/트레일링/국면상실청산 등은
     나머지 포지션과 완전히 동일한 규칙을 따른다(별도 종료 조건 없음).
+
+    large_cap_overlay_persist_days(기본 1=사실상 즉시 반응)는 kospi_vs_kosdaq_ok가
+    N일 연속 유지돼야만 진입/청산을 인정한다(regime_weak_streak과 같은 방식) -
+    쿨다운+국면전환청산 조합으로도 여전히 MDD -55~84%였던 건 이 신호 자체가
+    경계값 근처에서 거의 매일 뒤집히는 노이즈였기 때문. 반드시 1보다 크게 줘야
+    실전에서 쓸 만하다(예: 10~20).
 
     large_cap_overlay_cooldown_days(기본 0=비활성)는 오버레이 종목이 손절당한
     뒤 쿨다운 기간 동안은 조건(kospi_vs_kosdaq_ok)이 계속 참이어도 재진입을
@@ -2445,6 +2452,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     regime_weak_streak = 0
     pyramid_gate_ok = True
     kospi_vs_kosdaq_ok = False
+    kospi_vs_kosdaq_true_streak = 0
+    kospi_vs_kosdaq_false_streak = 0
     eff_pyramid_max_count = pyramid_max_count
     eff_chandelier_atr_mult = chandelier_atr_mult
     eff_max_initial_risk_pct = max_initial_risk_pct
@@ -2806,7 +2815,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             # 별도 청산 카테고리였던 것과 같은 맥락으로, 진입 조건(코스피가
             # 코스닥보다 우위)이 꺼지면 손절 도달 여부와 무관하게 그 즉시 청산한다
             # - "국면이 켜져 있는 동안 버틴다"는 완전히 다른 리스크 관리.
-            if pos.get("isOverlay") and large_cap_overlay_tickers and not kospi_vs_kosdaq_ok:
+            if (pos.get("isOverlay") and large_cap_overlay_tickers
+                    and kospi_vs_kosdaq_false_streak >= large_cap_overlay_persist_days):
                 trade, proceeds = _full_exit(pos, closes[i], dates[i], "largeCapRegimeExit")
                 trades.append(trade)
                 cash += proceeds
@@ -2976,6 +2986,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 kospi_ret = regime_closes[ri_k] / regime_closes[ri_k - lb] - 1
                 kosdaq_ret = kosdaq_closes[ri_q] / kosdaq_closes[ri_q - lb] - 1
                 kospi_vs_kosdaq_ok = kospi_ret > kosdaq_ret
+            # 쿨다운/국면전환청산 둘 다로도 여전히 심한 휩쏘였다(61단계 실측,
+            # MDD -55~84%) - 코스피 vs 코스닥 상대수익률이 경계값 근처에서 거의
+            # 매일 뒤집히는 노이즈성 신호였기 때문. regime_weak_streak과 같은
+            # 방식으로 "N일 연속 유지돼야" 진입/청산을 인정하도록 양방향 스트릭을
+            # 추적한다(large_cap_overlay_persist_days로 조절).
+            kospi_vs_kosdaq_true_streak = kospi_vs_kosdaq_true_streak + 1 if kospi_vs_kosdaq_ok else 0
+            kospi_vs_kosdaq_false_streak = 0 if kospi_vs_kosdaq_ok else kospi_vs_kosdaq_false_streak + 1
 
         # regime_adaptive_params(국면 적응형 파라미터, 2026-10-09 신규) - 국면별
         # 오버라이드를 적용해 effective 값을 갱신한다. pyramid_max_count/
@@ -3443,7 +3460,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             ov_tickers = [f"{code}.KS" for code in large_cap_overlay_tickers]
             ov_held = sum(1 for t in ov_tickers if t in positions)
             open_ov_slots = large_cap_overlay_slots - ov_held
-            if open_ov_slots > 0 and kospi_vs_kosdaq_ok:
+            if open_ov_slots > 0 and kospi_vs_kosdaq_true_streak >= large_cap_overlay_persist_days:
                 # large_cap_overlay_cooldown_days(기본 0=비활성) - 조건(kospi_vs_kosdaq_ok)이
                 # 며칠씩 유지되는 동안, 손절당한 종목을 바로 다음날 또 사고 또 털리는
                 # 휩쏘 루프를 막는다(1차 구현에서 실측 - 쿨다운 없이 하니 917건이

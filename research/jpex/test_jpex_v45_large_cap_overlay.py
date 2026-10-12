@@ -53,20 +53,21 @@ SEED = 500_000_000
 fetch_fn = cached_fetch_ohlc_history_batches("KR", include_delisted=True, max_age_hours=99999)
 
 OVERLAY_TICKERS = ["005930", "000660"]
-# 쿨다운만으로는(5/10일) 여전히 MDD -44~49%로 심한 휩쏘였다 - 61단계에서
-# "국면전환 청산"(largeCapRegimeExit, 진입조건이 꺼지면 손절 도달 여부와
-# 무관하게 즉시 청산)을 신규 추가했다. 이제 쿨다운은 작게/0으로 두고
-# 국면전환 청산이 주된 리스크 관리가 되게 한다.
+# 쿨다운(5/10일)도, 국면전환청산도, 둘의 조합도 전부 심한 휩쏘였다(MDD -45~84%,
+# 오버레이 거래 200~1000건대) - 코스피 vs 코스닥 상대수익률이 경계값 근처에서
+# 거의 매일 뒤집히는 노이즈성 신호였기 때문. large_cap_overlay_persist_days
+# (regime_weak_streak과 같은 방식 - N일 연속 유지돼야 진입/청산 인정)로
+# 신호 자체를 안정화한다.
 GRID = {
-    "overlay_lb60_regimeexit": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
-                                 "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 60,
-                                 "large_cap_overlay_cooldown_days": 0},
-    "overlay_lb120_regimeexit": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
-                                  "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 120,
-                                  "large_cap_overlay_cooldown_days": 0},
-    "overlay_lb60_regimeexit_cd3": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
-                                     "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 60,
-                                     "large_cap_overlay_cooldown_days": 3},
+    "overlay_persist10": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
+                           "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 60,
+                           "large_cap_overlay_persist_days": 10},
+    "overlay_persist20": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
+                           "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 60,
+                           "large_cap_overlay_persist_days": 20},
+    "overlay_persist20_lb120": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
+                                 "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 120,
+                                 "large_cap_overlay_persist_days": 20},
 }
 
 
