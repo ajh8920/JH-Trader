@@ -1089,6 +1089,49 @@ def _sma(values, period, i):
     return sum(values[i - period + 1:i + 1]) / period
 
 
+def _ema_series(values, period):
+    """values 전체 구간에 대한 EMA(period) - 시드는 첫 period개의 SMA(표준 방식).
+    길이가 period 미만이면 None."""
+    if len(values) < period:
+        return None
+    k = 2 / (period + 1)
+    out = [sum(values[:period]) / period]
+    for v in values[period:]:
+        out.append(out[-1] * (1 - k) + v * k)
+    return out
+
+
+def _elder_impulse_red(closes, j, lookback=80):
+    """알렉산더 엘더의 "임펄스 시스템"(Come Into My Trading Room) - EMA13 기울기와
+    MACD-Histogram(12,26,9) 기울기가 "둘 다" 전일보다 하락이면 "레드"(매수 보유
+    부적격)로 본다. 지인 실제 거래내역 exitReason 분류 중 "Elder Exit"(180건,
+    전체의 32%로 최대 비중, 평균손익 +18.0%)를 재현하려는 시도 - 정확한 정의는
+    모르지만 엘더가 자기 이름을 붙인 시스템 중 가장 널리 알려진 것이 이것이라
+    가장 유력한 후보로 시험한다. 이력이 lookback(기본 80)개 미만이면 판정 보류
+    (None) - 계산 자체를 못 한다는 뜻."""
+    start = j - lookback + 1
+    if start < 0:
+        return None
+    window = closes[start:j + 1]
+    ema13 = _ema_series(window, 13)
+    ema12 = _ema_series(window, 12)
+    ema26 = _ema_series(window, 26)
+    if ema13 is None or ema12 is None or ema26 is None or len(ema13) < 2:
+        return None
+    # ema12[0]은 window[11](12번째 값)에, ema26[0]은 window[25]에 대응한다(표준
+    # EMA 시드 방식) - MACD선(ema12-ema26)을 점별로 맞추려면 더 늦게 시작하는
+    # ema26의 시작점에 ema12 쪽을 잘라서 맞춰야 한다.
+    align_start = (26 - 1) - (12 - 1)
+    macd_line = [a - b for a, b in zip(ema12[align_start:], ema26)]
+    signal = _ema_series(macd_line, 9)
+    if signal is None or len(signal) < 2:
+        return None
+    hist = [m - s for m, s in zip(macd_line[9 - 1:], signal)]
+    if len(hist) < 2:
+        return None
+    return ema13[-1] < ema13[-2] and hist[-1] < hist[-2]
+
+
 def _adx(highs, lows, closes, i, period=ADX_PERIOD):
     """Wilder's ADX. i번 인덱스(포함)까지의 값. period*2 이상의 데이터가 필요하다
     (첫 스무딩 구간 + 그 결과의 재스무딩)."""
@@ -2084,7 +2127,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       large_cap_overlay_tickers=None, large_cap_overlay_slots=0,
                       large_cap_overlay_lookback_days=60, large_cap_overlay_cooldown_days=0,
                       large_cap_overlay_persist_days=1, large_cap_overlay_total_slots=None,
-                      oil_regime_enabled=False, oil_ma_days=20, oil_fixed_threshold=None):
+                      oil_regime_enabled=False, oil_ma_days=20, oil_fixed_threshold=None,
+                      low_break_days=None, elder_impulse_exit=False):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2252,6 +2296,18 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     신규)는 지인 채팅 2차 공개 내용대로 메인(소형주)과 오버레이(대형주)가 하나의
     공유 슬롯풀(예: 4)을 나눠 쓰게 한다 - 오버레이가 꺼져 있으면 소형주가 4개를
     전부 쓰고, 오버레이가 켜져 N개를 차지하면 소형주는 남은 (4-N)개만 쓴다.
+
+    low_break_days(기본 None=비활성, 62단계 신규)는 지인 실제 거래내역 exitReason
+    분류 중 하나인 "20D Low Break"(26건, 전체의 5%, 평균손익 +0.2%)를 재현한다 -
+    오늘 종가가 직전 N일 최저 저가 밑으로 떨어지면 손절가 도달 여부와 무관하게
+    즉시 청산(돈치안 채널 하단 이탈). 평균손익이 거의 0이라는 건 "크게 잃지도
+    벌지도 않는 본전 청산"이라는 뜻 - 다른 청산(초기손절/Elder Exit 등으로
+    추정)이 대부분 먼저 잡아내고 이건 그 그물을 빠져나간 소수만 잡는 보완
+    신호일 가능성이 높다.
+
+    elder_impulse_exit(기본 False=비활성, 62단계 신규)는 _elder_impulse_red
+    docstring 참고 - EMA13과 MACD-Histogram(12,26,9)이 둘 다 전일보다 하락이면
+    즉시 청산한다("Elder Exit" 재현, 지인 실거래 180건/32%/평균+18.0%).
 
     oil_regime_enabled/oil_ma_days/oil_fixed_threshold(기본 False=비활성,
     62단계 신규)는 지인 채팅에서 공개된 또 다른 로직("유가 110 이상이면
@@ -2710,6 +2766,32 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     pos["maBelowCount"] = 0
                 if pos["maBelowCount"] >= ma_break_consec_days:
                     trade, proceeds = _full_exit(pos, close, dates[j], "maBreak")
+                    trades.append(trade)
+                    cash += proceeds
+                    stopped_recently[pos["code"]] = dates[j]
+                    del positions[ticker]
+                    closed = True
+                    break
+                # low_break_days(기본 None=비활성, 62단계 신규) - 지인 실제 거래내역의
+                # exitReason 분류 중 우리가 아직 구현 안 한 "20D Low Break"(26건,
+                # 5%, 평균손익 +0.2%로 사실상 본전 - 다른 청산이 대부분 먼저 잡아내는
+                # 2차/보완 신호로 추정)을 재현한다. 오늘 종가가 직전 low_break_days일의
+                # 최저 저가보다 낮으면 손절가 도달 여부와 무관하게 그 즉시 청산 -
+                # 돈치안 채널 하단 이탈(추세추종 계열의 전형적 추세이탈 신호).
+                if low_break_days is not None and j >= low_break_days:
+                    recent_low = min(lows[j - low_break_days:j])
+                    if close < recent_low:
+                        trade, proceeds = _full_exit(pos, close, dates[j], "lowBreak")
+                        trades.append(trade)
+                        cash += proceeds
+                        stopped_recently[pos["code"]] = dates[j]
+                        del positions[ticker]
+                        closed = True
+                        break
+                # elder_impulse_exit(기본 False=비활성, 62단계 신규) - "Elder Exit"
+                # 재현(docstring/_elder_impulse_red 참고).
+                if elder_impulse_exit and _elder_impulse_red(closes, j):
+                    trade, proceeds = _full_exit(pos, close, dates[j], "elderExit")
                     trades.append(trade)
                     cash += proceeds
                     stopped_recently[pos["code"]] = dates[j]
