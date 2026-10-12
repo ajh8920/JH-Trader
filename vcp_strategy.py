@@ -2444,6 +2444,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     regime_ok = True
     regime_weak_streak = 0
     pyramid_gate_ok = True
+    kospi_vs_kosdaq_ok = False
     eff_pyramid_max_count = pyramid_max_count
     eff_chandelier_atr_mult = chandelier_atr_mult
     eff_max_initial_risk_pct = max_initial_risk_pct
@@ -2798,6 +2799,19 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     cash += proceeds
                     del positions[ticker]
                     continue
+            # 대형주 오버레이 국면전환 청산(large_cap_overlay, 61단계 신규) -
+            # 오버레이 포지션은 타이트한 손절(소형주용 ATR 손절)만으로는 저변동성
+            # 메가캡 특성상 손절→재진입 휩쏘가 반복됐다(쿨다운만으로는 부족,
+            # MDD -44~49%까지 악화 확인). 지인 실제 데이터의 "Large Cap Exit"이
+            # 별도 청산 카테고리였던 것과 같은 맥락으로, 진입 조건(코스피가
+            # 코스닥보다 우위)이 꺼지면 손절 도달 여부와 무관하게 그 즉시 청산한다
+            # - "국면이 켜져 있는 동안 버틴다"는 완전히 다른 리스크 관리.
+            if pos.get("isOverlay") and large_cap_overlay_tickers and not kospi_vs_kosdaq_ok:
+                trade, proceeds = _full_exit(pos, closes[i], dates[i], "largeCapRegimeExit")
+                trades.append(trade)
+                cash += proceeds
+                del positions[ticker]
+                continue
             # 시장국면 상실 시 보유 포지션 강제청산 - gate_entries_on_regime은
             # 신규진입만 막아서, "진입 당시엔 국면이 괜찮았다가 직후 꺾인" 기존
             # 포지션은 전혀 보호하지 못한다(2026-10-02 APEX_STAGE3_PARAMS 9차
@@ -2948,6 +2962,20 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 regime_ok = False
                 regime_state = "weak"
         regime_weak_streak = regime_weak_streak + 1 if regime_state == "weak" else 0
+
+        # kospi_vs_kosdaq_ok(large_cap_overlay용, 61단계) - 코스피/코스닥 상대
+        # 수익률. regime_ok와 같은 자리에서 매 rd 갱신한다 - 1단계(포지션 처리,
+        # 국면전환 청산)는 하루 지연된(직전 rd) 값을, 4.3단계(신규진입)는 이
+        # rd에서 바로 갱신된 값을 쓴다(다른 eff_* 변수들과 같은 지연 패턴).
+        if large_cap_overlay_tickers and kosdaq_dates:
+            kospi_vs_kosdaq_ok = False
+            ri_k = bisect.bisect_right(regime_dates, rd) - 1
+            ri_q = bisect.bisect_right(kosdaq_dates, rd) - 1
+            lb = large_cap_overlay_lookback_days
+            if ri_k - lb >= 0 and ri_q - lb >= 0 and regime_closes[ri_k - lb] > 0 and kosdaq_closes[ri_q - lb] > 0:
+                kospi_ret = regime_closes[ri_k] / regime_closes[ri_k - lb] - 1
+                kosdaq_ret = kosdaq_closes[ri_q] / kosdaq_closes[ri_q - lb] - 1
+                kospi_vs_kosdaq_ok = kospi_ret > kosdaq_ret
 
         # regime_adaptive_params(국면 적응형 파라미터, 2026-10-09 신규) - 국면별
         # 오버라이드를 적용해 effective 값을 갱신한다. pyramid_max_count/
@@ -3415,14 +3443,6 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             ov_tickers = [f"{code}.KS" for code in large_cap_overlay_tickers]
             ov_held = sum(1 for t in ov_tickers if t in positions)
             open_ov_slots = large_cap_overlay_slots - ov_held
-            kospi_vs_kosdaq_ok = False
-            ri_k = bisect.bisect_right(regime_dates, rd) - 1
-            ri_q = bisect.bisect_right(kosdaq_dates, rd) - 1
-            lb = large_cap_overlay_lookback_days
-            if ri_k - lb >= 0 and ri_q - lb >= 0 and regime_closes[ri_k - lb] > 0 and kosdaq_closes[ri_q - lb] > 0:
-                kospi_ret = regime_closes[ri_k] / regime_closes[ri_k - lb] - 1
-                kosdaq_ret = kosdaq_closes[ri_q] / kosdaq_closes[ri_q - lb] - 1
-                kospi_vs_kosdaq_ok = kospi_ret > kosdaq_ret
             if open_ov_slots > 0 and kospi_vs_kosdaq_ok:
                 # large_cap_overlay_cooldown_days(기본 0=비활성) - 조건(kospi_vs_kosdaq_ok)이
                 # 며칠씩 유지되는 동안, 손절당한 종목을 바로 다음날 또 사고 또 털리는

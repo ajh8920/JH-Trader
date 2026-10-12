@@ -53,10 +53,15 @@ SEED = 500_000_000
 fetch_fn = cached_fetch_ohlc_history_batches("KR", include_delisted=True, max_age_hours=99999)
 
 GRID = {
-    "cont20": {**vcp.JPEX_V10_PARAMS, "continuation_reentry": True, "continuation_lookback_days": 20},
-    "cont20_vol": {**vcp.JPEX_V10_PARAMS, "continuation_reentry": True, "continuation_lookback_days": 20,
-                   "continuation_min_volume_mult": 1.0},
-    "cont10": {**vcp.JPEX_V10_PARAMS, "continuation_reentry": True, "continuation_lookback_days": 10},
+    # 1차 테스트(쿨다운/마진 없음)가 손절->다음날 재진입 휩쏘로 CAGR -21.69%/
+    # MDD -97.19%까지 무너져(785건), require_new_pivot(40단계 기존 인프라 -
+    # 직전 진입 피벗보다 margin% 이상 높아야만 재진입 허용)를 반드시 같이 켠다.
+    "cont20_margin3": {**vcp.JPEX_V10_PARAMS, "continuation_reentry": True, "continuation_lookback_days": 20,
+                        "require_new_pivot": True, "new_pivot_margin_pct": 3.0},
+    "cont20_margin5": {**vcp.JPEX_V10_PARAMS, "continuation_reentry": True, "continuation_lookback_days": 20,
+                        "require_new_pivot": True, "new_pivot_margin_pct": 5.0},
+    "cont10_margin5": {**vcp.JPEX_V10_PARAMS, "continuation_reentry": True, "continuation_lookback_days": 10,
+                        "require_new_pivot": True, "new_pivot_margin_pct": 5.0},
 }
 
 
