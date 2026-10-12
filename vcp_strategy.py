@@ -2830,7 +2830,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             # 여부와 무관하게 그 시점 종가로 전량 청산한다 - 손실을 그대로
             # 확정시키더라도, 하락장에서 포지션을 계속 들고 가 더 크게 물리는
             # 것보다 낫다는 가설.
-            if exit_on_regime_loss and not regime_ok and regime_weak_streak >= regime_loss_persist_days:
+            # isOverlay 포지션은 제외 - 대형주 오버레이는 바로 위 largeCapRegimeExit로
+            # "코스피 vs 코스닥" 자체 국면을 이미 전담 관리한다. 이 블록(소형주용
+            # "코스피 vs 자기 200일선" 국면)까지 같이 적용하면, 오버레이 포지션이
+            # 진입 초기(R이 거의 0) 상태에서 소형주 국면이 흔들릴 때마다 자기 신호와
+            # 무관하게 끊겨나갔다(2026-10-12 실측: regimeExit이 오버레이 청산의
+            # 81%·평균보유 2.8일·평균손실 -1.79%로 수익이 자랄 시간을 주지 않음).
+            if (exit_on_regime_loss and not regime_ok and regime_weak_streak >= regime_loss_persist_days
+                    and not pos.get("isOverlay")):
                 current_r = ((closes[i] - pos["avgEntryPrice"]) / pos["riskPerShare"]
                              if pos["riskPerShare"] else 0)
                 if regime_exit_min_r is None or current_r < regime_exit_min_r:

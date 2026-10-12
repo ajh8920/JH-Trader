@@ -58,16 +58,20 @@ OVERLAY_TICKERS = ["005930", "000660"]
 # 거의 매일 뒤집히는 노이즈성 신호였기 때문. large_cap_overlay_persist_days
 # (regime_weak_streak과 같은 방식 - N일 연속 유지돼야 진입/청산 인정)로
 # 신호 자체를 안정화한다.
+# 2026-10-12 버그 수정: isOverlay 포지션이 소형주용 regimeExit(코스피 vs 자기
+# 200일선 국면상실 강제청산)에도 걸려 평균보유 2.8일/평균손실-1.79%로 조기
+# 청산되던 문제를 막음(largeCapRegimeExit로만 국면관리하도록 분리). 수정 후
+# 재검증 - persist_days 없이(cd만), persist10, persist20 비교.
 GRID = {
-    "overlay_persist10": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
-                           "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 60,
-                           "large_cap_overlay_persist_days": 10},
-    "overlay_persist20": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
-                           "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 60,
-                           "large_cap_overlay_persist_days": 20},
-    "overlay_persist20_lb120": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
-                                 "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 120,
-                                 "large_cap_overlay_persist_days": 20},
+    "overlay_cd5_fix": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
+                         "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 60,
+                         "large_cap_overlay_cooldown_days": 5},
+    "overlay_persist10_fix": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
+                               "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 60,
+                               "large_cap_overlay_persist_days": 10},
+    "overlay_persist20_fix": {**vcp.JPEX_V10_PARAMS, "large_cap_overlay_tickers": OVERLAY_TICKERS,
+                               "large_cap_overlay_slots": 2, "large_cap_overlay_lookback_days": 60,
+                               "large_cap_overlay_persist_days": 20},
 }
 
 
