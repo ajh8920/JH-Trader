@@ -2078,7 +2078,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       min_blend_score=None, quality_use_eps_accel=False,
                       breadth_min_pct=None, breadth50_min_pct=None,
                       gate_pyramid_on_regime=False, pyramid_gate_breadth_min_pct=None,
-                      gate_entries_breadth_min_pct=None, sector_rank_weight=0.0):
+                      gate_entries_breadth_min_pct=None, sector_rank_weight=0.0,
+                      continuation_reentry=False, continuation_lookback_days=20,
+                      continuation_min_volume_mult=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2216,6 +2218,15 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     때는 추가매수(피라미딩)만은 막는다 - 지금까지는 보호 포지션에 제한 없이
     계속 추가매수가 가능했다(exit_on_regime_loss는 "청산"만 보고 "추가매수"는
     안 봤음). "버틸 땐 버텨도 더 태우진 말자"는 가설. 2026-10-12 신규 추가.
+
+    continuation_reentry(기본 False=비활성, 2026-10-12 신규)는 entry_mode="pullback"
+    에서 깨끗한 되돌림을 못 찾은 후보(trend_ok_set 통과·Top-N 이내인데 쉬지 않고
+    쭉 올라 3~8% 눌림을 안 만드는 종목)에 continuation_lookback_days일(기본 20)
+    신고가(종가 기준) 경신을 대체 진입 신호로 허용한다 - 지인 실매매 데이터 분석
+    (SK하이닉스 사례: 2026-01-22~03-03 트레일링청산 뒤에도 여전히 Top22 RS
+    유효 후보였는데 한 달 넘게 재진입 못 해 뒤이은 04-09~06-05 +107.5% 구간을
+    통째로 놓침)로 확인된 "거대 승자 반납"(20단계)의 구체적 원인을 직접 겨냥한다.
+    continuation_min_volume_mult(기본 None)는 선택적 거래량 확인.
 
     sector_rank_weight(기본 0.0=비활성)는 quality_rank_weight와 같은 방식(0~1
     정규화해 블렌드)으로 섹터 모멘텀을 후보 순위에 섞는다 - 그 rd 시점 유니버스
@@ -3213,6 +3224,28 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             vol = volumes[j]
                             if vol is None or vol < avg_vol50 * volume_breakout_mult:
                                 continue
+                            fill_date, fill_price, fj = dates[j], closes[j], j
+                            break
+                    # continuation_reentry(기본 False=비활성, 2026-10-12 신규, 60단계) -
+                    # entry_mode="pullback"이 깨끗한 되돌림을 못 찾으면(쉬지 않고 쭉 오르는
+                    # 종목은 3~8% 눌림을 잘 안 만든다) 지금까지는 그냥 포기했다 - 지인의
+                    # 실제 매매 데이터 분석(SK하이닉스 사례: 2026-01-22~03-03 +23.38%로
+                    # 트레일링청산된 뒤, 여전히 Top22 RS 유효 후보였는데도 한 달 넘게
+                    # 재진입을 못 해 그 뒤 04-09~06-05의 +107.5% 구간을 통째로 놓쳤다)로
+                    # 확인된 "거대 승자 반납"(20단계)의 구체적 원인. 눌림목이 안 나와도
+                    # continuation_lookback_days일 신고가(종가 기준)를 경신하면 추세추종형
+                    # 재진입을 허용한다 - 지인의 "20D Low Break" 청산과 대칭되는 진입 로직으로
+                    # 추정된다.
+                    if fill_date is None and continuation_reentry and entry_mode == "pullback":
+                        for j in range(s_i, i + 1):
+                            lb_start = max(0, j - continuation_lookback_days)
+                            if j == 0 or closes[j] < max(closes[lb_start:j]):
+                                continue
+                            if continuation_min_volume_mult is not None:
+                                vol50 = _avg_volume(volumes, j)
+                                vol_j = volumes[j]
+                                if vol50 and vol_j is not None and vol_j < vol50 * continuation_min_volume_mult:
+                                    continue
                             fill_date, fill_price, fj = dates[j], closes[j], j
                             break
                     if fill_date is None:
