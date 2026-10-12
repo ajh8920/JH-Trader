@@ -23,10 +23,11 @@ CANSLIM/딥밸류처럼 PER·ROE 등 재무 지표에 의존하는 전략 프리
   조건을 만족하지 않음) 중 먼저 오는 재평가 시점에 청산한다. 고정 익절 상한은
   두지 않는다 - kr_swing.py의 combo 전략과 같은 이유(강한 추세장에서 상승분을
   다 못 먹는 문제)로 조건 이탈 자체를 청산 신호로 쓴다.
-- 손절은 직전~이번 재평가 시점 사이의 일별 저가를 스캔해 손절선에 처음 닿은
-  날 그 손절가에 청산된 것으로 본다(재평가 시점 종가만 보면 그 사이 급락분을
-  다 뒤집어써 실제 손절폭보다 훨씬 큰 손실로 잡히는 문제가 있었다). 시가
-  데이터가 없어 갭하락으로 손절가 아래에서 시작한 경우까지는 반영하지 못한다.
+- 손절/트레일링은 **그날 확정 종가로만 판정하고 종가로 체결**한다. 예전에는
+  일별 저가가 손절선에 닿으면 정확히 그 손절가에 체결됐다고 봤는데, 저가는
+  장이 끝나야 알 수 있는 값이라 그 가정 자체가 룩어헤드였다(같은 가정을
+  vcp_strategy에서 걷어냈을 때 스위퍼 CAGR이 53%에서 -22%로 뒤집혔다).
+  종가 기준이면 손절이 더 나쁜 가격에 체결되어 결과가 보수적으로 나온다.
 - 신규 매수: 이번 재평가에 조건을 만족하는데 아직 보유하지 않은 종목 중,
   RS 등급이 높은 순으로 비어 있는 슬롯 수만큼 채운다.
 - 포지션 크기: 슬롯당 동일 비중(시드 ÷ 최대 보유 종목 수)으로 고정한다.
@@ -49,7 +50,10 @@ DEFAULT_STOP_LOSS_PCT = -8.0
 DEFAULT_MAX_POSITIONS = 10
 RESCAN_INTERVAL_DAYS = 7
 WARMUP_DAYS = 450  # MIN_BARS(200일선) + RS 계산용 12개월 수익률 확보
-BENCHMARK_TICKER = {"KR": "^KS11", "US": "^GSPC"}  # KOSPI / S&P 500
+BENCHMARK_TICKER = {"KR": "^KS11", "US": "^GSPC", "KR_KOSDAQ": "^KQ11"}  # KOSPI / S&P 500 / 코스닥
+# "KR_KOSDAQ"는 실제 백테스트 시장 구분이 아니라 _fetch_index_series를 그대로
+# 재사용하려고 추가한 별도 키다(vcp_strategy.py의 대형주 오버레이 - 코스피 vs
+# 코스닥 상대강도 신호용, 2026-10-12 추가).
 BENCHMARK_LABEL = {"KR": "KOSPI Buy & Hold", "US": "S&P 500 Buy & Hold"}
 
 
@@ -241,7 +245,8 @@ def run_risk_managed_backtest(market, strategy, start_date, end_date,
                                value_percentile=50, quality_percentile=50, low_vol_percentile=50,
                                fundamentals_rows=None, shares_map=None,
                                exclude_codes=None, min_market_cap=None,
-                               breakeven_lock_r=0.0, time_stop_threshold_pct=0.0):
+                               breakeven_lock_r=0.0, time_stop_threshold_pct=0.0,
+                               include_delisted=False, rescan_interval_days=RESCAN_INTERVAL_DAYS):
     """run_screening_backtest과 진입 신호(트렌드 템플릿/단계)는 동일하지만,
     청산 로직을 고정 % 손절 대신 다음 리스크 관리 규칙으로 완전히 대체한 버전:
 
@@ -324,7 +329,10 @@ def run_risk_managed_backtest(market, strategy, start_date, end_date,
     if fetch_fn is None:
         fetch_fn = ts.fetch_ohlc_history_batches
 
-    universe = ts.load_universe(market)
+    # include_delisted=True면 이미 상장폐지된 종목도 유니버스에 넣는다(생존편향 제거) -
+    # vcp_strategy.run_vcp_backtest와 같은 이유로, 지금 살아남은 종목만 보면 결과가
+    # 낙관적으로 치우친다. 이 경우 fetch_fn도 상장폐지분(.DL)을 함께 줘야 한다.
+    universe = ts.load_universe(market, include_delisted=include_delisted)
     tickers = [t for _, _, t, _, _ in universe]
     info_by_ticker = {t: (code, name, industry, sector) for code, name, t, industry, sector in universe}
 
@@ -349,7 +357,7 @@ def run_risk_managed_backtest(market, strategy, start_date, end_date,
     if not all_dates:
         return {"error": "해당 기간에 사용 가능한 가격 데이터가 없습니다"}
 
-    rebalance_dates = all_dates[::RESCAN_INTERVAL_DAYS]
+    rebalance_dates = all_dates[::rescan_interval_days]
     if rebalance_dates[-1] != all_dates[-1]:
         rebalance_dates.append(all_dates[-1])
 
@@ -400,15 +408,23 @@ def run_risk_managed_backtest(market, strategy, start_date, end_date,
             start_i = max(start_i, pos["entryIdx"] + 1)
             exit_price = exit_date = reason = None
             for j in range(start_i, i + 1):
-                if lows[j] <= pos["stopPrice"]:
-                    exit_price, exit_date, reason = pos["stopPrice"], dates[j], pos["stopState"]
+                # 손절/트레일링을 그날 확정 종가로만 판정하고 종가로 체결한다 -
+                # 장중 저가가 손절선을 스쳤다고 그 가격에 정확히 체결됐다고 보면,
+                # 장이 끝나야 알 수 있는 정보로 매매한 셈이 되어 성과가 낙관적으로
+                # 부풀려진다(vcp_strategy.run_vcp_backtest에서 같은 가정을 걷어냈을 때
+                # 스위퍼 CAGR이 53%에서 -22%로 뒤집혔다). 그만큼 손절이 더 나쁜
+                # 가격에 체결되어 백테스트가 보수적이 된다.
+                if closes[j] <= pos["stopPrice"]:
+                    exit_price, exit_date, reason = closes[j], dates[j], pos["stopState"]
                     break
                 held_bars = j - pos["entryIdx"]
                 time_stop_price = pos["entryPrice"] * (1 + time_stop_threshold_pct / 100)
                 if held_bars >= time_stop_days and closes[j] <= time_stop_price:
                     exit_price, exit_date, reason = closes[j], dates[j], "timeStop"
                     break
-                pos["highestHigh"] = max(pos["highestHigh"], highs[j])
+                # highestHigh는 이름은 그대로지만 장중 고가가 아니라 "이제까지의
+                # 최고 종가"를 추적한다(트레일링/R계산 기준을 전부 종가로 통일).
+                pos["highestHigh"] = max(pos["highestHigh"], closes[j])
                 r_reached = ((pos["highestHigh"] - pos["entryPrice"]) / pos["riskPerShare"]
                              if pos["riskPerShare"] > 0 else 0)
                 if r_reached >= trail_start_r:

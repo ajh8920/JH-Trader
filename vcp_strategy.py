@@ -2080,7 +2080,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       gate_pyramid_on_regime=False, pyramid_gate_breadth_min_pct=None,
                       gate_entries_breadth_min_pct=None, sector_rank_weight=0.0,
                       continuation_reentry=False, continuation_lookback_days=20,
-                      continuation_min_volume_mult=None):
+                      continuation_min_volume_mult=None,
+                      large_cap_overlay_tickers=None, large_cap_overlay_slots=0,
+                      large_cap_overlay_lookback_days=60):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2219,6 +2221,18 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     계속 추가매수가 가능했다(exit_on_regime_loss는 "청산"만 보고 "추가매수"는
     안 봤음). "버틸 땐 버텨도 더 태우진 말자"는 가설. 2026-10-12 신규 추가.
 
+    large_cap_overlay_tickers/large_cap_overlay_slots/large_cap_overlay_lookback_days
+    (기본 None/0=비활성, 60단계 신규)는 지인의 실제 전략 설명("대형주편입 시기
+    체크해서 조건맞으면 시총1,2위 중 한두개 매수해... 코스피가 코스닥보다
+    우위일 때 대형주 편입해")을 그대로 구현한 것이다 - 메인 후보 선정(Top40
+    RS 눌림목)과 완전히 별개의 슬롯(지인 실제 슬롯수=4, 메인 2개+오버레이
+    최대 2개)으로, 코스피의 large_cap_overlay_lookback_days일 수익률이
+    코스닥보다 높을 때만 large_cap_overlay_tickers(종목코드 리스트, 예:
+    ["005930","000660"])를 그날 종가로 매수한다. 눌림목/RS순위 조건을 전혀
+    안 본다 - "지금 이 종목을 사도 되는 시점인가"가 아니라 "지금 대형주
+    사이클인가"만 본다. 일단 진입하면 이후 손절/트레일링/국면상실청산 등은
+    나머지 포지션과 완전히 동일한 규칙을 따른다(별도 종료 조건 없음).
+
     continuation_reentry(기본 False=비활성, 2026-10-12 신규)는 entry_mode="pullback"
     에서 깨끗한 되돌림을 못 찾은 후보(trend_ok_set 통과·Top-N 이내인데 쉬지 않고
     쭉 올라 3~8% 눌림을 안 만드는 종목)에 continuation_lookback_days일(기본 20)
@@ -2318,6 +2332,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     fetch_end = (datetime.fromisoformat(end_date) + timedelta(days=1)).strftime("%Y-%m-%d")
 
     regime_dates, regime_closes = _fetch_index_series_local(market, fetch_start, fetch_end)
+    # large_cap_overlay_tickers(60단계 신규) - 지인 실제 매매 로직("코스피가
+    # 코스닥보다 우위일 때 대형주 편입") 재현용. 다른 백테스트에 불필요한 네트워크
+    # 호출을 안 만들려고 large_cap_overlay_tickers가 설정됐을 때만 코스닥 지수를
+    # 받는다.
+    kosdaq_dates, kosdaq_closes = ([], [])
+    if large_cap_overlay_tickers and market == "KR":
+        kosdaq_dates, kosdaq_closes = _fetch_index_series_local("KR_KOSDAQ", fetch_start, fetch_end)
 
     series = {}
     for ticker, bars in fetch_fn(tickers, fetch_start, fetch_end):
@@ -3361,6 +3382,60 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         "entryBlendScore": round(_entry_blend_score, 4),
                     }
                     open_slots -= 1
+
+        # 4.3) 대형주 오버레이(large_cap_overlay, 60단계 신규) - 메인 Top40 RS
+        # 눌림목 후보 선정과 완전히 별개의 슬롯. 코스피가 코스닥보다 상대적으로
+        # 강할 때만(지인 실제 전략) 지정된 대형주를 그날 종가로 매수한다 -
+        # 눌림목/RS순위를 전혀 안 본다. 일단 진입하면 이후 손절/트레일링 등은
+        # 나머지 포지션과 동일한 규칙(1단계 "보유 포지션 처리")을 그대로 따른다.
+        if large_cap_overlay_tickers and large_cap_overlay_slots > 0 and kosdaq_dates:
+            ov_tickers = [f"{code}.KS" for code in large_cap_overlay_tickers]
+            ov_held = sum(1 for t in ov_tickers if t in positions)
+            open_ov_slots = large_cap_overlay_slots - ov_held
+            kospi_vs_kosdaq_ok = False
+            ri_k = bisect.bisect_right(regime_dates, rd) - 1
+            ri_q = bisect.bisect_right(kosdaq_dates, rd) - 1
+            lb = large_cap_overlay_lookback_days
+            if ri_k - lb >= 0 and ri_q - lb >= 0 and regime_closes[ri_k - lb] > 0 and kosdaq_closes[ri_q - lb] > 0:
+                kospi_ret = regime_closes[ri_k] / regime_closes[ri_k - lb] - 1
+                kosdaq_ret = kosdaq_closes[ri_q] / kosdaq_closes[ri_q - lb] - 1
+                kospi_vs_kosdaq_ok = kospi_ret > kosdaq_ret
+            if open_ov_slots > 0 and kospi_vs_kosdaq_ok:
+                for ot in ov_tickers:
+                    if open_ov_slots <= 0:
+                        break
+                    if ot in positions or ot not in series or ot not in idx_at_rd:
+                        continue
+                    dates, closes, highs, lows, volumes, opens = series[ot]
+                    i2 = idx_at_rd[ot]
+                    close = closes[i2]
+                    atr20_ov = _atr(highs, lows, closes, i2)
+                    if not atr20_ov or atr20_ov <= 0:
+                        continue
+                    risk_per_share_ov = initial_stop_atr_mult * atr20_ov
+                    if (risk_per_share_ov / close * 100) > eff_max_initial_risk_pct:
+                        continue
+                    target_value = equity_now / large_cap_overlay_slots
+                    entry_fill = close * (1 + SLIPPAGE_ENTRY_PCT / 100)
+                    ov_shares = int(min(cash, target_value) // entry_fill)
+                    if ov_shares <= 0:
+                        continue
+                    ov_cost = ov_shares * entry_fill
+                    if ov_cost > cash:
+                        continue
+                    cash -= ov_cost
+                    ov_code, ov_name = info_by_ticker.get(ot, (ot, ot, None, None))[:2]
+                    positions[ot] = {
+                        "code": ov_code, "name": ov_name, "entryDate": dates[i2], "entryIdx": i2,
+                        "shares": ov_shares, "initialShares": ov_shares, "totalCost": ov_cost,
+                        "avgEntryPrice": entry_fill, "entryAtr": atr20_ov, "riskPerShare": risk_per_share_ov,
+                        "stopPrice": entry_fill - risk_per_share_ov, "stopState": "initialStop",
+                        "highestHigh": entry_fill, "partialTaken": False, "pyramidCount": 0,
+                        "lastEntryPrice": entry_fill, "maBelowCount": 0, "barsHeld": 0,
+                        "entryRsRating": None, "entryQuality": None, "entryBlendScore": None,
+                        "isOverlay": True,
+                    }
+                    open_ov_slots -= 1
 
         # 4.5) 현금 유휴화 방지 - 국면 OK인데 남은 유휴 현금을 지수 프록시에 태운다
         # (equitize_max_pct%까지만 - 그 이상은 베타 노출을 늘리지 않고 현금으로 남긴다)
