@@ -2128,7 +2128,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       large_cap_overlay_lookback_days=60, large_cap_overlay_cooldown_days=0,
                       large_cap_overlay_persist_days=1, large_cap_overlay_total_slots=None,
                       oil_regime_enabled=False, oil_ma_days=20, oil_fixed_threshold=None,
-                      low_break_days=None, elder_impulse_exit=False):
+                      low_break_days=None, elder_impulse_exit=False, elder_impulse_persist_days=1):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2308,6 +2308,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     elder_impulse_exit(기본 False=비활성, 62단계 신규)는 _elder_impulse_red
     docstring 참고 - EMA13과 MACD-Histogram(12,26,9)이 둘 다 전일보다 하락이면
     즉시 청산한다("Elder Exit" 재현, 지인 실거래 180건/32%/평균+18.0%).
+    elder_impulse_persist_days(기본 1=즉시 청산, 63단계 신규)는 "레드"가 N일
+    연속 유지돼야 청산을 인정한다 - 63단계 1차 실측(즉시청산)에서 평균손익이
+    +1.2%로 목표(+18.0%)에 한참 못 미쳐, 너무 일찍 끊는 게 원인이라는 가설로
+    추가.
 
     oil_regime_enabled/oil_ma_days/oil_fixed_threshold(기본 False=비활성,
     62단계 신규)는 지인 채팅에서 공개된 또 다른 로직("유가 110 이상이면
@@ -2789,15 +2793,23 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         closed = True
                         break
                 # elder_impulse_exit(기본 False=비활성, 62단계 신규) - "Elder Exit"
-                # 재현(docstring/_elder_impulse_red 참고).
-                if elder_impulse_exit and _elder_impulse_red(closes, j):
-                    trade, proceeds = _full_exit(pos, close, dates[j], "elderExit")
-                    trades.append(trade)
-                    cash += proceeds
-                    stopped_recently[pos["code"]] = dates[j]
-                    del positions[ticker]
-                    closed = True
-                    break
+                # 재현(docstring/_elder_impulse_red 참고). elder_impulse_persist_days
+                # (기본 1=즉시 청산, 63단계 신규)는 63단계 1차 실측에서 발동 28건의
+                # 평균손익이 +1.2%(지인 데이터 +18.0%)로 너무 작게 나온 뒤 추가 -
+                # "레드 첫날 바로 끊는" 게 아니라 "레드가 N일 연속 유지돼야 끊는"
+                # 쪽으로 완화하면 추세가 더 진행된 뒤 청산돼 평균손익이 커질
+                # 것이라는 가설(regime_weak_streak과 같은 패턴).
+                if elder_impulse_exit:
+                    is_red = _elder_impulse_red(closes, j)
+                    pos["elderRedStreak"] = pos.get("elderRedStreak", 0) + 1 if is_red else 0
+                    if pos["elderRedStreak"] >= elder_impulse_persist_days:
+                        trade, proceeds = _full_exit(pos, close, dates[j], "elderExit")
+                        trades.append(trade)
+                        cash += proceeds
+                        stopped_recently[pos["code"]] = dates[j]
+                        del positions[ticker]
+                        closed = True
+                        break
 
                 r = pos["riskPerShare"]
                 highest_r = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
