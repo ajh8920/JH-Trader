@@ -2129,7 +2129,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       large_cap_overlay_persist_days=1, large_cap_overlay_total_slots=None,
                       oil_regime_enabled=False, oil_ma_days=20, oil_fixed_threshold=None,
                       low_break_days=None, elder_impulse_exit=False, elder_impulse_persist_days=1,
-                      flow_rank_weight=0.0):
+                      flow_rank_weight=0.0, pyramid_gate_rank_top_n=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2369,6 +2369,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     더 빠른 시장폭 신호 - 150/200일선(장기) 대신 50일선 하나만 본다. 2026-10-12
     "CAGR 50% 계속 시도"에 따라 신규 추가, breadth_min_pct 단독보다 더 이른
     경보가 가능한지 시험용.
+
+    pyramid_gate_rank_top_n(기본 None=비활성, 69단계 이후 신규)는
+    rank_exit_top_n("순위가 식으면 보유를 끊는다")이 V11에서 검증된 뒤, 같은
+    논리를 "순위가 식으면 더 태우지는 않는다"로 피라미딩에도 적용해본다.
+    ticker in trend_ok_set(트렌드템플릿 통과 여부)만으로는 "통과는 했지만
+    RS등급 상대순위가 많이 밀린" 상태를 못 거른다 - 이 게이트가 그 공백을
+    메운다. rank_exit_top_n과 별도로 켤 수 있다.
 
     regime_exit_min_r(기본 None=비활성, exit_on_regime_loss=True일 때만 의미있음)는
     국면상실청산이 "이미 R배수 기준으로 이만큼 벌어둔 포지션"까지 통째로 끊어버리는
@@ -2698,7 +2705,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         _any_regime_entry_rank = regime_adaptive_params and any(
             (v or {}).get("entry_rank_top_n") is not None for v in regime_adaptive_params.values())
         rank_of_ticker = None
-        if rank_exit_top_n is not None or entry_rank_top_n is not None or _any_regime_entry_rank:
+        if (rank_exit_top_n is not None or entry_rank_top_n is not None or _any_regime_entry_rank
+                or pyramid_gate_rank_top_n is not None):
             # rsRating은 1~99 백분위 정수값이라 trend_ok_set(수백 종목)에서 동률이
             # 흔하다. trend_ok_set은 set이라 순회 순서가 프로세스마다(해시 랜덤화로)
             # 달라지므로, 동률 구간의 정렬 순서가 바뀌면 Top40 경계의 종목이 실행할
@@ -2894,9 +2902,19 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         pos["stopPrice"] = chandelier
                         pos["stopState"] = "trailingStop"
 
+                # pyramid_gate_rank_top_n(기본 None=비활성, 69단계 이후 신규) -
+                # rank_exit_top_n이 "순위가 식으면 보유를 끊는다"로 통했으니, 같은
+                # 논리를 "순위가 식으면 더 태우지는 않는다"로 피라미딩에도 적용한다.
+                # ticker in trend_ok_set은 트렌드템플릿 통과 여부만 보고 RS등급
+                # 상대순위까지는 안 본다 - 이 게이트가 그 공백을 메운다.
+                pyramid_rank_ok = (
+                    pyramid_gate_rank_top_n is None
+                    or (rank_of_ticker is not None and (rank_of_ticker.get(ticker) or 10**9)
+                        <= pyramid_gate_rank_top_n)
+                )
                 if (pos["pyramidCount"] < eff_pyramid_max_count and ticker in trend_ok_set
                         and (not gate_pyramid_on_regime or regime_ok)
-                        and pyramid_gate_ok):
+                        and pyramid_gate_ok and pyramid_rank_ok):
                     # 장중에 목표가(lastEntryPrice+0.5R)를 스쳤는지가 아니라, 그날
                     # 종가가 그 목표가를 넘어섰는지로 판정하고 그 종가로 추가매수한다.
                     target = pos["lastEntryPrice"] + PYRAMID_INTERVAL_R * r
