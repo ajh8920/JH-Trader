@@ -1657,6 +1657,12 @@ def eps_growth_ok(quarters_for_code, as_of_date, min_growth_pct=None, require_ac
 POSITIVE_CATALYST_KEYWORDS = (
     "단일판매", "공급계약", "신규시설투자", "타법인주식및출자증권취득", "자기주식취득",
     "특허권취득",
+    # "기술이전"(2026-10-13 추가, 69단계 이후 소형 헬스케어 촉매 오버레이용) -
+    # 바이오텍의 라이선스아웃/공동개발 계약은 희석 우려 없는 순수 긍정 신호라는
+    # 점에서 특허권취득과 같은 논리. 실측(지인 실거래, 에이비엘바이오 298380)에서
+    # "GrabodyB 플랫폼 기술이전 및 공동개발 계약 체결"이 기존 키워드로는
+    # 전혀 안 잡히는 걸 확인해 추가.
+    "기술이전",
 )
 # [기재정정]은 이미 낸 공시를 고쳐 다시 낸 것이라 새 사건이 아니다 - 원본이 이미
 # 수집돼 있으므로 정정본까지 세면 같은 촉매를 두 번 세게 된다.
@@ -2129,7 +2135,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       large_cap_overlay_persist_days=1, large_cap_overlay_total_slots=None,
                       oil_regime_enabled=False, oil_ma_days=20, oil_fixed_threshold=None,
                       low_break_days=None, elder_impulse_exit=False, elder_impulse_persist_days=1,
-                      flow_rank_weight=0.0, pyramid_gate_rank_top_n=None):
+                      flow_rank_weight=0.0, pyramid_gate_rank_top_n=None,
+                      catalyst_overlay_codes=None, catalyst_overlay_slots=0,
+                      catalyst_overlay_lookback_days=20, catalyst_overlay_cooldown_days=10,
+                      catalyst_overlay_require_uptrend=False):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2370,6 +2379,21 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     "CAGR 50% 계속 시도"에 따라 신규 추가, breadth_min_pct 단독보다 더 이른
     경보가 가능한지 시험용.
 
+    catalyst_overlay_codes/catalyst_overlay_slots/catalyst_overlay_lookback_days/
+    catalyst_overlay_cooldown_days(기본 None/0=비활성, 75단계 신규)는 메인 Top40
+    RS 눌림목 후보 선정과 완전히 별개의 슬롯으로, 지정된 종목코드 목록(소형
+    헬스케어 종목을 염두에 둠 - min_market_cap 3,000억 하한 때문에 메인 풀에서
+    구조적으로 배제되는 지인 실거래 바이오텍 종목들, research/jpex/RESULTS.md
+    75단계 참고) 중 최근 catalyst_overlay_lookback_days일 안에 catalyst_dates_by_code
+    (POSITIVE_CATALYST_KEYWORDS - 공급계약/시설투자/지분취득/특허/기술이전)
+    공시가 있었던 종목만 그날 종가로 매수한다 - RS순위/눌림목 패턴을 전혀 안
+    본다(대형주 오버레이와 같은 설계: "지금 이 종목을 사도 되는 시점인가"가
+    아니라 "지금 촉매가 터졌는가"만 본다). 일단 진입하면 이후 손절/트레일링
+    등은 나머지 포지션과 완전히 동일한 규칙을 따른다. catalyst_overlay_cooldown_days
+    (기본 10)는 대형주 오버레이의 같은 파라미터와 동일한 이유(손절→재진입
+    휩쏘 방지) - 촉매가 며칠씩 유효해도 손절당한 종목은 쿨다운 기간 동안
+    재진입하지 않는다.
+
     pyramid_gate_rank_top_n(기본 None=비활성, 69단계 이후 신규)는
     rank_exit_top_n("순위가 식으면 보유를 끊는다")이 V11에서 검증된 뒤, 같은
     논리를 "순위가 식으면 더 태우지는 않는다"로 피라미딩에도 적용해본다.
@@ -2433,6 +2457,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     universe = ts.load_universe(market, include_delisted=include_delisted)
     tickers = [t for _, _, t, _, _ in universe]
     info_by_ticker = {t: (code, name, industry, sector) for code, name, t, industry, sector in universe}
+    # catalyst_overlay_codes(소형 헬스케어 촉매 오버레이, 75단계 신규)용 - 종목코드가
+    # 코스피(.KS)인지 코스닥(.KQ)인지 미리 안 가리고 찾을 수 있게 역방향 매핑을
+    # 한 번만 만들어둔다.
+    ticker_by_code = {code: t for code, name, t, industry, sector in universe}
 
     fetch_start = (datetime.fromisoformat(start_date) - timedelta(days=WARMUP_DAYS)).strftime("%Y-%m-%d")
     fetch_end = (datetime.fromisoformat(end_date) + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -3701,6 +3729,81 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         "isOverlay": True,
                     }
                     open_ov_slots -= 1
+
+        # 4.4) 소형 헬스케어 촉매 오버레이(catalyst_overlay, 75단계 신규) - 메인
+        # Top40 RS 눌림목 후보 선정과 완전히 별개의 슬롯. 지정된 종목코드(보통
+        # min_market_cap 하한 때문에 메인 풀에서 구조적으로 배제되는 소형
+        # 헬스케어) 중 최근 공시(POSITIVE_CATALYST_KEYWORDS)가 있었던 종목만
+        # RS순위/눌림목과 무관하게 그날 종가로 매수한다. large_cap_overlay와
+        # 같은 설계(별도 슬롯·쿨다운)지만, 신호 자체가 "국면"이 아니라 "개별
+        # 종목 공시"라 kospi_vs_kosdaq_ok 같은 사전조건이 없다.
+        if catalyst_overlay_codes and catalyst_overlay_slots > 0 and catalyst_dates_by_code:
+            co_held = sum(
+                1 for c in catalyst_overlay_codes
+                if ticker_by_code.get(c) and ticker_by_code[c] in positions
+            )
+            open_co_slots = catalyst_overlay_slots - co_held
+            if open_co_slots > 0:
+                co_last_exit = {}
+                if catalyst_overlay_cooldown_days > 0:
+                    for t in trades[-10:]:
+                        if t["code"] in catalyst_overlay_codes:
+                            co_last_exit[t["code"]] = t["exitDate"]
+                for co_code in catalyst_overlay_codes:
+                    if open_co_slots <= 0:
+                        break
+                    ct = ticker_by_code.get(co_code)
+                    if ct is None or ct in positions or ct not in series or ct not in idx_at_rd:
+                        continue
+                    if not has_recent_catalyst(catalyst_dates_by_code.get(co_code, []), rd,
+                                                catalyst_overlay_lookback_days):
+                        continue
+                    if catalyst_overlay_cooldown_days > 0:
+                        last_exit = co_last_exit.get(co_code)
+                        if last_exit and (datetime.fromisoformat(rd) - datetime.fromisoformat(last_exit)).days \
+                                < catalyst_overlay_cooldown_days:
+                            continue
+                    dates, closes, highs, lows, volumes, opens = series[ct]
+                    i3 = idx_at_rd[ct]
+                    close = closes[i3]
+                    # catalyst_overlay_require_uptrend(기본 False=비활성, 75단계 1차
+                    # 실패 직후 추가) - 1차 실측(모멘텀 확인 없음)에서 306종목 중
+                    # "최근 공시 있음"만으로 거르니 후보가 너무 많아(오버레이
+                    # 거래 711~1081건) 손익비 2대로 무너졌다(CAGR -6.56~16.70%,
+                    # MDD -60~94%). 공급계약·시설투자 같은 공시 대부분은 주가를
+                    # 실제로 못 움직인다 - "시장이 그 공시에 진짜 반응했는가"를
+                    # 20일선 위 종가로 확인해 후보를 좁힌다.
+                    if catalyst_overlay_require_uptrend:
+                        sma20_co = _sma(closes, 20, i3)
+                        if sma20_co is None or close < sma20_co:
+                            continue
+                    atr20_co = _atr(highs, lows, closes, i3)
+                    if not atr20_co or atr20_co <= 0:
+                        continue
+                    risk_per_share_co = initial_stop_atr_mult * atr20_co
+                    if (risk_per_share_co / close * 100) > eff_max_initial_risk_pct:
+                        continue
+                    target_value = equity_now / catalyst_overlay_slots
+                    entry_fill = close * (1 + SLIPPAGE_ENTRY_PCT / 100)
+                    co_shares = int(min(cash, target_value) // entry_fill)
+                    if co_shares <= 0:
+                        continue
+                    co_cost = co_shares * entry_fill
+                    if co_cost > cash:
+                        continue
+                    cash -= co_cost
+                    co_name = info_by_ticker.get(ct, (ct, ct, None, None))[1]
+                    positions[ct] = {
+                        "code": co_code, "name": co_name, "entryDate": dates[i3], "entryIdx": i3,
+                        "shares": co_shares, "initialShares": co_shares, "totalCost": co_cost,
+                        "avgEntryPrice": entry_fill, "entryAtr": atr20_co, "riskPerShare": risk_per_share_co,
+                        "stopPrice": entry_fill - risk_per_share_co, "stopState": "initialStop",
+                        "highestHigh": entry_fill, "partialTaken": False, "pyramidCount": 0,
+                        "lastEntryPrice": entry_fill, "maBelowCount": 0, "barsHeld": 0,
+                        "entryRsRating": None, "entryQuality": None, "entryBlendScore": None,
+                        "isOverlay": True,
+                    }
+                    open_co_slots -= 1
 
         # 4.5) 현금 유휴화 방지 - 국면 OK인데 남은 유휴 현금을 지수 프록시에 태운다
         # (equitize_max_pct%까지만 - 그 이상은 베타 노출을 늘리지 않고 현금으로 남긴다)
