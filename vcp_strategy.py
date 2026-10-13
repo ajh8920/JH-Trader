@@ -1132,6 +1132,27 @@ def _elder_impulse_red(closes, j, lookback=80):
     return ema13[-1] < ema13[-2] and hist[-1] < hist[-2]
 
 
+def _elder_channel_upper(closes, highs, lows, j, ma_period=22, atr_mult=2.5, lookback=80):
+    """알렉산더 엘더의 "채널(이동평균 봉투)" 상단선 - EMA(ma_period) + atr_mult*ATR.
+    엘더는 추세반전 신호를 기다리지 않고 "가격이 채널 상단에 닿으면 강세 속에서도
+    차익실현"을 권한다(Come Into My Trading Room) - 63단계에서 시도한 임펄스
+    시스템(손절 성격, 평균손익 +1.2%로 실패)과 달리 이건 익절 성격이라, 지인
+    실거래의 "Elder Exit"(180건·32%·평균+18.0%, 손절이 아니라 뚜렷한 익절
+    패턴)과 방향이 더 맞는다는 가설로 2026-10-14 재시도. 이력이 lookback개
+    미만이면 None(판정 보류)."""
+    start = j - lookback + 1
+    if start < 0:
+        return None
+    window = closes[start:j + 1]
+    ema = _ema_series(window, ma_period)
+    if ema is None:
+        return None
+    atr = _atr(highs, lows, closes, j)
+    if not atr:
+        return None
+    return ema[-1] + atr_mult * atr
+
+
 def _adx(highs, lows, closes, i, period=ADX_PERIOD):
     """Wilder's ADX. i번 인덱스(포함)까지의 값. period*2 이상의 데이터가 필요하다
     (첫 스무딩 구간 + 그 결과의 재스무딩)."""
@@ -2138,7 +2159,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       flow_rank_weight=0.0, pyramid_gate_rank_top_n=None,
                       catalyst_overlay_codes=None, catalyst_overlay_slots=0,
                       catalyst_overlay_lookback_days=20, catalyst_overlay_cooldown_days=10,
-                      catalyst_overlay_require_uptrend=False):
+                      catalyst_overlay_require_uptrend=False,
+                      elder_channel_exit=False, elder_channel_ma_period=22, elder_channel_atr_mult=2.5):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2378,6 +2400,15 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     더 빠른 시장폭 신호 - 150/200일선(장기) 대신 50일선 하나만 본다. 2026-10-12
     "CAGR 50% 계속 시도"에 따라 신규 추가, breadth_min_pct 단독보다 더 이른
     경보가 가능한지 시험용.
+
+    elder_channel_exit/elder_channel_ma_period/elder_channel_atr_mult(기본
+    False/22/2.5, 2026-10-14 신규)는 _elder_channel_upper docstring 참고 -
+    엘더의 "채널(이동평균 봉투)" 익절. 63단계(임펄스 시스템, 손절 성격)가
+    평균손익 +1.2%로 실패한 뒤, 지인이 "Elder Exit"가 알렉산더 엘더의
+    투자관에서 왔다고 확인해준 뒤(2026-10-13) 재시도 - "Elder Exit"의
+    평균손익(+18.0%)이 뚜렷한 익절 패턴이라는 점에서 임펄스보다 채널
+    상단 익절이 더 맞는 가설로 본다. ma_period=22는 엘더 자신이 일봉에서
+    가장 많이 쓴 기간(그의 책 기준).
 
     catalyst_overlay_codes/catalyst_overlay_slots/catalyst_overlay_lookback_days/
     catalyst_overlay_cooldown_days(기본 None/0=비활성, 75단계 신규)는 메인 Top40
@@ -2854,6 +2885,23 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         trades.append(trade)
                         cash += proceeds
                         stopped_recently[pos["code"]] = dates[j]
+                        del positions[ticker]
+                        closed = True
+                        break
+                # elder_channel_exit(기본 False=비활성, 2026-10-14 신규) - 엘더의
+                # "채널(이동평균 봉투)" 익절(docstring/_elder_channel_upper 참고).
+                # 임펄스 시스템(손절 성격, 63단계 실패)과 달리 이건 "강세 속에서도
+                # 채널 상단에 닿으면 추세반전을 기다리지 않고 판다"는 익절 로직 -
+                # 지인 실거래 "Elder Exit"(평균+18.0%, 뚜렷한 익절 패턴)과 방향이
+                # 맞는지 시험한다.
+                if elder_channel_exit:
+                    upper = _elder_channel_upper(closes, highs, lows, j,
+                                                  ma_period=elder_channel_ma_period,
+                                                  atr_mult=elder_channel_atr_mult)
+                    if upper is not None and close >= upper:
+                        trade, proceeds = _full_exit(pos, close, dates[j], "elderChannelExit")
+                        trades.append(trade)
+                        cash += proceeds
                         del positions[ticker]
                         closed = True
                         break
