@@ -2046,15 +2046,15 @@ JPEX_V11_PARAMS로 정식 채택했다. 최종 재확인(시드 5억원, 2016-01
 - `paper_trading.py`: `_WATCHER_FAMILY_PARAMS["jpex"]`를
   `"JPEX_V11_PARAMS"`로 교체.
 
-**중요한 미해결 공백**: 실시간 모의투자 엔진(`paper_trading.py`
-`run_watcher_daily_step`)은 `rank_exit_top_n`/`rank_exit_persist_days`를
-아직 실제로 구현하지 않았다 - JPEX_V11_PARAMS를 가리키도록만 바꿨을 뿐,
-딕셔너리에 이 키가 있어도 코드가 안 읽으면 조용히 무시되므로 크래시는
-안 나지만 실제 모의투자 동작은 V10과 동일하게 돈다. 백테스트 엔진은
-재평가일마다 전체 유니버스의 RS 순위를 다시 계산하는데, 모의투자는
-`TrendScreenCache`(현재 시점 스냅샷 1개)만 들고 있어 "순위이탈이 N일
-연속"을 그대로 재현하려면 일별 RS 순위 이력을 쌓는 인프라가 새로
-필요하다 - 이번 라운드 범위 밖이라 보류, 다음 작업 후보로 남긴다.
+**실시간 모의투자 포팅(2026-10-13 추가 완료)**: `PaperPosition`에
+`rank_miss_streak` 컬럼을 추가(운영 Postgres/로컬 SQLite 둘 다 `ALTER
+TABLE`, 기존 데이터 무영향)하고 `_process_anon_position_day`에
+`rank_of_code` 인자를 더해 `run_watcher_daily_step`에서 매 실행마다
+`TrendScreenCache` 기준 RS등급 순위를 한 번 계산해 건네주는 방식으로
+포팅했다(regime_ok/breadth_pct와 같은 "오늘 기준 근사" 패턴 - 백테스트처럼
+과거 특정일 기준 순위를 재현하지는 못한다). 단위 테스트로 2일 연속
+순위이탈 시 청산, 중간 회복 시 스트릭 리셋, 기능 비활성 시 무효과를 모두
+확인.
 
 ## 남은 과제 (2026-10-10 기준)
 
