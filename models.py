@@ -415,6 +415,11 @@ class PaperPosition(db.Model):
     # 피라미딩이 있었는지"를 조회하려면 이 두 필드가 필요하다.
     last_pyramid_date = db.Column(db.String(10))
     last_pyramid_shares = db.Column(db.Integer)
+    # rank_exit_top_n/rank_exit_persist_days(JPEX_V11_PARAMS, 2026-10-13 신규)용 -
+    # vcp_strategy.run_vcp_backtest의 pos["rankMissStreak"]와 동일 개념이지만,
+    # 모의투자는 하루에 한 번만 깨어나므로(14:30) 이 값을 DB에 영속화해야
+    # "N일 연속 순위이탈"을 여러 번의 실행에 걸쳐 추적할 수 있다.
+    rank_miss_streak = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 

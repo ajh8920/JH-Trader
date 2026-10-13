@@ -485,7 +485,7 @@ def _market_breadth_pct(market):
 def _process_anon_position_day(pos, closes, highs, lows, j, params, dates=None, code=None,
                                 dividend_dates_by_code=None, dividend_gap_threshold_pct=-6.0,
                                 dividend_gap_max_pct=-20.0, dividend_gap_lookback_days=30,
-                                regime_ok=True):
+                                regime_ok=True, rank_of_code=None):
     """"어나니머스"/"스위퍼"/"와쳐"/"JPEX" 포지션 하루치(인덱스 j)를 반영한다 - vcp_strategy.
     run_vcp_backtest의 포지션 관리 블록과 동일한 규칙(배당락 갭 보정 > 손절 >
     MA이탈 > 시간손절 > 트레일링 갱신 > 국면상실청산 > 과열익절 순), 동일하게
@@ -503,7 +503,13 @@ def _process_anon_position_day(pos, closes, highs, lows, j, params, dates=None, 
     vcp_strategy.run_vcp_backtest는 매 거래일마다 그날의 regime_ok를 다시 계산하지만,
     이 함수는 하루씩 호출되는 실시간 모의투자 루프라 호출부(run_watcher_daily_step)가
     그날그날의 최신 regime_ok 하나만 계산해 건네준다 - 재평가 간격이 1일(JPEX)이라
-    오차가 거의 없다(RESULTS.md 18단계 참고)."""
+    오차가 거의 없다(RESULTS.md 18단계 참고).
+
+    rank_of_code(기본 None)는 rank_exit_top_n을 쓰는 전략(JPEX_V11_PARAMS)만
+    의미가 있다 - {종목코드: 그날 RS등급 순위} 딕셔너리로, regime_ok와 같은
+    이유로 호출부가 그날 하나만 계산해 건네준다(TrendScreenCache가 "현재 시점"
+    스냅샷 하나뿐이라 vcp_strategy.run_vcp_backtest처럼 과거 특정일 기준
+    순위를 재현할 수는 없다 - 모의투자는 항상 "오늘" 기준으로만 판정)."""
     close = closes[j]
     if dividend_dates_by_code and dates is not None and code is not None and j > 0 and closes[j - 1]:
         day_return = (close / closes[j - 1] - 1) * 100
@@ -561,6 +567,23 @@ def _process_anon_position_day(pos, closes, highs, lows, j, params, dates=None, 
         regime_exit_min_r = params.get("regime_exit_min_r")
         if regime_exit_min_r is None or current_r < regime_exit_min_r:
             return close, "regimeExit"
+
+    # 순위이탈 청산(rank_exit_top_n/rank_exit_persist_days, JPEX_V11_PARAMS 신규) -
+    # vcp_strategy.run_vcp_backtest의 같은 블록과 동일 규칙(RS 순위가 Top N 밖으로
+    # 밀려난 게 N일 연속 유지돼야 청산). rankMissStreak는 호출부(run_watcher_
+    # daily_step)가 PaperPosition.rank_miss_streak에서 읽어와 pos에 미리 넣어주고,
+    # 처리가 끝나면 다시 DB에 저장한다 - 모의투자는 하루에 한 번만 깨어나므로
+    # (regime_ok와 달리) 이 스트릭만큼은 여러 번의 실행에 걸쳐 영속화해야
+    # "N일 연속"이 의미가 있다.
+    rank_exit_top_n = params.get("rank_exit_top_n")
+    if rank_exit_top_n is not None:
+        cur_rank = (rank_of_code or {}).get(code)
+        if cur_rank is None or cur_rank > rank_exit_top_n:
+            pos["rankMissStreak"] = pos.get("rankMissStreak", 0) + 1
+        else:
+            pos["rankMissStreak"] = 0
+        if pos["rankMissStreak"] >= params.get("rank_exit_persist_days", 1):
+            return close, "rankDrop"
 
     # 과열 청산(overheat_days/overheat_gain_pct, JPEX 전용) - vcp_strategy.
     # run_vcp_backtest의 같은 블록과 동일 규칙. 진입 후 N거래일 안에 수익률이
@@ -987,6 +1010,22 @@ def run_watcher_daily_step(account):
     elif gate_entries_breadth_min_pct is not None:
         breadth_pct = _market_breadth_pct(params["market"])
 
+    # 순위이탈 청산용 - RS등급 순위(rank_exit_top_n, JPEX_V11_PARAMS 신규).
+    # vcp_strategy.run_vcp_backtest는 trend_ok_set(그날 트렌드템플릿 전체 통과
+    # 종목) 안에서 순위를 매기지만, 모의투자는 TrendScreenCache가 "현재 시점"
+    # 스냅샷 하나뿐이라 그 안에서(=이미 트렌드템플릿을 통과해 캐시에 올라온
+    # 종목들 안에서) RS등급 내림차순 순위를 근사한다 - regime_ok/breadth_pct와
+    # 같은 이유로 "오늘" 기준 값 하나만 계산해 재사용한다.
+    rank_of_code = {}
+    if params.get("rank_exit_top_n") is not None:
+        rank_rows = (
+            TrendScreenCache.query.filter_by(market=params["market"])
+            .filter(TrendScreenCache.rs_rating.isnot(None))
+            .order_by(TrendScreenCache.rs_rating.desc(), TrendScreenCache.code)
+            .all()
+        )
+        rank_of_code = {r.code: idx + 1 for idx, r in enumerate(rank_rows)}
+
     # 1) 보유 포지션 - run_anonymous_daily_step의 같은 블록과 완전히 동일한
     #    규칙(손절 > MA이탈 > 시간손절 > 본전/분할익절/트레일링 갱신 > 피라미딩).
     #    entry_mode가 달라도 포지션이 일단 생기고 난 뒤의 관리 규칙은 어나니머스/
@@ -1006,6 +1045,7 @@ def run_watcher_daily_step(account):
             "maBelowCount": 0, "totalCost": pos_row.total_cost or (pos_row.entry_price * pos_row.shares),
             "lastEntryPrice": pos_row.last_entry_price or pos_row.entry_price, "pyramidCount": pos_row.pyramid_count,
             "initialShares": pos_row.initial_shares or pos_row.shares, "partialTaken": pos_row.partial_taken,
+            "rankMissStreak": pos_row.rank_miss_streak,
         }
         closed = False
         last_pyramid_date, last_pyramid_shares = None, None
@@ -1016,7 +1056,8 @@ def run_watcher_daily_step(account):
                 break
             result = _process_anon_position_day(
                 pos, closes, highs, lows, j, params, dates=dates, code=pos_row.code,
-                dividend_dates_by_code=dividend_dates_by_code, regime_ok=regime_ok)
+                dividend_dates_by_code=dividend_dates_by_code, regime_ok=regime_ok,
+                rank_of_code=rank_of_code)
             if result:
                 exit_price, reason = result
                 proceeds = pos["shares"] * exit_price * (1 - (vcp.SLIPPAGE_EXIT_PCT + vcp.SELL_TAX_PCT) / 100)
@@ -1089,6 +1130,7 @@ def run_watcher_daily_step(account):
             pos_row.stop_price, pos_row.stop_state = pos["stopPrice"], pos["stopState"]
             pos_row.highest_high, pos_row.bars_held = pos["highestHigh"], pos["barsHeld"]
             pos_row.partial_taken = pos["partialTaken"]
+            pos_row.rank_miss_streak = pos["rankMissStreak"]
             if last_pyramid_date:
                 pos_row.last_pyramid_date, pos_row.last_pyramid_shares = last_pyramid_date, last_pyramid_shares
 
