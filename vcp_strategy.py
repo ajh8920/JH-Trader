@@ -1153,6 +1153,31 @@ def _elder_channel_upper(closes, highs, lows, j, ma_period=22, atr_mult=2.5, loo
     return ema[-1] + atr_mult * atr
 
 
+def _safezone_stop(lows, j, lookback=20, coeff=2.5):
+    """알렉산더 엘더의 "SafeZone" 손절(The New Trading for a Living) - 최근
+    lookback일 중 "전일 저가를 하회한 날"만 골라 그 하회폭(전일저가-당일저가)의
+    평균을 coeff배 해서 최근 저가에서 뺀다. 챈들리어(ATR 기반 - 상승일 변동폭도
+    섞임)와 달리 "실제로 하락 쪽으로 얼마나 흔들렸는가"만 본다 - 강한 상승
+    추세(상승일 변동폭이 큰 종목)에서 챈들리어보다 더 타이트한 손절이 나올
+    수 있다는 가설. 하회한 날이 lookback 구간에 하나도 없으면(계속 신저가
+    경신 없이 상승만) None(판정 보류 - 이 경우 챈들리어 등 다른 트레일링에
+    맡긴다)."""
+    if j < lookback:
+        return None
+    penetrations = []
+    for k in range(j - lookback + 1, j + 1):
+        if k == 0:
+            continue
+        pen = lows[k - 1] - lows[k]
+        if pen > 0:
+            penetrations.append(pen)
+    if not penetrations:
+        return None
+    avg_pen = sum(penetrations) / len(penetrations)
+    recent_low = min(lows[j - lookback + 1:j + 1])
+    return recent_low - coeff * avg_pen
+
+
 def _adx(highs, lows, closes, i, period=ADX_PERIOD):
     """Wilder's ADX. i번 인덱스(포함)까지의 값. period*2 이상의 데이터가 필요하다
     (첫 스무딩 구간 + 그 결과의 재스무딩)."""
@@ -2161,7 +2186,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       catalyst_overlay_lookback_days=20, catalyst_overlay_cooldown_days=10,
                       catalyst_overlay_require_uptrend=False,
                       elder_channel_exit=False, elder_channel_ma_period=22, elder_channel_atr_mult=2.5,
-                      elder_channel_partial_fraction=0.0):
+                      elder_channel_partial_fraction=0.0,
+                      use_safezone_trail=False, safezone_lookback=20, safezone_coeff=2.5):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2401,6 +2427,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     더 빠른 시장폭 신호 - 150/200일선(장기) 대신 50일선 하나만 본다. 2026-10-12
     "CAGR 50% 계속 시도"에 따라 신규 추가, breadth_min_pct 단독보다 더 이른
     경보가 가능한지 시험용.
+
+    use_safezone_trail/safezone_lookback/safezone_coeff(기본 False/20/2.5,
+    2026-10-14 신규)는 엘더의 세 번째 대표 기법 - "SafeZone" 트레일링 손절
+    (_safezone_stop docstring 참고). 임펄스(손절 성격, 기각)·채널(익절
+    성격, CAGR 미달로 기각)과 달리 이건 챈들리어를 대체하는 또 다른
+    트레일링 손절 방식(ATR 대신 하락일만의 평균 되돌림폭 사용) - 챈들리어와
+    같은 역할이라 trail_pct가 설정돼 있으면 무시된다(trail_pct가 명시적
+    사용자 지정이라 우선).
 
     elder_channel_partial_fraction(기본 0=전량청산, 2026-10-14 신규)을 주면
     채널 상단 터치 시 전량 대신 그 비율만 익절하고 나머지는 보유를 계속한다
@@ -3004,6 +3038,15 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     )
                     chandelier = pos["highestHigh"] * (1 - trail_pct / 100) if trail_pct is not None \
                         else pos["highestHigh"] - effective_mult * pos["entryAtr"]
+                    # use_safezone_trail(기본 False=비활성, 2026-10-14 신규) - 엘더의
+                    # 세 번째 대표 기법(_safezone_stop docstring 참고). 켜지면
+                    # 챈들리어 대신(trail_pct보다 우선순위 낮게 - trail_pct는 명시적
+                    # 사용자 지정이라 그대로 둠) SafeZone 값을 쓴다. None이면(최근
+                    # 신저가 경신 없이 상승만) 챈들리어로 폴백한다.
+                    if use_safezone_trail and trail_pct is None:
+                        sz = _safezone_stop(lows, j, lookback=safezone_lookback, coeff=safezone_coeff)
+                        if sz is not None:
+                            chandelier = sz
                     if chandelier > pos["stopPrice"]:
                         pos["stopPrice"] = chandelier
                         pos["stopState"] = "trailingStop"
