@@ -2160,7 +2160,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       catalyst_overlay_codes=None, catalyst_overlay_slots=0,
                       catalyst_overlay_lookback_days=20, catalyst_overlay_cooldown_days=10,
                       catalyst_overlay_require_uptrend=False,
-                      elder_channel_exit=False, elder_channel_ma_period=22, elder_channel_atr_mult=2.5):
+                      elder_channel_exit=False, elder_channel_ma_period=22, elder_channel_atr_mult=2.5,
+                      elder_channel_partial_fraction=0.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2400,6 +2401,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     더 빠른 시장폭 신호 - 150/200일선(장기) 대신 50일선 하나만 본다. 2026-10-12
     "CAGR 50% 계속 시도"에 따라 신규 추가, breadth_min_pct 단독보다 더 이른
     경보가 가능한지 시험용.
+
+    elder_channel_partial_fraction(기본 0=전량청산, 2026-10-14 신규)을 주면
+    채널 상단 터치 시 전량 대신 그 비율만 익절하고 나머지는 보유를 계속한다
+    (partial_profit_fraction과 partialTaken 플래그를 공유).
 
     elder_channel_exit/elder_channel_ma_period/elder_channel_atr_mult(기본
     False/22/2.5, 2026-10-14 신규)는 _elder_channel_upper docstring 참고 -
@@ -2893,18 +2898,43 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 # 임펄스 시스템(손절 성격, 63단계 실패)과 달리 이건 "강세 속에서도
                 # 채널 상단에 닿으면 추세반전을 기다리지 않고 판다"는 익절 로직 -
                 # 지인 실거래 "Elder Exit"(평균+18.0%, 뚜렷한 익절 패턴)과 방향이
-                # 맞는지 시험한다.
-                if elder_channel_exit:
+                # 맞는지 시험한다. 76단계 1차(전량청산)는 배수를 아무리 넓혀도
+                # V11을 못 넘어(교차점 자체가 없음) 기각 - elder_channel_partial_fraction
+                # (기본 0=전량청산, 2026-10-14 신규)을 주면 엘더가 실제로 더 자주
+                # 권하는 "채널에서 일부만 익절, 나머지는 트레일링으로 계속 보유"
+                # 방식으로 바꾼다(partial_profit_fraction과 같은 partialTaken
+                # 플래그를 공유 - 둘 중 하나가 먼저 발동하면 그걸로 끝).
+                if elder_channel_exit and (elder_channel_partial_fraction <= 0 or not pos["partialTaken"]):
                     upper = _elder_channel_upper(closes, highs, lows, j,
                                                   ma_period=elder_channel_ma_period,
                                                   atr_mult=elder_channel_atr_mult)
                     if upper is not None and close >= upper:
-                        trade, proceeds = _full_exit(pos, close, dates[j], "elderChannelExit")
-                        trades.append(trade)
-                        cash += proceeds
-                        del positions[ticker]
-                        closed = True
-                        break
+                        if elder_channel_partial_fraction > 0:
+                            sell_shares = min(max(1, int(pos["shares"] * elder_channel_partial_fraction)),
+                                               pos["shares"] - 1)
+                            if sell_shares > 0:
+                                fill = close * (1 - (SLIPPAGE_EXIT_PCT + SELL_TAX_PCT) / 100)
+                                pnl_pct = round((fill - pos["avgEntryPrice"]) / pos["avgEntryPrice"] * 100, 2)
+                                trades.append({
+                                    "code": pos["code"], "name": pos["name"], "entryDate": pos["entryDate"],
+                                    "entryPrice": round(pos["avgEntryPrice"], 2), "exitDate": dates[j],
+                                    "exitPrice": round(close, 2), "shares": sell_shares, "pnlPct": pnl_pct,
+                                    "exitReason": "elderChannelPartial", "pyramidCount": pos["pyramidCount"],
+                                    "partialTaken": True,
+                                    "holdDays": (datetime.fromisoformat(dates[j])
+                                                 - datetime.fromisoformat(pos["entryDate"])).days,
+                                })
+                                cash += sell_shares * fill
+                                pos["totalCost"] -= sell_shares * pos["avgEntryPrice"]
+                                pos["shares"] -= sell_shares
+                            pos["partialTaken"] = True
+                        else:
+                            trade, proceeds = _full_exit(pos, close, dates[j], "elderChannelExit")
+                            trades.append(trade)
+                            cash += proceeds
+                            del positions[ticker]
+                            closed = True
+                            break
 
                 r = pos["riskPerShare"]
                 highest_r = (pos["highestHigh"] - pos["avgEntryPrice"]) / r if r > 0 else 0
