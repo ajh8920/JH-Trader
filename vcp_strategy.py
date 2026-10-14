@@ -2291,7 +2291,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       foreign_exit_lookback_days=20, foreign_exit_persist_days=1,
                       negative_catalyst_by_code=None, negative_catalyst_exit_lookback_days=None,
                       max_sector_concurrent=None, earnings_season_blackout=False,
-                      proximity_rank_weight=0.0):
+                      proximity_rank_weight=0.0, depth_rank_weight=0.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2566,6 +2566,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     가까울수록 좋다"는 점수(1-pctBelow52wHigh/25)로 변환해 섞는다. 게이트
     (통과/탈락)가 아니라 순위 가점이라 quality/value_rank_weight 계열의
     "지금까지 유일하게 성공한 축"에 속한다는 점에서 시도할 가치가 있다.
+    94단계에서 단일거래 교체 과최적화로 기각, 기본 비활성 유지.
+
+    depth_rank_weight(기본 0.0=비활성, 94단계 다음, 2026-10-14 신규)는
+    같은 블렌드 계열의 또 다른 가격구조 지표 - eff_entry_mode="pullback"일 때
+    스캔일 종가가 피벗(직전 고점) 대비 얼마나 덜 눌렸는지(되돌림이 얕을수록
+    = 수요가 더 강하다는 가설)를 점수로 섞는다. detect_pullback을 통과한
+    후보는 이미 min~max_pullback_pct 구간에 있으므로(게이트 통과), 그 안에서
+    더 얕은 쪽에 가점을 준다.
 
     kr_exchange_filter(기본 None=비활성, "KOSDAQ"/"KOSPI", 2026-10-14 신규)는
     trend_ok_set 계산 바로 뒤 docstring 참고 - 거래소(코스피/코스닥)로
@@ -3752,6 +3760,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     avg_vol50 = _avg_volume(volumes, i)
                     if not avg_vol50:
                         continue
+                    pb_depth = ((pivot - closes[i]) / pivot * 100) if pivot else 0.0
                     # 진입 순위 게이트(entry_rank_top_n) - 청산 쪽 순위이탈(rank_exit)은
                     # 매일 재평가하다 노이즈로 실패했지만(42~43차), 진입 시점 한 번만
                     # 확인하는 건 휩소 위험이 훨씬 적다. "청산도 Top10 기준이었다"는
@@ -3788,7 +3797,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             excluded_low_blend += 1
                             continue
                     candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality, value_score, is_continuation,
-                                       flow_score))
+                                       flow_score, pb_depth))
 
                 # 슬롯보다 후보가 많을 때 누구를 먼저 담을지 정하는 순위.
                 # quality_rank_weight·value_rank_weight 둘 다 0이면 기존대로
@@ -3800,7 +3809,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 # 실행할 때마다 결과가 달라지지 않게 한다.
                 def _rank_key(c):
                     rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight - sector_rank_weight
-                               - flow_rank_weight - proximity_rank_weight)
+                               - flow_rank_weight - proximity_rank_weight - depth_rank_weight)
                     rs = (c[1].get("rsRating") or 0) / 99
                     q = c[5] if c[5] is not None else 0.5
                     v = c[6] if c[6] is not None else 0.5
@@ -3809,9 +3818,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     f = c[8] if c[8] is not None else 0.5
                     pct_below = c[1].get("pctBelow52wHigh")
                     p = max(0.0, min(1.0, 1 - pct_below / 25)) if pct_below is not None else 0.5
+                    d = max(0.0, min(1.0, 1 - c[9] / max_pullback_pct)) if max_pullback_pct else 0.5
                     return (-(rs * rs_w + q * quality_rank_weight + v * value_rank_weight
                               + s * sector_rank_weight + f * flow_rank_weight
-                              + p * proximity_rank_weight), c[0])
+                              + p * proximity_rank_weight + d * depth_rank_weight), c[0])
 
                 candidates.sort(key=_rank_key)
                 held_sectors = {}
@@ -3820,7 +3830,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         sec_pt = info_by_ticker.get(pt, (None, None, None, None))[3]
                         if sec_pt is not None:
                             held_sectors[sec_pt] = held_sectors.get(sec_pt, 0) + 1
-                for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score, is_continuation, flow_score in candidates:
+                for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score, is_continuation, flow_score, pb_depth in candidates:
                     if open_slots <= 0:
                         break
                     if max_sector_concurrent is not None:
