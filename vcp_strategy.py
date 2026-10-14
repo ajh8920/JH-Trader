@@ -2290,7 +2290,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       foreign_ownership_by_code=None, foreign_exit_decline_pct=None,
                       foreign_exit_lookback_days=20, foreign_exit_persist_days=1,
                       negative_catalyst_by_code=None, negative_catalyst_exit_lookback_days=None,
-                      max_sector_concurrent=None, earnings_season_blackout=False):
+                      max_sector_concurrent=None, earnings_season_blackout=False,
+                      proximity_rank_weight=0.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2556,6 +2557,15 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     구간(룩어헤드 없이 순수 날짜 규칙)에는 신규 진입을 멈춘다(기존 보유
     포지션은 그대로 둔다 - 실적 갭 자체를 피하자는 게 아니라, 아직 손익
     쿠션이 없는 신규 포지션만 그 리스크에 새로 노출시키지 않자는 뜻).
+    93단계에서 CAGR·MDD 둘 다 재앙으로 기각, 기본 비활성 유지.
+
+    proximity_rank_weight(기본 0.0=비활성, 93단계 다음, 2026-10-14 신규)는
+    quality_rank_weight/value_rank_weight와 같은 블렌드 방식이지만 재무가
+    아니라 가격구조 지표 - trend_screener가 이미 계산해둔 pctBelow52wHigh
+    (52주 신고가 대비 하락률, 0~25%만 트렌드템플릿 7번 조건 통과)를 "신고가에
+    가까울수록 좋다"는 점수(1-pctBelow52wHigh/25)로 변환해 섞는다. 게이트
+    (통과/탈락)가 아니라 순위 가점이라 quality/value_rank_weight 계열의
+    "지금까지 유일하게 성공한 축"에 속한다는 점에서 시도할 가치가 있다.
 
     kr_exchange_filter(기본 None=비활성, "KOSDAQ"/"KOSPI", 2026-10-14 신규)는
     trend_ok_set 계산 바로 뒤 docstring 참고 - 거래소(코스피/코스닥)로
@@ -3790,15 +3800,18 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 # 실행할 때마다 결과가 달라지지 않게 한다.
                 def _rank_key(c):
                     rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight - sector_rank_weight
-                               - flow_rank_weight)
+                               - flow_rank_weight - proximity_rank_weight)
                     rs = (c[1].get("rsRating") or 0) / 99
                     q = c[5] if c[5] is not None else 0.5
                     v = c[6] if c[6] is not None else 0.5
                     sec_avg_rs = sector_avg_rs.get(c[1].get("sector"))
                     s = (sec_avg_rs / 99) if sec_avg_rs is not None else 0.5
                     f = c[8] if c[8] is not None else 0.5
+                    pct_below = c[1].get("pctBelow52wHigh")
+                    p = max(0.0, min(1.0, 1 - pct_below / 25)) if pct_below is not None else 0.5
                     return (-(rs * rs_w + q * quality_rank_weight + v * value_rank_weight
-                              + s * sector_rank_weight + f * flow_rank_weight), c[0])
+                              + s * sector_rank_weight + f * flow_rank_weight
+                              + p * proximity_rank_weight), c[0])
 
                 candidates.sort(key=_rank_key)
                 held_sectors = {}
