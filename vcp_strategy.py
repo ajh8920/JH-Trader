@@ -2276,7 +2276,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       kr_exchange_filter=None,
                       foreign_ownership_by_code=None, foreign_exit_decline_pct=None,
                       foreign_exit_lookback_days=20, foreign_exit_persist_days=1,
-                      negative_catalyst_by_code=None, negative_catalyst_exit_lookback_days=None):
+                      negative_catalyst_by_code=None, negative_catalyst_exit_lookback_days=None,
+                      max_sector_concurrent=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2528,6 +2529,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     전환사채/관리종목지정/횡령배임/자본잠식/불성실공시 같은 악재 공시가
     lookback_days 이내에 뜨면 그날 즉시 청산한다(연속일수 누적 없이 1회성
     이벤트 감지라 rank_exit/foreignExit과 달리 persist 개념이 없다).
+    90~91단계에서 전부 V11 소폭 하회 또는 완전 무효과로 기각, 기본 비활성 유지.
+
+    max_sector_concurrent(기본 None=비활성, 91단계 다음, 2026-10-14 신규)는
+    kr_stocks.json의 sector 필드를 써서 "같은 섹터 종목을 동시에 N개 넘게
+    보유하지 않는다" 제약이다(88단계 거래소 분산 효과 - 상관관계 낮은
+    포지션을 섞으면 MDD가 낮아진다는 발견과 같은 방향의 가설, sector_rank_weight
+    처럼 순위에 가점을 주는 게 아니라 하드 캡으로 후보를 거른다).
 
     kr_exchange_filter(기본 None=비활성, "KOSDAQ"/"KOSPI", 2026-10-14 신규)는
     trend_ok_set 계산 바로 뒤 docstring 참고 - 거래소(코스피/코스닥)로
@@ -3768,9 +3776,19 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                               + s * sector_rank_weight + f * flow_rank_weight), c[0])
 
                 candidates.sort(key=_rank_key)
+                held_sectors = {}
+                if max_sector_concurrent is not None:
+                    for pt in positions:
+                        sec_pt = info_by_ticker.get(pt, (None, None, None, None))[3]
+                        if sec_pt is not None:
+                            held_sectors[sec_pt] = held_sectors.get(sec_pt, 0) + 1
                 for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score, is_continuation, flow_score in candidates:
                     if open_slots <= 0:
                         break
+                    if max_sector_concurrent is not None:
+                        sec_c = e.get("sector")
+                        if sec_c is not None and held_sectors.get(sec_c, 0) >= max_sector_concurrent:
+                            continue
                     dates, closes, highs, lows, volumes, opens = series[ticker]
                     i = idx_at_rd[ticker]
                     s_i = bisect.bisect_right(dates, prev_rd) if prev_rd else max(0, i - rescan_interval_days)
@@ -3946,6 +3964,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         "entryBlendScore": round(_entry_blend_score, 4),
                     }
                     open_slots -= 1
+                    if max_sector_concurrent is not None and e.get("sector") is not None:
+                        held_sectors[e["sector"]] = held_sectors.get(e["sector"], 0) + 1
 
         # 4.3) 대형주 오버레이(large_cap_overlay, 60단계 신규) - 메인 Top40 RS
         # 눌림목 후보 선정과 완전히 별개의 슬롯. 코스피가 코스닥보다 상대적으로
