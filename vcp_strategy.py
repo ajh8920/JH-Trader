@@ -3320,6 +3320,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         eff_max_position_weight_pct = _ov.get("max_position_weight_pct", max_position_weight_pct)
         eff_entry_rank_top_n = _ov.get("entry_rank_top_n", entry_rank_top_n)
         eff_max_positions = _ov.get("max_positions", max_positions)
+        # eff_entry_mode(2026-10-14 신규, 84단계 이후) - entry_mode 자체를 국면별로
+        # 바꿀 수 있게 한다. 24단계에서 "돈치안 단독"은 전체 기간에 쓰면 재앙
+        # (CAGR -8.53~-14.63%)이었지만, "강세장(regime_state=="strong")에서만
+        # 돈치안 신고가 돌파로 전환"은 아직 안 해봤다 - 정상/약세 구간은 여전히
+        # 눌림목(V11 그대로)을 쓰고, 뚜렷한 강세장에서만 "눌림목을 기다리다
+        # 놓치는" 문제(60단계 "거대 승자 반납")를 돈치안으로 보완한다는 가설.
+        eff_entry_mode = _ov.get("entry_mode", entry_mode)
         # large_cap_overlay_total_slots(기본 None=기존 동작과 동일 - 메인/오버레이가
         # 완전히 별개 슬롯풀, 62단계 신규) - 지인 채팅 2차 공개("슬롯 4개가 max로
         # 했고, 4개 중 대형주 로직 조건이 부합되지 않으면 소형주로 4개 꽉채우고,
@@ -3505,12 +3512,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             excluded_eps_growth += 1
                             continue
                     is_continuation = False
-                    if entry_mode == "donchian":
+                    if eff_entry_mode == "donchian":
                         brk = detect_donchian_breakout(highs, closes, i, period=donchian_period)
                         if not brk:
                             continue
                         pivot = brk["pivot"]
-                    elif entry_mode == "pullback":
+                    elif eff_entry_mode == "pullback":
                         pb = detect_pullback(highs, lows, closes, i, lookback=pullback_lookback,
                                              min_pullback_pct=min_pullback_pct,
                                              max_pullback_pct=max_pullback_pct,
@@ -3619,7 +3626,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     # 피벗가+0.5% 지정가로 장중 저가 터치를 기다리지 않는다 - 그날 종가가
                     # 피벗을 넘었고 거래량 조건도 맞으면 그날 종가로 곧바로 체결한다.
                     fill_date = fill_price = fj = None
-                    if entry_mode == "pullback":
+                    if eff_entry_mode == "pullback":
                         # 눌림목은 피벗(직전 고점) '아래'에서 사는 것이라 돌파형처럼
                         # "종가가 피벗을 넘은 날"을 기다릴 수 없다. 조건이 성립한
                         # 첫날 종가로 바로 체결한다. 거래량 급증도 요구하지 않는다 -
@@ -3663,7 +3670,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     # continuation_lookback_days일 신고가(종가 기준)를 경신하면 추세추종형
                     # 재진입을 허용한다 - 지인의 "20D Low Break" 청산과 대칭되는 진입 로직으로
                     # 추정된다.
-                    if fill_date is None and continuation_reentry and entry_mode == "pullback":
+                    if fill_date is None and continuation_reentry and eff_entry_mode == "pullback":
                         for j in range(s_i, i + 1):
                             lb_start = max(0, j - continuation_lookback_days)
                             if j == 0 or closes[j] < max(closes[lb_start:j]):
