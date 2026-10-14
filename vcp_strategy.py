@@ -1754,6 +1754,47 @@ def has_recent_catalyst(dates_sorted, as_of_date, lookback_days):
     return hi > lo
 
 
+# ── 부정 촉매(89단계 다음, 2026-10-14) ───────────────────────────────────────
+# POSITIVE_CATALYST_KEYWORDS는 진입 오버레이용(75단계, 신호 자체가 저품질로
+# 기각)이었던 것과 달리, 여기서는 "보유 중인 종목에 악재 공시가 뜨면 끊는다"는
+# 청산 신호(rank_exit/foreignExit과 같은 계열)로 쓴다. 실측(disclosures_kr
+# 445,849건 중 기재정정 제외) 빈도로 방향이 명확한 것만 골랐다:
+#   - 유상증자결정/전환사채권발행결정: 희석 공시(각 3,672/3,831건) - 긍정 촉매에서
+#     "방향 혼재"로 뺐던(1699줄 주석) 바로 그 항목들을 여기서는 역으로 쓴다.
+#   - 관리종목지정: 557건, 상장적격성 의심 신호.
+#   - 횡령ㆍ배임혐의발생/사실확인: 694건, 경영진 리스크.
+#   - 자본잠식: 376건, 재무 부실.
+#   - 불성실공시법인지정: 2,169건, 공시 신뢰도 문제.
+NEGATIVE_CATALYST_KEYWORDS = (
+    "유상증자결정", "전환사채권발행결정", "관리종목지정", "횡령", "배임",
+    "자본잠식", "불성실공시법인지정",
+)
+
+
+def load_negative_catalyst_dates(parquet_paths):
+    """load_catalyst_dates와 동일한 구조, NEGATIVE_CATALYST_KEYWORDS로 필터링."""
+    import pandas as pd
+
+    dates_by_code = {}
+    for path in parquet_paths:
+        if not Path(path).exists():
+            continue
+        df = pd.read_parquet(path)
+        for row in df.itertuples():
+            name = row.report_nm or ""
+            if _AMENDED_PREFIX in name:
+                continue
+            if not any(kw in name for kw in NEGATIVE_CATALYST_KEYWORDS):
+                continue
+            code = row.stock_code
+            if not code:
+                continue
+            dates_by_code.setdefault(code, []).append(row.rcept_dt)
+    for code in dates_by_code:
+        dates_by_code[code].sort()
+    return dates_by_code
+
+
 # ── 배당락 갭 보정용 배당 공시 ────────────────────────────────────────────────
 # 위 촉매 판정에서는 "현금ㆍ현물배당결정"을 계절성 노이즈라 일부러 뺐지만
 # (POSITIVE_CATALYST_KEYWORDS 위 주석 참고), 여기서는 반대 목적으로 정확히
@@ -2234,7 +2275,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       use_safezone_trail=False, safezone_lookback=20, safezone_coeff=2.5,
                       kr_exchange_filter=None,
                       foreign_ownership_by_code=None, foreign_exit_decline_pct=None,
-                      foreign_exit_lookback_days=20, foreign_exit_persist_days=1):
+                      foreign_exit_lookback_days=20, foreign_exit_persist_days=1,
+                      negative_catalyst_by_code=None, negative_catalyst_exit_lookback_days=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2479,7 +2521,13 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     foreign_exit_persist_days(기본 None=비활성, 2026-10-14 신규)는
     foreign_ownership_change docstring 참고 - rank_exit_top_n과 같은 구조로
     "외국인 지분율이 lookback_days 전보다 문턱(%p, 음수) 이상 빠지면" N일
-    연속 유지 시 청산한다.
+    연속 유지 시 청산한다. 89단계에서 단일거래 과최적화로 기각, 기본 비활성 유지.
+
+    negative_catalyst_by_code/negative_catalyst_exit_lookback_days(기본 None=비활성,
+    2026-10-14 신규)는 NEGATIVE_CATALYST_KEYWORDS 참고 - 보유 종목에 유상증자/
+    전환사채/관리종목지정/횡령배임/자본잠식/불성실공시 같은 악재 공시가
+    lookback_days 이내에 뜨면 그날 즉시 청산한다(연속일수 누적 없이 1회성
+    이벤트 감지라 rank_exit/foreignExit과 달리 persist 개념이 없다).
 
     kr_exchange_filter(기본 None=비활성, "KOSDAQ"/"KOSPI", 2026-10-14 신규)는
     trend_ok_set 계산 바로 뒤 docstring 참고 - 거래소(코스피/코스닥)로
@@ -3281,6 +3329,18 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     pos["foreignDeclineStreak"] = 0
                 if pos["foreignDeclineStreak"] >= foreign_exit_persist_days:
                     trade, proceeds = _full_exit(pos, closes[i], dates[i], "foreignExit")
+                    trades.append(trade)
+                    cash += proceeds
+                    del positions[ticker]
+                    continue
+            # 악재 공시 청산(negative_catalyst_exit_lookback_days, 2026-10-14
+            # 신규, 89단계 다음) - foreignExit과 같은 "보유 중 이탈 신호" 계열이지만
+            # 연속성 누적이 아니라 1회성 이벤트(공시) 감지라 streak 없이 바로 청산.
+            if negative_catalyst_exit_lookback_days is not None and negative_catalyst_by_code:
+                code_f = pos["code"]
+                if has_recent_catalyst(negative_catalyst_by_code.get(code_f, []), dates[i],
+                                        negative_catalyst_exit_lookback_days):
+                    trade, proceeds = _full_exit(pos, closes[i], dates[i], "negativeCatalyst")
                     trades.append(trade)
                     cash += proceeds
                     del positions[ticker]
