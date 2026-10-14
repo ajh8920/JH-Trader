@@ -50,6 +50,19 @@ ADX_THRESHOLD = 25
 RISK_PCT_PER_TRADE = 1.5
 MAX_POSITION_WEIGHT_PCT = 20.0
 
+# ── 어닝시즌 블랙아웃(92단계 다음, 2026-10-14) ───────────────────────────────
+# 국내 상장사 분기보고서 법정 제출기한(결산일 기준 45일, 사업보고서는 90일)에
+# 맞춰 실적 발표가 몰리는 달력상 구간 - 종목별 미래 공시일을 예측하는 게
+# 아니라(룩어헤드 없음, 순수 달력 규칙) "이 기간엔 신규 종목 특유의 실적
+# 갭리스크에 새로 노출되지 않는다"는 가설. oil_regime(62단계)/kr_exchange_filter
+# (88단계)와 달리 가격이 아니라 날짜만 본다.
+EARNINGS_BLACKOUT_WINDOWS = (
+    ((1, 21), (2, 15)),   # Q4/사업보고서(12월 결산 기준 90일 기한) 발표 몰림
+    ((4, 21), (5, 15)),   # 1분기보고서(45일 기한)
+    ((7, 21), (8, 15)),   # 반기보고서(45일 기한)
+    ((10, 21), (11, 15)),  # 3분기보고서(45일 기한)
+)
+
 # fundamental_quality_score의 합격선. ROE 5%는 "자본을 최소한 예금 이상으로는
 # 굴리고 있는가", 부채비율 200%는 국내 상장사 통상 기준에서 재무구조가 위험
 # 수준인지를 가르는 선으로 잡았다(둘 다 널리 쓰이는 관행적 기준 - 백테스트
@@ -2277,7 +2290,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       foreign_ownership_by_code=None, foreign_exit_decline_pct=None,
                       foreign_exit_lookback_days=20, foreign_exit_persist_days=1,
                       negative_catalyst_by_code=None, negative_catalyst_exit_lookback_days=None,
-                      max_sector_concurrent=None):
+                      max_sector_concurrent=None, earnings_season_blackout=False):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2535,7 +2548,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     kr_stocks.json의 sector 필드를 써서 "같은 섹터 종목을 동시에 N개 넘게
     보유하지 않는다" 제약이다(88단계 거래소 분산 효과 - 상관관계 낮은
     포지션을 섞으면 MDD가 낮아진다는 발견과 같은 방향의 가설, sector_rank_weight
-    처럼 순위에 가점을 주는 게 아니라 하드 캡으로 후보를 거른다).
+    처럼 순위에 가점을 주는 게 아니라 하드 캡으로 후보를 거른다). 92단계에서
+    MDD 개선 없이 CAGR만 깎여 기각, 기본 비활성 유지.
+
+    earnings_season_blackout(기본 False=비활성, 92단계 다음, 2026-10-14 신규)는
+    EARNINGS_BLACKOUT_WINDOWS 참고 - 분기보고서 법정 제출기한에 몰린 달력상
+    구간(룩어헤드 없이 순수 날짜 규칙)에는 신규 진입을 멈춘다(기존 보유
+    포지션은 그대로 둔다 - 실적 갭 자체를 피하자는 게 아니라, 아직 손익
+    쿠션이 없는 신규 포지션만 그 리스크에 새로 노출시키지 않자는 뜻).
 
     kr_exchange_filter(기본 None=비활성, "KOSDAQ"/"KOSPI", 2026-10-14 신규)는
     trend_ok_set 계산 바로 뒤 docstring 참고 - 거래소(코스피/코스닥)로
@@ -2761,6 +2781,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     kospi_vs_kosdaq_true_streak = 0
     kospi_vs_kosdaq_false_streak = 0
     oil_ok = True
+    earnings_blackout_ok = True
     eff_pyramid_max_count = pyramid_max_count
     eff_chandelier_atr_mult = chandelier_atr_mult
     eff_max_initial_risk_pct = max_initial_risk_pct
@@ -3467,6 +3488,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 oil_ma = sum(oil_closes[ri_o - oil_ma_days + 1:ri_o + 1]) / oil_ma_days
                 oil_ok = oil_closes[ri_o] <= oil_ma
 
+        if earnings_season_blackout:
+            md = (int(rd[5:7]), int(rd[8:10]))
+            earnings_blackout_ok = not any(start <= md <= end for start, end in EARNINGS_BLACKOUT_WINDOWS)
+
         # regime_adaptive_params(국면 적응형 파라미터, 2026-10-09 신규) - 국면별
         # 오버라이드를 적용해 effective 값을 갱신한다. pyramid_max_count/
         # chandelier_atr_mult는 다음 rd의 "1) 포지션 처리"에서 쓰여 하루 지연되고,
@@ -3519,7 +3544,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         # 리스크 추가)에도 적용해보는 실험.
         entries_breadth_ok = (gate_entries_breadth_min_pct is None or breadth_pct is None
                                or breadth_pct >= gate_entries_breadth_min_pct)
-        if (regime_ok or not gate_entries_on_regime) and entries_breadth_ok and oil_ok:
+        if (regime_ok or not gate_entries_on_regime) and entries_breadth_ok and oil_ok and earnings_blackout_ok:
             open_slots = eff_max_positions - len(positions)
             if open_slots > 0:
                 candidates = []
