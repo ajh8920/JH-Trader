@@ -2291,7 +2291,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       foreign_exit_lookback_days=20, foreign_exit_persist_days=1,
                       negative_catalyst_by_code=None, negative_catalyst_exit_lookback_days=None,
                       max_sector_concurrent=None, earnings_season_blackout=False,
-                      proximity_rank_weight=0.0, depth_rank_weight=0.0):
+                      proximity_rank_weight=0.0, depth_rank_weight=0.0, clv_rank_weight=0.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2573,7 +2573,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     스캔일 종가가 피벗(직전 고점) 대비 얼마나 덜 눌렸는지(되돌림이 얕을수록
     = 수요가 더 강하다는 가설)를 점수로 섞는다. detect_pullback을 통과한
     후보는 이미 min~max_pullback_pct 구간에 있으므로(게이트 통과), 그 안에서
-    더 얕은 쪽에 가점을 준다.
+    더 얕은 쪽에 가점을 준다. 96단계에서 94단계와 동일한 단일거래 교체 +
+    050320 재발로 기각, 기본 비활성 유지.
+
+    clv_rank_weight(기본 0.0=비활성, 96단계 다음, 2026-10-15 신규)는 스캔일의
+    Close Location Value((종가-저가)/(고가-저가), 0=저가 마감 ~ 1=고가
+    마감) - 당일 매수세가 얼마나 강하게 들어왔는지를 보는 고전적 기술지표
+    (Chaikin A/D Line의 구성요소). proximity/depth_rank_weight와 같은
+    "가격구조 순위 블렌드" 계열이지만 이번엔 일중 가격 행동을 본다.
 
     kr_exchange_filter(기본 None=비활성, "KOSDAQ"/"KOSPI", 2026-10-14 신규)는
     trend_ok_set 계산 바로 뒤 docstring 참고 - 거래소(코스피/코스닥)로
@@ -3761,6 +3768,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     if not avg_vol50:
                         continue
                     pb_depth = ((pivot - closes[i]) / pivot * 100) if pivot else 0.0
+                    _day_range = highs[i] - lows[i]
+                    clv = ((closes[i] - lows[i]) / _day_range) if _day_range > 0 else 0.5
                     # 진입 순위 게이트(entry_rank_top_n) - 청산 쪽 순위이탈(rank_exit)은
                     # 매일 재평가하다 노이즈로 실패했지만(42~43차), 진입 시점 한 번만
                     # 확인하는 건 휩소 위험이 훨씬 적다. "청산도 Top10 기준이었다"는
@@ -3797,7 +3806,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             excluded_low_blend += 1
                             continue
                     candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality, value_score, is_continuation,
-                                       flow_score, pb_depth))
+                                       flow_score, pb_depth, clv))
 
                 # 슬롯보다 후보가 많을 때 누구를 먼저 담을지 정하는 순위.
                 # quality_rank_weight·value_rank_weight 둘 다 0이면 기존대로
@@ -3809,7 +3818,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 # 실행할 때마다 결과가 달라지지 않게 한다.
                 def _rank_key(c):
                     rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight - sector_rank_weight
-                               - flow_rank_weight - proximity_rank_weight - depth_rank_weight)
+                               - flow_rank_weight - proximity_rank_weight - depth_rank_weight
+                               - clv_rank_weight)
                     rs = (c[1].get("rsRating") or 0) / 99
                     q = c[5] if c[5] is not None else 0.5
                     v = c[6] if c[6] is not None else 0.5
@@ -3819,9 +3829,11 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     pct_below = c[1].get("pctBelow52wHigh")
                     p = max(0.0, min(1.0, 1 - pct_below / 25)) if pct_below is not None else 0.5
                     d = max(0.0, min(1.0, 1 - c[9] / max_pullback_pct)) if max_pullback_pct else 0.5
+                    cl = c[10] if c[10] is not None else 0.5
                     return (-(rs * rs_w + q * quality_rank_weight + v * value_rank_weight
                               + s * sector_rank_weight + f * flow_rank_weight
-                              + p * proximity_rank_weight + d * depth_rank_weight), c[0])
+                              + p * proximity_rank_weight + d * depth_rank_weight
+                              + cl * clv_rank_weight), c[0])
 
                 candidates.sort(key=_rank_key)
                 held_sectors = {}
@@ -3830,7 +3842,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         sec_pt = info_by_ticker.get(pt, (None, None, None, None))[3]
                         if sec_pt is not None:
                             held_sectors[sec_pt] = held_sectors.get(sec_pt, 0) + 1
-                for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score, is_continuation, flow_score, pb_depth in candidates:
+                for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score, is_continuation, flow_score, pb_depth, clv in candidates:
                     if open_slots <= 0:
                         break
                     if max_sector_concurrent is not None:
