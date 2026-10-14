@@ -2187,7 +2187,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       catalyst_overlay_require_uptrend=False,
                       elder_channel_exit=False, elder_channel_ma_period=22, elder_channel_atr_mult=2.5,
                       elder_channel_partial_fraction=0.0,
-                      use_safezone_trail=False, safezone_lookback=20, safezone_coeff=2.5):
+                      use_safezone_trail=False, safezone_lookback=20, safezone_coeff=2.5,
+                      kr_exchange_filter=None):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2427,6 +2428,10 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     더 빠른 시장폭 신호 - 150/200일선(장기) 대신 50일선 하나만 본다. 2026-10-12
     "CAGR 50% 계속 시도"에 따라 신규 추가, breadth_min_pct 단독보다 더 이른
     경보가 가능한지 시험용.
+
+    kr_exchange_filter(기본 None=비활성, "KOSDAQ"/"KOSPI", 2026-10-14 신규)는
+    trend_ok_set 계산 바로 뒤 docstring 참고 - 거래소(코스피/코스닥)로
+    후보를 제한한다.
 
     use_safezone_trail/safezone_lookback/safezone_coeff(기본 False/20/2.5,
     2026-10-14 신규)는 엘더의 세 번째 대표 기법 - "SafeZone" 트레일링 손절
@@ -2710,6 +2715,19 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             trend_ok_set = set(by_ticker.keys())
         else:
             trend_ok_set = {t for t, e in by_ticker.items() if e.get("allPass")}
+
+        # kr_exchange_filter(기본 None=비활성, 2026-10-14 신규, 87단계 이후) -
+        # V11 실측 거래의 수익 기여도를 거래소별로 까보니 코스닥(평균+12.0%,
+        # 전체 수익의 80%+)이 코스피(평균+0.2%, 거의 본전)보다 압도적으로
+        # 좋았다 - min_market_cap(3,000억) 문턱을 넘는 코스피 종목은 대부분
+        # 이미 변동성이 낮은 초대형 블루칩이라 이 신호체계(모멘텀+눌림목)와
+        # 안 맞는 반면, 같은 문턱을 넘는 코스닥 종목은 여전히 고성장 중형주
+        # 특성을 유지한다는 가설. "KOSDAQ"을 주면 코스피(.KS)를 후보에서
+        # 제외해 그 슬롯이 전부 코스닥으로 채워지게 한다.
+        if kr_exchange_filter == "KOSDAQ":
+            trend_ok_set = {t for t in trend_ok_set if not t.endswith(".KS")}
+        elif kr_exchange_filter == "KOSPI":
+            trend_ok_set = {t for t in trend_ok_set if t.endswith(".KS")}
 
         # ROE 백분위 문턱 - min_roe(절대값) 대신 그날 후보군 안에서의 상대 순위를
         # 본다. RS85(RS등급 상위 백분위)는 순수 개선이었는데 min_roe/min_roic(절대
