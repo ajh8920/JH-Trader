@@ -1829,6 +1829,50 @@ def flow_net_sum(flow_row, as_of_date, lookback_days=20):
     return sum(inst_net[lo:hi]) + sum(foreign_net[lo:hi])
 
 
+# ── 외국인 보유비율(지분율, data_pipeline/fetch_foreign_ownership_kr.py, pykrx) ──
+# flow_net_sum(외국인+기관 "거래대금" 기준, 하루하루의 돈 흐름)과는 다른 축 -
+# "외국인이 전체 주식 중 몇 %를 들고 있는가" 자체의 추세(2026-10-14, 사용자
+# 제안: "외국인 비율 감소율 같은 데이터는 어떤가요"). 거래대금은 하루 변동이
+# 크지만 지분율은 천천히 움직여 더 "확신 있는" 이탈/누적 신호일 수 있다는
+# 가설.
+def load_foreign_ownership_rows(parquet_path):
+    """{종목코드: (날짜 오름차순 리스트, 외국인 지분율(%) 리스트)}. 다른
+    로더들과 같은 패턴 - 백테스트 시작 전 한 번만 로드해둔다."""
+    import pandas as pd
+
+    path = Path(parquet_path)
+    if not path.exists():
+        return {}
+    df = pd.read_parquet(path)
+    df = df.sort_values("date")
+    out = {}
+    for code, g in df.groupby("code"):
+        out[code] = (
+            g["date"].dt.strftime("%Y-%m-%d").tolist(),
+            g["foreign_pct"].tolist(),
+        )
+    return out
+
+
+def foreign_ownership_change(row, as_of_date, lookback_days=20):
+    """as_of_date 기준, lookback_days 전 대비 외국인 지분율 변화(%p, 음수=감소).
+    row는 load_foreign_ownership_rows()가 반환한 (dates, foreign_pct) 튜플
+    하나. 둘 중 하나라도 데이터가 없으면 None(필터에서 통과 처리)."""
+    if row is None:
+        return None
+    dates, pct = row
+    if not dates:
+        return None
+    hi = bisect.bisect_right(dates, as_of_date) - 1
+    if hi < 0:
+        return None
+    lo_date = (datetime.fromisoformat(as_of_date) - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    lo = bisect.bisect_right(dates, lo_date) - 1
+    if lo < 0:
+        return None
+    return pct[hi] - pct[lo]
+
+
 def financial_quality(rows_for_code, as_of_date):
     """as_of_date까지 공시된 재무로 수익성·성장성 지표를 계산한다.
 
@@ -2188,7 +2232,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       elder_channel_exit=False, elder_channel_ma_period=22, elder_channel_atr_mult=2.5,
                       elder_channel_partial_fraction=0.0,
                       use_safezone_trail=False, safezone_lookback=20, safezone_coeff=2.5,
-                      kr_exchange_filter=None):
+                      kr_exchange_filter=None,
+                      foreign_ownership_by_code=None, foreign_exit_decline_pct=None,
+                      foreign_exit_lookback_days=20, foreign_exit_persist_days=1):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2428,6 +2474,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     더 빠른 시장폭 신호 - 150/200일선(장기) 대신 50일선 하나만 본다. 2026-10-12
     "CAGR 50% 계속 시도"에 따라 신규 추가, breadth_min_pct 단독보다 더 이른
     경보가 가능한지 시험용.
+
+    foreign_ownership_by_code/foreign_exit_decline_pct/foreign_exit_lookback_days/
+    foreign_exit_persist_days(기본 None=비활성, 2026-10-14 신규)는
+    foreign_ownership_change docstring 참고 - rank_exit_top_n과 같은 구조로
+    "외국인 지분율이 lookback_days 전보다 문턱(%p, 음수) 이상 빠지면" N일
+    연속 유지 시 청산한다.
 
     kr_exchange_filter(기본 None=비활성, "KOSDAQ"/"KOSPI", 2026-10-14 신규)는
     trend_ok_set 계산 바로 뒤 docstring 참고 - 거래소(코스피/코스닥)로
@@ -3208,6 +3260,27 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     pos["rankMissStreak"] = 0
                 if pos["rankMissStreak"] >= rank_exit_persist_days:
                     trade, proceeds = _full_exit(pos, closes[i], dates[i], "rankDrop")
+                    trades.append(trade)
+                    cash += proceeds
+                    del positions[ticker]
+                    continue
+            # 외국인 지분율 이탈 청산(foreign_exit_decline_pct, 2026-10-14 신규) -
+            # rank_exit_top_n("RS 순위가 식으면 보유를 끊는다")이 통했으니 같은
+            # 논리를 "외국인이 발을 빼면 보유를 끊는다"에도 적용(사용자 제안).
+            # foreign_ownership_change가 lookback_days 전 대비 하락폭이 문턱보다
+            # 크면(더 많이 빠졌으면) 이탈로 본다. 데이터 없으면(None) 통과 처리
+            # (다른 선택적 지표들과 같은 원칙 - 필터를 켰다고 백테스트 전체가
+            # 막히면 안 된다).
+            if foreign_exit_decline_pct is not None and foreign_ownership_by_code:
+                code_f = pos["code"]
+                chg = foreign_ownership_change(foreign_ownership_by_code.get(code_f), dates[i],
+                                                foreign_exit_lookback_days)
+                if chg is not None and chg <= foreign_exit_decline_pct:
+                    pos["foreignDeclineStreak"] = pos.get("foreignDeclineStreak", 0) + 1
+                else:
+                    pos["foreignDeclineStreak"] = 0
+                if pos["foreignDeclineStreak"] >= foreign_exit_persist_days:
+                    trade, proceeds = _full_exit(pos, closes[i], dates[i], "foreignExit")
                     trades.append(trade)
                     cash += proceeds
                     del positions[ticker]
