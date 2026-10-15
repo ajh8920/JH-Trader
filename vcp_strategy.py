@@ -2294,7 +2294,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       proximity_rank_weight=0.0, depth_rank_weight=0.0, clv_rank_weight=0.0,
                       foreign_rank_weight=0.0, foreign_rank_lookback_days=60,
                       loss_streak_halt_count=None, loss_streak_halt_days=10,
-                      equity_dd_derisk_threshold_pct=None, equity_dd_derisk_factor=0.5):
+                      equity_dd_derisk_threshold_pct=None, equity_dd_derisk_factor=0.5,
+                      vol_regime_enabled=False, vol_lookback_days=20, vol_threshold_pct=25.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2600,7 +2601,15 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     threshold_pct 이상 빠져 있으면, 그 상태에서 신규 매수하는 비중을
     factor만큼 줄인다"(회복 기회는 보존하면서 드로다운이 더 커지는 것만
     억제). peak_equity는 이미 MDD 계산용으로 매일 갱신되던 값을 그대로
-    재사용한다.
+    재사용한다. 105단계에서 MDD가 전혀 안 바뀌어 기각(V11의 MDD는 드로다운
+    중 신규진입이 아니라 이미 보유 중이던 포지션의 하락이 원인임을 확인),
+    기본 비활성 유지.
+
+    vol_regime_enabled/vol_lookback_days/vol_threshold_pct(기본 False/20/25.0,
+    105단계 다음, 2026-10-16 신규)는 코스피 지수의 최근 vol_lookback_days일
+    일간수익률 표준편차(연율화 %)가 vol_threshold_pct를 넘으면 신규진입을
+    막는다 - regime_ok(방향: 상승/하락)와 독립적인 축으로, "방향과 무관하게
+    흔들리는 구간"(국면 신호로는 안 걸리는 chop)을 걸러낼 수 있는지 시험.
 
     foreign_rank_weight/foreign_rank_lookback_days(기본 0.0/60, 102단계 다음,
     2026-10-15 신규)는 89단계(foreignExit - 보유 중 지분율 "감소"를 보는
@@ -2836,6 +2845,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     kospi_vs_kosdaq_false_streak = 0
     oil_ok = True
     earnings_blackout_ok = True
+    vol_ok = True
     eff_pyramid_max_count = pyramid_max_count
     eff_chandelier_atr_mult = chandelier_atr_mult
     eff_max_initial_risk_pct = max_initial_risk_pct
@@ -3566,6 +3576,26 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             md = (int(rd[5:7]), int(rd[8:10]))
             earnings_blackout_ok = not any(start <= md <= end for start, end in EARNINGS_BLACKOUT_WINDOWS)
 
+        # 변동성 국면 필터(vol_regime_enabled, 2026-10-16 신규, MDD 축소 탐색) -
+        # 105단계 진단(최대낙폭 구간 2016-04-12~08-10)에서 initialStop 5건이
+        # 코스피 자체는 regime_ok/breadth 문턱을 넘길 만큼 괜찮았는데도 발생했다
+        # - 방향(하락)이 아니라 "변동성"(안 좋은 쪽으로든 좋은 쪽으로든 흔들림)
+        # 자체가 소형주 눌림목 후속 성공률을 깎는다는 가설. 코스피 지수의
+        # vol_lookback_days일 일간수익률 표준편차(연율화 %)가 문턱을 넘으면
+        # 신규진입을 멈춘다 - 방향이 아니라 변동폭만 보므로 regime_ok(방향)와는
+        # 독립적인 축이다.
+        vol_ok = True
+        if vol_regime_enabled and regime_dates:
+            ri_v = bisect.bisect_right(regime_dates, rd) - 1
+            if ri_v - vol_lookback_days >= 0:
+                window = regime_closes[ri_v - vol_lookback_days:ri_v + 1]
+                rets = [window[j] / window[j - 1] - 1 for j in range(1, len(window)) if window[j - 1]]
+                if rets:
+                    mean_r = sum(rets) / len(rets)
+                    var_r = sum((x - mean_r) ** 2 for x in rets) / len(rets)
+                    annualized_vol_pct = (var_r ** 0.5) * (252 ** 0.5) * 100
+                    vol_ok = annualized_vol_pct <= vol_threshold_pct
+
         # 연속 손실 서킷브레이커(loss_streak_halt_count, 2026-10-16 신규, MDD
         # 축소 전용 탐색) - V11 실측 MDD(-29.43%)가 전부 2016년 한 해, 그중에서도
         # 7~10월 initialStop 6연속(-4.5~-7.9%)에서 나왔다(102단계 연도별 분해).
@@ -3634,7 +3664,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         entries_breadth_ok = (gate_entries_breadth_min_pct is None or breadth_pct is None
                                or breadth_pct >= gate_entries_breadth_min_pct)
         if ((regime_ok or not gate_entries_on_regime) and entries_breadth_ok and oil_ok
-                and earnings_blackout_ok and loss_streak_ok):
+                and earnings_blackout_ok and loss_streak_ok and vol_ok):
             open_slots = eff_max_positions - len(positions)
             if open_slots > 0:
                 candidates = []
