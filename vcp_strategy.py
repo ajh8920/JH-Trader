@@ -2291,7 +2291,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       foreign_exit_lookback_days=20, foreign_exit_persist_days=1,
                       negative_catalyst_by_code=None, negative_catalyst_exit_lookback_days=None,
                       max_sector_concurrent=None, earnings_season_blackout=False,
-                      proximity_rank_weight=0.0, depth_rank_weight=0.0, clv_rank_weight=0.0):
+                      proximity_rank_weight=0.0, depth_rank_weight=0.0, clv_rank_weight=0.0,
+                      foreign_rank_weight=0.0, foreign_rank_lookback_days=60,
+                      loss_streak_halt_count=None, loss_streak_halt_days=10):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2581,6 +2583,22 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     마감) - 당일 매수세가 얼마나 강하게 들어왔는지를 보는 고전적 기술지표
     (Chaikin A/D Line의 구성요소). proximity/depth_rank_weight와 같은
     "가격구조 순위 블렌드" 계열이지만 이번엔 일중 가격 행동을 본다.
+
+    loss_streak_halt_count/loss_streak_halt_days(기본 None=비활성/10, MDD 축소
+    탐색, 2026-10-16 신규)는 "최근 loss_streak_halt_count건이 전부 손실이면
+    마지막 청산일로부터 loss_streak_halt_days일 동안 신규 진입을 멈춘다"는
+    서킷브레이커 - 달력/카테고리 기준(섹터상한·어닝블랙아웃, 전부 역효과)이
+    아니라 실제 손실 발생에 반응한다는 점이 다르다. trades 리스트 끝부분만
+    읽어 판정하므로(_full_exit 호출부 18곳을 안 건드림) 구현이 안전하다.
+
+    foreign_rank_weight/foreign_rank_lookback_days(기본 0.0/60, 102단계 다음,
+    2026-10-15 신규)는 89단계(foreignExit - 보유 중 지분율 "감소"를 보는
+    청산 신호, 단일거래 과최적화로 기각)와 데이터는 같지만 용도가 다르다 -
+    여기서는 진입 후보 "순위"에 쓴다. quality_rank_weight와 같은 블렌드 축으로,
+    foreign_rank_lookback_days 동안 외국인 지분율이 그날 trend_ok_set 전체
+    중 상대적으로 더 많이 늘어난 후보(percentile)일수록 가점을 준다. 89단계가
+    "떠나면 끊는다"였다면 이건 "들어오면 더 담는다" - 같은 신호를 반대
+    방향·반대 용도로 재시도하는 것이라 결과가 다를 수 있다.
 
     kr_exchange_filter(기본 None=비활성, "KOSDAQ"/"KOSPI", 2026-10-14 신규)는
     trend_ok_set 계산 바로 뒤 docstring 참고 - 거래소(코스피/코스닥)로
@@ -2941,6 +2959,26 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 if min_flow_percentile is not None:
                     idx = min(int(len(flow_vals) * min_flow_percentile / 100), len(flow_vals) - 1)
                     flow_percentile_cutoff = flow_vals[idx]
+
+        # 외국인 지분율 증가 추세 백분위(foreign_rank_weight, 102단계 다음,
+        # 2026-10-15 신규) - foreignExit(89단계, 보유 중 "지분율 감소"를 보는
+        # 청산 신호, 단일거래 과최적화로 기각)와 달리 이건 진입 후보 "순위"에
+        # 쓴다 - quality_rank_weight와 같은 블렌드 축으로, "최근 foreign_rank_
+        # lookback_days 동안 외국인 지분율이 더 많이 늘어난 후보일수록 가점"을
+        # 준다. flow_rank_weight와 같은 이유로 percentile만 쓴다(종목마다
+        # 지분율의 절대 변동폭 스케일이 달라 원시값 비교는 의미가 없다).
+        foreign_vals_sorted = []
+        if foreign_rank_weight and foreign_ownership_by_code:
+            foreign_vals = []
+            for t in trend_ok_set:
+                code_t, *_ = info_by_ticker.get(t, (t,))
+                v = foreign_ownership_change(foreign_ownership_by_code.get(code_t), rd,
+                                              foreign_rank_lookback_days)
+                if v is not None:
+                    foreign_vals.append(v)
+            if foreign_vals:
+                foreign_vals.sort()
+                foreign_vals_sorted = foreign_vals
 
         # 12개월 수익률 백분위 - 위 ROE 백분위와 같은 논리를 가격 모멘텀에
         # 적용한 것(38차 신규). evan_stage2의 min_return_12m(절대 문턱, 40%)은
@@ -3517,6 +3555,21 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             md = (int(rd[5:7]), int(rd[8:10]))
             earnings_blackout_ok = not any(start <= md <= end for start, end in EARNINGS_BLACKOUT_WINDOWS)
 
+        # 연속 손실 서킷브레이커(loss_streak_halt_count, 2026-10-16 신규, MDD
+        # 축소 전용 탐색) - V11 실측 MDD(-29.43%)가 전부 2016년 한 해, 그중에서도
+        # 7~10월 initialStop 6연속(-4.5~-7.9%)에서 나왔다(102단계 연도별 분해).
+        # 섹터상한·어닝블랙아웃처럼 미리 정한 달력/카테고리 규칙이 아니라,
+        # "실제로 연속 손실이 났을 때만" 반응하는 방식 - 18곳의 개별 청산 지점을
+        # 건드리지 않고, 이미 쌓인 trades 리스트의 끝부분만 읽어서 판정한다
+        # (append 순서가 거의 날짜 순이라 "가장 최근 N건"으로 충분히 근사).
+        loss_streak_ok = True
+        if loss_streak_halt_count is not None and len(trades) >= loss_streak_halt_count:
+            recent = trades[-loss_streak_halt_count:]
+            if all(t["pnlPct"] < 0 for t in recent):
+                days_since = (datetime.fromisoformat(rd) - datetime.fromisoformat(recent[-1]["exitDate"])).days
+                if days_since < loss_streak_halt_days:
+                    loss_streak_ok = False
+
         # regime_adaptive_params(국면 적응형 파라미터, 2026-10-09 신규) - 국면별
         # 오버라이드를 적용해 effective 값을 갱신한다. pyramid_max_count/
         # chandelier_atr_mult는 다음 rd의 "1) 포지션 처리"에서 쓰여 하루 지연되고,
@@ -3569,7 +3622,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         # 리스크 추가)에도 적용해보는 실험.
         entries_breadth_ok = (gate_entries_breadth_min_pct is None or breadth_pct is None
                                or breadth_pct >= gate_entries_breadth_min_pct)
-        if (regime_ok or not gate_entries_on_regime) and entries_breadth_ok and oil_ok and earnings_blackout_ok:
+        if ((regime_ok or not gate_entries_on_regime) and entries_breadth_ok and oil_ok
+                and earnings_blackout_ok and loss_streak_ok):
             open_slots = eff_max_positions - len(positions)
             if open_slots > 0:
                 candidates = []
@@ -3790,6 +3844,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                                            rd, flow_lookback_days)
                         if fv is not None:
                             flow_score = bisect.bisect_right(flow_vals_sorted, fv) / len(flow_vals_sorted)
+                    foreign_score = None
+                    if foreign_rank_weight and foreign_vals_sorted:
+                        code_f2, *_ = info_by_ticker.get(ticker, (ticker,))
+                        fcv = foreign_ownership_change(
+                            foreign_ownership_by_code.get(code_f2) if foreign_ownership_by_code else None,
+                            rd, foreign_rank_lookback_days)
+                        if fcv is not None:
+                            foreign_score = bisect.bisect_right(foreign_vals_sorted, fcv) / len(foreign_vals_sorted)
                     # min_blend_score(기본 None=비활성, 2026-10-11 추가) - min_quality_score와
                     # 달리 품질 단독이 아니라 _rank_key와 동일한 RS+품질+저평가 블렌드 전체
                     # 점수로 하위 구간을 잘라낸다. jpex_v7 실거래 231건을 블렌드 점수
@@ -3806,7 +3868,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             excluded_low_blend += 1
                             continue
                     candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality, value_score, is_continuation,
-                                       flow_score, pb_depth, clv))
+                                       flow_score, pb_depth, clv, foreign_score))
 
                 # 슬롯보다 후보가 많을 때 누구를 먼저 담을지 정하는 순위.
                 # quality_rank_weight·value_rank_weight 둘 다 0이면 기존대로
@@ -3819,7 +3881,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 def _rank_key(c):
                     rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight - sector_rank_weight
                                - flow_rank_weight - proximity_rank_weight - depth_rank_weight
-                               - clv_rank_weight)
+                               - clv_rank_weight - foreign_rank_weight)
                     rs = (c[1].get("rsRating") or 0) / 99
                     q = c[5] if c[5] is not None else 0.5
                     v = c[6] if c[6] is not None else 0.5
@@ -3830,10 +3892,11 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     p = max(0.0, min(1.0, 1 - pct_below / 25)) if pct_below is not None else 0.5
                     d = max(0.0, min(1.0, 1 - c[9] / max_pullback_pct)) if max_pullback_pct else 0.5
                     cl = c[10] if c[10] is not None else 0.5
+                    fr = c[11] if c[11] is not None else 0.5
                     return (-(rs * rs_w + q * quality_rank_weight + v * value_rank_weight
                               + s * sector_rank_weight + f * flow_rank_weight
                               + p * proximity_rank_weight + d * depth_rank_weight
-                              + cl * clv_rank_weight), c[0])
+                              + cl * clv_rank_weight + fr * foreign_rank_weight), c[0])
 
                 candidates.sort(key=_rank_key)
                 held_sectors = {}
@@ -3842,7 +3905,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         sec_pt = info_by_ticker.get(pt, (None, None, None, None))[3]
                         if sec_pt is not None:
                             held_sectors[sec_pt] = held_sectors.get(sec_pt, 0) + 1
-                for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score, is_continuation, flow_score, pb_depth, clv in candidates:
+                for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score, is_continuation, flow_score, pb_depth, clv, foreign_score in candidates:
                     if open_slots <= 0:
                         break
                     if max_sector_concurrent is not None:
