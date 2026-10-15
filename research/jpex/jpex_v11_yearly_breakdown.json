@@ -1,0 +1,20 @@
+{
+  "strategy": "JPEX_V11_PARAMS",
+  "period": "2016-01-01~2026-10-15",
+  "seed": 500000000,
+  "overall": {"cagr_pct": 41.52, "mdd_pct": -29.43, "calmar": 1.411, "win_rate_pct": 35.9, "profit_loss_ratio": 5.18, "trades": 192, "avg_hold_days": 8.3},
+  "by_year": [
+    {"year": 2016, "start_value": 500000000, "end_value": 532000000, "return_pct": 6.33, "intra_year_mdd_pct": -29.43, "trades": 26, "win_rate_pct": 30.8, "avg_pnl_pct": -0.00},
+    {"year": 2017, "start_value": 532000000, "end_value": 691000000, "return_pct": 30.03, "intra_year_mdd_pct": -12.56, "trades": 6, "win_rate_pct": 50.0, "avg_pnl_pct": 9.28},
+    {"year": 2018, "start_value": 691000000, "end_value": 1393000000, "return_pct": 101.48, "intra_year_mdd_pct": -24.01, "trades": 29, "win_rate_pct": 34.5, "avg_pnl_pct": 5.50},
+    {"year": 2019, "start_value": 1393000000, "end_value": 1311000000, "return_pct": -5.89, "intra_year_mdd_pct": -6.70, "trades": 19, "win_rate_pct": 31.6, "avg_pnl_pct": -1.25},
+    {"year": 2020, "start_value": 1311000000, "end_value": 2778000000, "return_pct": 111.96, "intra_year_mdd_pct": -16.83, "trades": 11, "win_rate_pct": 36.4, "avg_pnl_pct": 15.57},
+    {"year": 2021, "start_value": 2778000000, "end_value": 5207000000, "return_pct": 87.41, "intra_year_mdd_pct": -20.30, "trades": 17, "win_rate_pct": 41.2, "avg_pnl_pct": 8.38},
+    {"year": 2022, "start_value": 5207000000, "end_value": 5049000000, "return_pct": -3.03, "intra_year_mdd_pct": -3.39, "trades": 14, "win_rate_pct": 42.9, "avg_pnl_pct": -0.62},
+    {"year": 2023, "start_value": 5049000000, "end_value": 5781000000, "return_pct": 14.50, "intra_year_mdd_pct": -11.33, "trades": 25, "win_rate_pct": 32.0, "avg_pnl_pct": 1.26},
+    {"year": 2024, "start_value": 5781000000, "end_value": 11053000000, "return_pct": 91.20, "intra_year_mdd_pct": -24.06, "trades": 15, "win_rate_pct": 26.7, "avg_pnl_pct": 13.87},
+    {"year": 2025, "start_value": 11053000000, "end_value": 11016000000, "return_pct": -0.34, "intra_year_mdd_pct": -13.09, "trades": 21, "win_rate_pct": 33.3, "avg_pnl_pct": 7.41},
+    {"year": 2026, "start_value": 11016000000, "end_value": 21131000000, "return_pct": 91.82, "intra_year_mdd_pct": -14.71, "trades": 9, "win_rate_pct": 66.7, "avg_pnl_pct": 17.82}
+  ],
+  "note": "2026년은 10-15까지만 포함(연중). intra_year_mdd_pct는 그 해 1월 1일 직전 평가치를 피크 시작점으로 잡은 연중 최대낙폭(전년 이월 포함)."
+}
