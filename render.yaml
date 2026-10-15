@@ -28,3 +28,7 @@ services:
         sync: false
       - key: RESEND_FROM
         sync: false
+      # 투자 대가 페르소나 토론 기능용 Anthropic API 키 (.env.example 참고 - 비워두면
+      # 이 기능만 조용히 꺼짐)
+      - key: ANTHROPIC_API_KEY
+        sync: false

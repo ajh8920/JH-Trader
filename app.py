@@ -1009,6 +1009,100 @@ def kr_quant_backtest_status(job_id):
     return jsonify({"status": job.status})
 
 
+# ─── 투자 대가 페르소나 토론 API ────────────────────────────────────────────────
+# Anthropic API 호출이 몇 초~수십 초 걸릴 수 있어 QuantBacktestJob과 같은 이유로
+# job+폴링 패턴을 쓴다(investor_debate.py 모듈 docstring 참고).
+
+def _run_persona_debate_job(job_id, persona_a, persona_b, topic):
+    from investor_debate import generate_debate
+    from models import PersonaDebateJob
+
+    with app.app_context():
+        job = db.session.get(PersonaDebateJob, job_id)
+        if not job:
+            return
+        job.status = "running"
+        db.session.commit()
+        try:
+            turns = generate_debate(persona_a, persona_b, topic)
+        except Exception as e:
+            app.logger.exception("투자 대가 토론 생성 실패: job=%s", job_id)
+            job = db.session.get(PersonaDebateJob, job_id)
+            job.status = "error"
+            job.error = str(e)
+            db.session.commit()
+            return
+
+        job = db.session.get(PersonaDebateJob, job_id)
+        job.status = "done"
+        job.result_json = json.dumps({"turns": turns}, ensure_ascii=False)
+        db.session.commit()
+
+
+@app.route("/api/debate/start", methods=["POST"])
+@login_required
+@limiter.limit("5 per minute")
+def persona_debate_start():
+    from investor_debate import PERSONAS
+    from models import PersonaDebateJob
+
+    body = request.json or {}
+    persona_a = body.get("personaA")
+    persona_b = body.get("personaB")
+    topic = (body.get("topic") or "").strip()
+
+    if persona_a not in PERSONAS or persona_b not in PERSONAS:
+        return jsonify({"error": "선택한 인물이 올바르지 않습니다"}), 400
+    if persona_a == persona_b:
+        return jsonify({"error": "서로 다른 두 인물을 선택하세요"}), 400
+    if not topic:
+        return jsonify({"error": "토론 주제를 입력하세요"}), 400
+    if len(topic) > 300:
+        return jsonify({"error": "토론 주제는 300자 이내로 입력하세요"}), 400
+
+    job = PersonaDebateJob(
+        user_id=current_user.id, persona_a=persona_a, persona_b=persona_b,
+        topic=topic, status="pending",
+    )
+    db.session.add(job)
+    db.session.commit()
+
+    threading.Thread(
+        target=_run_persona_debate_job,
+        args=(job.id, persona_a, persona_b, topic),
+        daemon=True,
+    ).start()
+
+    return jsonify({"jobId": job.id})
+
+
+@app.route("/api/debate/<int:job_id>")
+@login_required
+def persona_debate_status(job_id):
+    from models import PersonaDebateJob
+
+    job = PersonaDebateJob.query.filter_by(id=job_id, user_id=current_user.id).first()
+    if not job:
+        return jsonify({"error": "작업을 찾을 수 없습니다"}), 404
+
+    if job.status == "done":
+        return jsonify({"status": "done", "result": json.loads(job.result_json)})
+    if job.status == "error":
+        return jsonify({"status": "error", "error": job.error})
+    return jsonify({"status": job.status})
+
+
+@app.route("/api/debate/personas")
+@login_required
+def persona_debate_personas():
+    from investor_debate import PERSONAS
+
+    return jsonify({
+        key: {"name": p["name"], "subtitle": p["subtitle"]}
+        for key, p in PERSONAS.items()
+    })
+
+
 # ─── 트렌드 템플릿 스크리닝 API ────────────────────────────────────────────────
 # 미너비니류 트렌드 템플릿(8개 조건)으로 국내/미국 종목을 스크리닝한다. 결과는
 # 백그라운드 스레드(trend_screen_refresher)가 미리 계산해둔 캐시를 읽기만 해서
@@ -2090,6 +2184,7 @@ for _view in (
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
     admin_set_trade_alert_email, admin_test_trade_alert_email, cron_run_daily_batch,
+    persona_debate_start,
 ):
     csrf.exempt(_view)
 

@@ -733,6 +733,19 @@ const I18N = {
   tabLab: { en: 'Lab', ko: '실험실' },
   tabKrSwing: { en: 'KR Swing', ko: '국내 스윙' },
   tabKrQuant: { en: 'KR Quant', ko: '국내 퀀트' },
+  tabDebate: { en: 'Debate', ko: '투자 대가 토론' },
+  debateSetupTitle: { en: 'Choose your debaters', ko: '토론자 선택' },
+  debatePersonaALabel: { en: 'Debater A', ko: '토론자 A' },
+  debatePersonaBLabel: { en: 'Debater B', ko: '토론자 B' },
+  debateTopicLabel: { en: 'Topic', ko: '토론 주제' },
+  debateTopicPlaceholder: { en: 'e.g. Should I buy NVIDIA now, and at what price?', ko: '예: 지금 엔비디아를 사도 괜찮을까? 얼마에?' },
+  startDebateBtn: { en: 'Start debate', ko: '토론 시작' },
+  debateDisclaimer: {
+    en: 'The generated debate is an educational role-play based on each investor’s publicly known philosophy, not their actual words or financial advice.',
+    ko: '생성되는 토론은 실제 인물의 발언이 아니라 그들의 공개된 투자 철학을 바탕으로 한 교육용 롤플레이이며, 투자 자문이 아닙니다.',
+  },
+  runningDebate: { en: 'Generating debate…', ko: '토론 생성 중…' },
+  debateTakingLong: { en: 'This is taking longer than expected. Please try again shortly.', ko: '예상보다 오래 걸리고 있습니다. 잠시 후 다시 시도해주세요.' },
   tabStrategy: { en: 'Strategy', ko: '전략' },
   strategySelectHint: { en: 'Select a strategy on the left.', ko: '왼쪽에서 전략을 선택하세요.' },
   strategyCommonTitle: { en: 'Common to all strategies', ko: '전략 공통 정보' },
@@ -893,6 +906,7 @@ function switchTab(name) {
   if (name === 'screenbt') initScreeningBacktestTab();
   if (name === 'papertrade') loadPaperTrading();
   if (name === 'strategy') initStrategyTab();
+  if (name === 'debate') initDebateTab();
 }
 
 document.addEventListener('DOMContentLoaded', () => loadMacro());
@@ -5693,4 +5707,82 @@ async function toggleStrategyTrades(key, boxId) {
   } catch (e) {
     box.innerHTML = `<p class="strat-empty">${escapeHtml(e.message)}</p>`;
   }
+}
+
+// ─── 투자 대가 페르소나 토론 ──────────────────────────────────────────────────
+
+async function initDebateTab() {
+  const selA = document.getElementById('debate-persona-a');
+  const selB = document.getElementById('debate-persona-b');
+  if (!selA || !selB || selA.options.length > 0) return; // 이미 채워져 있으면 다시 안 받음
+  try {
+    const personas = await api('GET', '/api/debate/personas');
+    const optionsHtml = Object.entries(personas)
+      .map(([key, p]) => `<option value="${escapeHtml(key)}">${escapeHtml(p.name)} - ${escapeHtml(p.subtitle)}</option>`)
+      .join('');
+    selA.innerHTML = optionsHtml;
+    selB.innerHTML = optionsHtml;
+    const keys = Object.keys(personas);
+    if (keys.length > 1) selB.value = keys[1];
+  } catch (e) {
+    selA.innerHTML = `<option>${escapeHtml(e.message)}</option>`;
+  }
+}
+
+async function startPersonaDebate() {
+  const personaA = document.getElementById('debate-persona-a').value;
+  const personaB = document.getElementById('debate-persona-b').value;
+  const topic = document.getElementById('debate-topic').value.trim();
+  const el = document.getElementById('debate-result');
+
+  if (!personaA || !personaB || personaA === personaB) { alert('서로 다른 두 토론자를 선택하세요'); return; }
+  if (!topic) { alert('토론 주제를 입력하세요'); return; }
+
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('runningDebate')}</div>`;
+  try {
+    const { jobId } = await api('POST', '/api/debate/start', { personaA, personaB, topic });
+    await pollPersonaDebateJob(jobId, el);
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
+  }
+}
+
+async function pollPersonaDebateJob(jobId, el) {
+  const maxAttempts = 30; // 2초 간격 최대 1분 - LLM 호출 1회라 퀀트 백테스트보다 훨씬 빠름
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    await new Promise(r => setTimeout(r, 2000));
+    let data;
+    try {
+      data = await api('GET', `/api/debate/${jobId}`);
+    } catch (e) {
+      el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
+      return;
+    }
+    if (data.status === 'done') {
+      renderDebateResult(data.result);
+      return;
+    }
+    if (data.status === 'error') {
+      el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(data.error || '토론 생성 중 오류가 발생했습니다')}</span></div>`;
+      return;
+    }
+  }
+  el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(t('debateTakingLong'))}</span></div>`;
+}
+
+function renderDebateResult(result) {
+  const el = document.getElementById('debate-result');
+  const turns = result.turns || [];
+  const speakers = [...new Set(turns.map(tn => tn.speaker))];
+  el.innerHTML = `
+    <div class="card debate-transcript">
+      ${turns.map(tn => {
+        const side = speakers.indexOf(tn.speaker) === 0 ? 'debate-left' : 'debate-right';
+        return `
+        <div class="debate-turn ${side}">
+          <div class="debate-speaker">${escapeHtml(tn.speaker)}</div>
+          <div class="debate-bubble">${escapeHtml(tn.text)}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
 }

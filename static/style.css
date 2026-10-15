@@ -277,17 +277,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-icon:hover { background: var(--red-bg); color: var(--red); }
 
 /* Inputs */
-input, select {
+input, select, textarea {
   padding: 8px 12px; border: 1px solid var(--border-strong);
   border-radius: var(--radius-md); background: var(--bg); color: var(--text);
   font-family: inherit; font-size: 14px; outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-input:focus, select:focus {
+input:focus, select:focus, textarea:focus {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px var(--blue-bg);
 }
-input::placeholder { color: var(--text-muted); }
+input::placeholder, textarea::placeholder { color: var(--text-muted); }
 
 /* 날짜 입력(모든 탭 공통) - 브라우저 기본 팝업 캘린더는 DOM 밖에서 그려져
    CSS로 직접 색을 입힐 수 없지만, color-scheme을 현재 테마에 맞춰주면
@@ -504,7 +504,8 @@ input[type="date"]:hover { border-color: var(--border-strong); }
 .bt-form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; min-width: 0; }
 .bt-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .bt-field label { font-size: 11px; color: var(--text-secondary); }
-.bt-field input, .bt-field select { width: 100%; min-width: 0; }
+.bt-field input, .bt-field select, .bt-field textarea { width: 100%; min-width: 0; }
+.bt-field textarea { resize: vertical; font-family: inherit; }
 .ks-autocomplete { position: relative; }
 .ks-autocomplete-list {
   position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px;
@@ -952,3 +953,13 @@ input[type="date"]:hover { border-color: var(--border-strong); }
 .strat-trades-table tbody tr:hover { background: var(--bg-hover, var(--blue-bg)); }
 .strat-pnl-pos { color: var(--green); font-weight: 600; }
 .strat-pnl-neg { color: var(--red); font-weight: 600; }
+
+/* ── 투자 대가 페르소나 토론 ──────────────────────────────────────────── */
+.debate-transcript { display: flex; flex-direction: column; gap: 14px; }
+.debate-turn { display: flex; flex-direction: column; max-width: 80%; }
+.debate-turn.debate-left { align-self: flex-start; align-items: flex-start; }
+.debate-turn.debate-right { align-self: flex-end; align-items: flex-end; }
+.debate-speaker { font-size: 11px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; padding: 0 2px; }
+.debate-bubble { padding: 10px 14px; border-radius: var(--radius-lg); font-size: 13px; line-height: 1.55; white-space: pre-wrap; }
+.debate-turn.debate-left .debate-bubble { background: var(--bg-tertiary); color: var(--text); border-bottom-left-radius: 2px; }
+.debate-turn.debate-right .debate-bubble { background: var(--blue); color: var(--blue-ink); border-bottom-right-radius: 2px; }

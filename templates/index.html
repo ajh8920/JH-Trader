@@ -87,6 +87,7 @@
       <button class="tab" data-tab="lab" onclick="switchTab('lab')" role="tab"><i class="ti ti-flask" aria-hidden="true"></i> <span data-i18n="tabLab">Lab</span></button>
       <button class="tab" data-tab="krswing" onclick="switchTab('krswing')" role="tab"><i class="ti ti-chart-candle" aria-hidden="true"></i> <span data-i18n="tabKrSwing">KR Swing</span></button>
       <button class="tab" data-tab="krquant" onclick="switchTab('krquant')" role="tab"><i class="ti ti-filter" aria-hidden="true"></i> <span data-i18n="tabKrQuant">KR Quant</span></button>
+      <button class="tab" data-tab="debate" onclick="switchTab('debate')" role="tab"><i class="ti ti-messages" aria-hidden="true"></i> <span data-i18n="tabDebate">Debate</span></button>
       {% endif %}
     </nav>
 
@@ -454,6 +455,37 @@
           </div>
         </div>
         <div id="krquant-result"></div>
+      </section>
+      {% endif %}
+
+      {% if show_all_tabs %}
+      <!-- 투자 대가 페르소나 토론 - Anthropic API로 두 인물이 주제를 놓고 토론 -->
+      <section id="sec-debate" class="section">
+        <div class="card">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;" data-i18n="debateSetupTitle">Choose your debaters</div>
+          <div class="bt-form-grid">
+            <div class="bt-field">
+              <label for="debate-persona-a" data-i18n="debatePersonaALabel">Debater A</label>
+              <select id="debate-persona-a"></select>
+            </div>
+            <div class="bt-field">
+              <label for="debate-persona-b" data-i18n="debatePersonaBLabel">Debater B</label>
+              <select id="debate-persona-b"></select>
+            </div>
+          </div>
+          <div class="bt-field" style="margin-top:10px;">
+            <label for="debate-topic" data-i18n="debateTopicLabel">Topic</label>
+            <textarea id="debate-topic" rows="2" maxlength="300" data-i18n-placeholder="debateTopicPlaceholder" placeholder="e.g. Should I buy NVIDIA now, and at what price?"></textarea>
+          </div>
+          <button class="btn-primary" style="margin-top:12px;" onclick="startPersonaDebate()">
+            <i class="ti ti-player-play" aria-hidden="true"></i> <span data-i18n="startDebateBtn">Start debate</span>
+          </button>
+          <div class="info-box" style="margin-top:12px;">
+            <i class="ti ti-info-circle" aria-hidden="true"></i>
+            <span data-i18n="debateDisclaimer">생성되는 토론은 실제 인물의 발언이 아니라 그들의 공개된 투자 철학을 바탕으로 한 교육용 롤플레이이며, 투자 자문이 아닙니다.</span>
+          </div>
+        </div>
+        <div id="debate-result"></div>
       </section>
       {% endif %}
 

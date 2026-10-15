@@ -442,3 +442,24 @@ class PaperTrade(db.Model):
     exit_reason = db.Column(db.String(20), nullable=False)
     hold_days = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class PersonaDebateJob(db.Model):
+    """투자 대가 페르소나 토론 생성 작업. Anthropic API 호출이 몇 초~수십 초
+    걸릴 수 있어 QuantBacktestJob과 같은 이유로 요청-응답 안에서 바로 처리하지
+    않고 백그라운드 스레드로 돌린다. persona_a/persona_b는 investor_debate.py의
+    PERSONAS 딕셔너리 키(서버가 화이트리스트로 검증한 값만 저장).
+    """
+
+    __tablename__ = "persona_debate_jobs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    persona_a = db.Column(db.String(32), nullable=False)
+    persona_b = db.Column(db.String(32), nullable=False)
+    topic = db.Column(db.String(500), nullable=False)
+    status = db.Column(db.String(10), nullable=False, default="pending")  # pending|running|done|error
+    result_json = db.Column(db.Text)
+    error = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
