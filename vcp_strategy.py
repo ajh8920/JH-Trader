@@ -2293,7 +2293,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       max_sector_concurrent=None, earnings_season_blackout=False,
                       proximity_rank_weight=0.0, depth_rank_weight=0.0, clv_rank_weight=0.0,
                       foreign_rank_weight=0.0, foreign_rank_lookback_days=60,
-                      loss_streak_halt_count=None, loss_streak_halt_days=10):
+                      loss_streak_halt_count=None, loss_streak_halt_days=10,
+                      equity_dd_derisk_threshold_pct=None, equity_dd_derisk_factor=0.5):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2590,6 +2591,16 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     서킷브레이커 - 달력/카테고리 기준(섹터상한·어닝블랙아웃, 전부 역효과)이
     아니라 실제 손실 발생에 반응한다는 점이 다르다. trades 리스트 끝부분만
     읽어 판정하므로(_full_exit 호출부 18곳을 안 건드림) 구현이 안전하다.
+    104단계에서 MDD 개선 없이 CAGR만 깎여 기각(이미 발생한 손실은 진입을
+    막아도 사라지지 않는다는 한계), 기본 비활성 유지.
+
+    equity_dd_derisk_threshold_pct/equity_dd_derisk_factor(기본 None=비활성/0.5,
+    104단계 다음, 2026-10-16 신규)는 loss_streak_halt과 다른 방향의 MDD
+    축소 시도 - 진입을 막는 게 아니라 "지금 전체 계좌가 피크 대비
+    threshold_pct 이상 빠져 있으면, 그 상태에서 신규 매수하는 비중을
+    factor만큼 줄인다"(회복 기회는 보존하면서 드로다운이 더 커지는 것만
+    억제). peak_equity는 이미 MDD 계산용으로 매일 갱신되던 값을 그대로
+    재사용한다.
 
     foreign_rank_weight/foreign_rank_lookback_days(기본 0.0/60, 102단계 다음,
     2026-10-15 신규)는 89단계(foreignExit - 보유 중 지분율 "감소"를 보는
@@ -4043,6 +4054,15 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         risk_amount = equity_now * RISK_PCT_PER_TRADE / 100
                         shares = int(risk_amount // risk_per_share)
                         max_pos_value = _position_cap(seed, equity_now)
+                    # 드로다운 중 신규진입 축소(equity_dd_derisk_*, 2026-10-16 신규,
+                    # MDD 축소 전용 탐색) - loss_streak_halt(사후 반응, 이미 난 손실을
+                    # 못 줄임)와 달리 이건 "지금 이미 드로다운 중이면 새 포지션 크기를
+                    # 줄인다" - 손실 자체를 못 막아도 그 다음에 더 커지는 걸 수학적으로
+                    # 억제한다(진입을 막는 게 아니라 비중만 줄이므로 회복 기회는 보존).
+                    if equity_dd_derisk_threshold_pct is not None and peak_equity:
+                        dd_now = (equity_now / peak_equity - 1) * 100
+                        if dd_now <= equity_dd_derisk_threshold_pct:
+                            shares = int(shares * equity_dd_derisk_factor)
                     if max_pct_of_avg_trade_value is not None and avg_trade_val:
                         # 유동성 필터(min_avg_trade_value)는 "이 종목을 후보로 볼지"만
                         # 걸러낼 뿐, 실제로 그 종목에 얼마를 태울지는 제한하지 않는다 -
