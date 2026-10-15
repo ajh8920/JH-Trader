@@ -2295,7 +2295,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       foreign_rank_weight=0.0, foreign_rank_lookback_days=60,
                       loss_streak_halt_count=None, loss_streak_halt_days=10,
                       equity_dd_derisk_threshold_pct=None, equity_dd_derisk_factor=0.5,
-                      vol_regime_enabled=False, vol_lookback_days=20, vol_threshold_pct=25.0):
+                      vol_regime_enabled=False, vol_lookback_days=20, vol_threshold_pct=25.0,
+                      breadth_exit_min_pct=None, breadth_exit_min_r=1.25):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2610,6 +2611,16 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     일간수익률 표준편차(연율화 %)가 vol_threshold_pct를 넘으면 신규진입을
     막는다 - regime_ok(방향: 상승/하락)와 독립적인 축으로, "방향과 무관하게
     흔들리는 구간"(국면 신호로는 안 걸리는 chop)을 걸러낼 수 있는지 시험.
+    106단계에서 재앙으로 기각(CAGR 붕괴 + MDD도 악화), 기본 비활성 유지.
+
+    breadth_exit_min_pct/breadth_exit_min_r(기본 None/1.25, 107단계 다음,
+    2026-10-16 신규)는 exit_on_regime_loss/regime_exit_min_r의 "코스피
+    지수" 버전을 "개별 종목 전반 비율"(breadth)로 바꾼 평행 보유포지션
+    청산 메커니즘 - 기존 breadth_min_pct는 신규진입 게이트에만 쓰여
+    보유 포지션 처리(이보다 먼저 실행됨)에는 breadth가 전혀 반영되지
+    않는다는 구조적 공백(evaluated는 이미 계산돼 있어 재사용, 새 비용
+    없음)을 메운다. regime_exit_min_r과 같은 R배수 보호(이미 번 포지션은
+    안 끊음)를 그대로 적용한다.
 
     foreign_rank_weight/foreign_rank_lookback_days(기본 0.0/60, 102단계 다음,
     2026-10-15 신규)는 89단계(foreignExit - 보유 중 지분율 "감소"를 보는
@@ -2908,6 +2919,18 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             trend_ok_set = set(by_ticker.keys())
         else:
             trend_ok_set = {t for t, e in by_ticker.items() if e.get("allPass")}
+
+        # breadth_exit_min_pct(2026-10-16 신규, MDD 축소 탐색, 107단계 다음) -
+        # 기존 breadth_min_pct/breadth_pct(아래 3500번대 근방)는 "신규진입"
+        # 게이트에만 쓰이고, 보유 포지션 처리(바로 다음 블록)는 그보다 먼저
+        # 실행돼 breadth를 전혀 못 본다 - regime_ok(코스피 지수, 소수 대형주
+        # 좌우)는 괜찮은데 "개별 종목 전반"(breadth)은 이미 무너진 구간을
+        # 기존 청산 로직이 놓칠 수 있다는 뜻. evaluated는 이미 계산돼 있으므로
+        # 새 비용 없이 여기서 미리 breadth를 구해 보유 포지션 청산에도 쓴다.
+        breadth_pct_for_exit = None
+        if breadth_exit_min_pct is not None and evaluated:
+            breadth_pass_early = sum(1 for e in evaluated if e["conditions"].get("priceAboveMa150And200"))
+            breadth_pct_for_exit = breadth_pass_early / len(evaluated) * 100
 
         # kr_exchange_filter(기본 None=비활성, 2026-10-14 신규, 87단계 이후) -
         # V11 실측 거래의 수익 기여도를 거래소별로 까보니 코스닥(평균+12.0%,
@@ -3366,6 +3389,20 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                              if pos["riskPerShare"] else 0)
                 if regime_exit_min_r is None or current_r < regime_exit_min_r:
                     trade, proceeds = _full_exit(pos, closes[i], dates[i], "regimeExit")
+                    trades.append(trade)
+                    cash += proceeds
+                    del positions[ticker]
+                    continue
+            # breadth 이탈 청산(breadth_exit_min_pct, 2026-10-16 신규) - regimeExit의
+            # "코스피 지수" 버전을 "개별 종목 전반 비율"로 바꾼 평행 메커니즘.
+            # regime_exit_min_r과 같은 R배수 보호(이미 번 포지션은 안 끊음)를
+            # 그대로 적용한다(43단계에서 이 보호 로직 자체가 유효함을 확인했음).
+            if (breadth_exit_min_pct is not None and breadth_pct_for_exit is not None
+                    and breadth_pct_for_exit < breadth_exit_min_pct and not pos.get("isOverlay")):
+                current_r = ((closes[i] - pos["avgEntryPrice"]) / pos["riskPerShare"]
+                             if pos["riskPerShare"] else 0)
+                if breadth_exit_min_r is None or current_r < breadth_exit_min_r:
+                    trade, proceeds = _full_exit(pos, closes[i], dates[i], "breadthExit")
                     trades.append(trade)
                     cash += proceeds
                     del positions[ticker]
