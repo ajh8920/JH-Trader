@@ -2296,7 +2296,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       loss_streak_halt_count=None, loss_streak_halt_days=10,
                       equity_dd_derisk_threshold_pct=None, equity_dd_derisk_factor=0.5,
                       vol_regime_enabled=False, vol_lookback_days=20, vol_threshold_pct=25.0,
-                      breadth_exit_min_pct=None, breadth_exit_min_r=1.25):
+                      breadth_exit_min_pct=None, breadth_exit_min_r=1.25,
+                      position_size_scale=1.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2612,6 +2613,14 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     막는다 - regime_ok(방향: 상승/하락)와 독립적인 축으로, "방향과 무관하게
     흔들리는 구간"(국면 신호로는 안 걸리는 chop)을 걸러낼 수 있는지 시험.
     106단계에서 재앙으로 기각(CAGR 붕괴 + MDD도 악화), 기본 비활성 유지.
+
+    position_size_scale(기본 1.0=비활성, 사용자가 "MDD -20% 이하 최우선,
+    CAGR은 그 안에서 최대화"로 우선순위를 명시한 뒤 2026-10-16 신규)는
+    모든 신규 진입의 체결 수량을 조건 없이 scale배로 줄인다 - 104~106·109
+    단계의 조건부 개입이 전부 MDD를 거의 못 줄인 것과 달리, 포트폴리오
+    집중도(현재 슬롯당 최대 max_position_weight_pct=50%)를 직접 낮추므로
+    MDD가 산술적으로 보장되어 줄어든다. 남는 현금은 cash_equitize=True와
+    같이 쓰면 지수에 태워 유휴화를 줄일 수 있다.
 
     breadth_exit_min_pct/breadth_exit_min_r(기본 None/1.25, 107단계 다음,
     2026-10-16 신규)는 exit_on_regime_loss/regime_exit_min_r의 "코스피
@@ -4121,6 +4130,17 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         risk_amount = equity_now * RISK_PCT_PER_TRADE / 100
                         shares = int(risk_amount // risk_per_share)
                         max_pos_value = _position_cap(seed, equity_now)
+                    # 균일 포지션 축소(position_size_scale, 2026-10-16 신규, MDD
+                    # 축소 - 사용자가 "MDD -20% 이하가 최우선, CAGR은 그 안에서
+                    # 최대화"로 우선순위를 명시한 뒤 추가) - 104~106·109단계의
+                    # "조건부" 개입(서킷브레이커/비중축소/필터)은 전부 MDD를 거의
+                    # 못 줄였다(최선 -27.95%) - 조건이 안 맞는 날엔 그대로 전액
+                    # 베팅이라 효과가 제한적이었다. 이건 조건 없이 매 거래의 크기를
+                    # 전부 scale배로 줄인다 - 포트폴리오 집중도(지금 슬롯당 최대
+                    # 50%)를 직접 낮추므로 MDD가 산술적으로 보장되어 줄어든다
+                    # (equity_dd_derisk처럼 "안 먹히는" 조건부가 아니라 항상 적용).
+                    if position_size_scale != 1.0:
+                        shares = int(shares * position_size_scale)
                     # 드로다운 중 신규진입 축소(equity_dd_derisk_*, 2026-10-16 신규,
                     # MDD 축소 전용 탐색) - loss_streak_halt(사후 반응, 이미 난 손실을
                     # 못 줄임)와 달리 이건 "지금 이미 드로다운 중이면 새 포지션 크기를
