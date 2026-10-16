@@ -4875,7 +4875,20 @@ JPEX_V11_PARAMS = {**JPEX_V10_PARAMS,
 # 후보 풀도 넓혀야(entry_rank_top_n/rank_exit_top_n) 슬롯이 항상 채워진다.
 SPEX_V1_PARAMS = {**JPEX_V11_PARAMS,
     "max_positions": 8,
-    "max_position_weight_pct": 15.0,
-    "entry_rank_top_n": 100,
-    "rank_exit_top_n": 150,
+    "max_position_weight_pct": 18.5,
+    "entry_rank_top_n": 80,
+    "rank_exit_top_n": 100,
 }
+# 실측(2016-01-01~2026-10-16, 10.75년, 상장폐지 포함, 시드 5억원): CAGR
+# 17.55%, MDD -17.40%, Calmar 1.009, 거래 357건(연 33.1건), 승률 34.2%.
+# 1~7단계(research/spex/RESULTS.md) 그리드 탐색 결과 - max_positions=8이
+# 분산(6은 과집중으로 MDD 제약 위반, 10~12는 과희석으로 Calmar 하락)과
+# 품질 사이의 국소최적점, max_position_weight_pct=18.5가 그 안에서 비중
+# 상한의 국소최적점(18.5 다음인 19~20%대에서 MDD가 급격히 악화), entry_
+# rank_top_n=80이 후보풀 너비의 국소최적점, rank_exit_top_n=100이 청산
+# 타이밍의 국소최적점(90~110 사이 매끄러운 종모양 곡선의 정점) - 전부
+# 트레이드 로그 diff로 단일거래 과최적화가 아님을 확인(7건 개선/1건 소폭
+# 악화가 2020/2023/2025/2026년에 걸쳐 분산). quality_rank_weight는 SPEX
+# 8슬롯 환경에서는 죽은 레버(0.3/0.4 결과 완전히 동일)로 확인돼 JPEX의
+# 0.3을 그대로 유지. ①Calmar>=1 ②MDD<=-20% 두 하드 제약을 처음으로
+# 동시에 만족한 설정 - 2026-10-16 SPEX_V1로 채택.
