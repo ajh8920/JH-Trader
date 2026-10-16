@@ -463,3 +463,32 @@ class PersonaDebateJob(db.Model):
     error = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class OpsHeartbeat(db.Model):
+    """백그라운드 스레드 6종의 7개 컴포넌트(alert_checker/kr_quant_price_cache_refresher/
+    trend_screen_refresher_KR/trend_screen_refresher_US/us_fundamentals_refresher/dart_fundamentals_refresher/
+    paper_trading_scheduler)이 "이번 주기 끝까지 도달했다"는 흔적을 남기는 범용
+    헬스체크 테이블(2026-10-16 DevOps 대시보드용 신규) - 기존에는 이 흔적이
+    전혀 없거나(alert_checker) 기능 테이블의 updated_at에 암묵적으로만 있어서
+    (trend_screen_refresher), "스레드가 죽었다"가 아니라 "네트워크 호출이
+    타임아웃 없이 무한정 블로킹돼 멈춰있다"는 조용한 장애(실제로 trend_screen_
+    refresher가 29시간 멈췄던 사고)를 아무도 알아챌 방법이 없었다. 매 주기
+    성공/실패와 무관하게 "주기가 끝났다"를 기록하면, 대시보드가 last_success_at
+    경과 시간만으로 각 컴포넌트의 건강도를 판정할 수 있다(스레드 생존 여부를
+    직접 확인할 방법은 Python에 없으므로 이게 사실상 유일한 신호).
+
+    component는 위 7개 이름 문자열을 그대로 쓴다(trend_screen_refresher는 KR/US가
+    독립적으로 실패할 수 있어 시장별로 행을 분리했다 - 코드와 1:1 매핑,
+    화이트리스트 성격 - 새 컴포넌트를 추가할 때만 여기 주석에 이름을 더한다).
+    """
+
+    __tablename__ = "ops_heartbeats"
+
+    id = db.Column(db.Integer, primary_key=True)
+    component = db.Column(db.String(64), unique=True, nullable=False)
+    last_success_at = db.Column(db.DateTime)
+    last_error = db.Column(db.Text)
+    last_error_at = db.Column(db.DateTime)
+    run_count = db.Column(db.Integer, nullable=False, default=0)
+    error_count = db.Column(db.Integer, nullable=False, default=0)

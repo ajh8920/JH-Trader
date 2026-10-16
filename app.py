@@ -2157,10 +2157,12 @@ def cron_run_daily_batch():
             try:
                 paper_trading.run_all_accounts()
                 paper_trading.send_trade_alerts()
-            except Exception:
+                _record_heartbeat("paper_trading_scheduler")
+            except Exception as e:
                 app.logger.exception("크론 트리거 배치 처리 오류")
                 try:
                     db.session.rollback()
+                    _record_heartbeat("paper_trading_scheduler", error=e)
                 except Exception:
                     pass
 
@@ -2187,6 +2189,119 @@ for _view in (
     persona_debate_start,
 ):
     csrf.exempt(_view)
+
+
+# ─── 백그라운드 스레드 헬스체크(OpsHeartbeat) ──────────────────────────────────
+# DevOps 대시보드(2026-10-16)용 - 각 백그라운드 스레드가 한 주기를 끝낼 때마다
+# (성공/실패 무관하게) 이걸 호출해 "흔적"을 남긴다. 별도 app_context가 필요
+# 없는 위치(이미 app_context 안)에서만 호출하도록 호출부에서 보장한다 -
+# 이 함수 자체는 context를 새로 열지 않는다(중첩 호출 시 충돌 방지).
+def _record_heartbeat(component, error=None):
+    from models import OpsHeartbeat
+
+    row = OpsHeartbeat.query.filter_by(component=component).first()
+    if not row:
+        row = OpsHeartbeat(component=component)
+        db.session.add(row)
+    now = datetime.utcnow()
+    if error is None:
+        row.last_success_at = now
+        row.run_count = (row.run_count or 0) + 1
+    else:
+        row.last_error = str(error)[:2000]
+        row.last_error_at = now
+        row.error_count = (row.error_count or 0) + 1
+    db.session.commit()
+
+
+# 컴포넌트별 "다음 성공까지 정상으로 볼 수 있는 최대 간격"(초) - 각 스레드의
+# 실제 주기(위 함수 docstring/time.sleep 참고)에 재시도·지연 여유를 더한 값이다.
+# trend_screen_refresher_*는 스레드가 30분마다 깨지만 실제 재계산(및 heartbeat)은
+# TREND_SCREEN_MIN_INTERVAL_SECONDS(12시간) 간격으로만 일어나므로 그보다 넉넉하게 잡는다.
+OPS_COMPONENT_EXPECTED_INTERVAL_SECONDS = {
+    "alert_checker": 5 * 60,
+    "kr_quant_price_cache_refresher": 8 * 3600,
+    "trend_screen_refresher_KR": 14 * 3600,
+    "trend_screen_refresher_US": 14 * 3600,
+    "us_fundamentals_refresher": 1 * 3600,
+    "dart_fundamentals_refresher": 8 * 3600,
+    "paper_trading_scheduler": 30 * 3600,
+}
+
+
+@app.route("/api/ops/status")
+@limiter.limit("60 per hour")
+def ops_status():
+    """DevOps 대시보드(외부 Artifact, 2026-10-16)가 주기적으로 폴링하는 공개
+    상태 API다. 대시보드가 이 앱과 다른 출처(claude.ai)에서 뜨므로 로그인 쿠키를
+    쓸 수 없어 인증 없이 열어둔다 - 그래서 응답에는 사용자 식별 정보(user_id,
+    이메일 등)나 원본 예외 스택트레이스를 그대로 넣지 않고, 에러 메시지는
+    앞부분만 잘라 보여준다. CORS도 flask-cors를 새로 추가하지 않고 이 응답에만
+    헤더를 직접 붙인다(이 엔드포인트 하나만 교차 출처 허용하면 충분하다)."""
+    from models import OpsHeartbeat, PaperStrategyAccount
+
+    now = datetime.utcnow()
+    rows = {r.component: r for r in OpsHeartbeat.query.all()}
+    components = []
+    for name, expected in OPS_COMPONENT_EXPECTED_INTERVAL_SECONDS.items():
+        row = rows.get(name)
+        age = None
+        if row is None or row.last_success_at is None:
+            status = "unknown"
+        else:
+            age = (now - row.last_success_at).total_seconds()
+            if row.last_error_at and row.last_error_at > row.last_success_at:
+                status = "error"
+            elif age > expected:
+                status = "stale"
+            else:
+                status = "ok"
+        components.append({
+            "name": name,
+            "status": status,
+            "lastSuccessAt": row.last_success_at.isoformat() if row and row.last_success_at else None,
+            "lastErrorAt": row.last_error_at.isoformat() if row and row.last_error_at else None,
+            "lastError": row.last_error[:300] if row and row.last_error else None,
+            "runCount": row.run_count if row else 0,
+            "errorCount": row.error_count if row else 0,
+            "ageSeconds": age,
+            "expectedIntervalSeconds": expected,
+        })
+
+    db_ok = True
+    db_latency_ms = None
+    try:
+        t0 = time.time()
+        db.session.execute(db.text("SELECT 1"))
+        db_latency_ms = round((time.time() - t0) * 1000, 1)
+    except Exception:
+        db_ok = False
+
+    batch_accounts = []
+    try:
+        seen = set()
+        for acc in PaperStrategyAccount.query.filter_by(is_active=True).all():
+            key = (acc.strategy, acc.market)
+            if key in seen:
+                continue
+            seen.add(key)
+            batch_accounts.append({
+                "strategy": acc.strategy,
+                "market": acc.market,
+                "lastProcessedDate": acc.last_processed_date,
+                "lastAlertSentDate": acc.last_alert_sent_date,
+            })
+    except Exception:
+        pass
+
+    resp = jsonify({
+        "generatedAt": now.isoformat(),
+        "components": components,
+        "db": {"ok": db_ok, "latencyMs": db_latency_ms},
+        "batchAccounts": batch_accounts,
+    })
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
 
 
 # ─── 백그라운드 알림 체크 ────────────────────────────────────────────────────
@@ -2218,8 +2333,14 @@ def alert_checker():
                         print(f"[알림] {user.username} - {a.ticker} ${cur:.2f} — 목표 ${a.price:.2f} 달성!")
                 if changed:
                     db.session.commit()
+                _record_heartbeat("alert_checker")
             except Exception as e:
                 print(f"[알림 체크 오류] {e}")
+                try:
+                    db.session.rollback()
+                    _record_heartbeat("alert_checker", error=e)
+                except Exception:
+                    pass
 
 
 # ─── 국내 퀀트 가격 캐시 갱신 ──────────────────────────────────────────────────
@@ -2257,10 +2378,12 @@ def paper_trading_scheduler():
             try:
                 paper_trading.run_all_accounts()
                 paper_trading.send_trade_alerts()
-            except Exception:
+                _record_heartbeat("paper_trading_scheduler")
+            except Exception as e:
                 app.logger.exception("모의투자 일별 처리/알림 오류")
                 try:
                     db.session.rollback()
+                    _record_heartbeat("paper_trading_scheduler", error=e)
                 except Exception:
                     pass
         time.sleep(90)  # 목표 시각 부근에서 곧바로 다시 깨어나 중복 처리하지 않도록 여유
@@ -2281,8 +2404,14 @@ def kr_quant_price_cache_refresher():
                 n = kr_quant.warm_current_price_cache()
                 if n:
                     print(f"[퀀트 가격 캐시] {n}개 종목 현재가 갱신 완료")
+                _record_heartbeat("kr_quant_price_cache_refresher")
             except Exception as e:
                 print(f"[퀀트 가격 캐시 갱신 오류] {e}")
+                try:
+                    db.session.rollback()
+                    _record_heartbeat("kr_quant_price_cache_refresher", error=e)
+                except Exception:
+                    pass
         time.sleep(6 * 3600)  # 6시간마다 갱신 (가격이 실시간일 필요는 없는 용도)
 
 
@@ -2463,9 +2592,12 @@ def _refresh_trend_screen_market(market, force=False):
             db.session.commit()
             print(f"[트렌드 스크리닝] {market} {len(results)}개 종목 평가 완료 "
                   f"({sum(1 for r in results if r['allPass'])}개 전 조건 통과)")
+            _record_heartbeat(f"trend_screen_refresher_{market}")
             return {"skipped": False, "count": len(results)}
-        except Exception:
+        except Exception as e:
+            db.session.rollback()
             app.logger.exception("트렌드 스크리닝 갱신 오류: %s", market)
+            _record_heartbeat(f"trend_screen_refresher_{market}", error=e)
             return {"skipped": False, "error": True}
 
 
@@ -2667,12 +2799,16 @@ def us_fundamentals_refresher():
                     time.sleep(1)
             if processed:
                 print(f"[미국 재무 보강] {processed}개 종목 갱신 완료")
-        except Exception:
+            with app.app_context():
+                _record_heartbeat("us_fundamentals_refresher")
+        except Exception as e:
             app.logger.exception("미국 스크리닝 재무 보강 오류")
             try:
                 db.session.rollback()
             except Exception:
                 pass
+            with app.app_context():
+                _record_heartbeat("us_fundamentals_refresher", error=e)
         time.sleep(1800)
 
 
@@ -2713,13 +2849,16 @@ def dart_fundamentals_refresher():
                 current_year = datetime.utcnow().year
                 target_years = [current_year - 1, current_year - 2]
                 dart_fetch.backfill(app, db, KrFundamental, codes, target_years, max_requests=1500)
-        except Exception:
+            with app.app_context():
+                _record_heartbeat("dart_fundamentals_refresher")
+        except Exception as e:
             app.logger.exception("DART 재무데이터 자동 수집 오류")
             with app.app_context():
                 try:
                     db.session.rollback()
                 except Exception:
                     pass
+                _record_heartbeat("dart_fundamentals_refresher", error=e)
         time.sleep(6 * 3600)  # 6시간마다 - 이미 다 채워진 날은 곧바로 끝나고 다시 쉰다
 
 
