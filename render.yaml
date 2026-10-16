@@ -14,10 +14,13 @@ services:
     envVars:
       - key: SECRET_KEY
         generateValue: true
+      # 2026-10-16: Supabase로 전환한 뒤에도 이 블루프린트가 배포마다 값을
+      # 자동으로 Render 자체 Postgres(stock-tracker-db)로 되돌려버려 운영
+      # 데이터(사용자/모의투자 계좌 전부)가 통째로 날아간 사고가 있었다.
+      # sync: false로 대시보드에서 수동 설정한 값(Supabase)을 블루프린트가
+      # 다시는 덮어쓰지 못하게 한다.
       - key: DATABASE_URL
-        fromDatabase:
-          name: stock-tracker-db
-          property: connectionString
+        sync: false
       - key: COOKIE_SECURE
         value: "true"
       - key: FINNHUB_API_KEY
