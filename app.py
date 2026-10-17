@@ -2071,6 +2071,20 @@ def delete_user(user_id):
     return jsonify({"ok": True})
 
 
+@app.route("/ops-dashboard")
+@admin_required
+def ops_dashboard():
+    """관리자 전용 실시간 운영 대시보드(픽셀 타운) - claude.ai Artifact로 만든
+    수동 새로고침 버전과 달리 이 페이지는 Flask가 직접 서빙해 같은 출처에서
+    /api/ops/status를 20초 간격으로 직접 폴링한다(Artifact는 CSP상 외부
+    API를 브라우저에서 직접 못 불러와 Claude가 대신 가져와 기록해야 했는데,
+    이 페이지는 그 제약이 없어 진짜 실시간이다). admin_required로 막은 이유는
+    오류 메시지 원문(last_error)이 노출되는 화면이라 외부 공개는 부적절하기
+    때문 - /api/ops/status 자체는 Artifact가 읽을 수 있어야 해서 계속
+    공개로 둔다(app.py 상단 ops_status 참고)."""
+    return render_template("ops_dashboard.html")
+
+
 @app.route("/api/admin/strategies", methods=["GET"])
 @admin_required
 def list_strategy_specs():
