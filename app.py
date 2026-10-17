@@ -2310,14 +2310,82 @@ def ops_status():
     except Exception:
         pass
 
+    # "개발팀 거리"(기획/개발/QA/배포/총괄) - OpsHeartbeat와 달리 백그라운드
+    # 스레드가 없는 테이블이라(AgentActivity 모델 docstring 참고) Claude가
+    # active=True로 보고한 채 꺼주는 걸 깜빡하면 영영 "작업중"으로 멈춰 보일
+    # 수 있다 - updated_at이 3시간 넘게 지난 active=True는 신뢰하지 않고
+    # 대기로 간주하는 안전장치.
+    from models import AgentActivity
+    AGENT_ACTIVE_STALE_SECONDS = 3 * 3600
+    team = {}
+    for row in AgentActivity.query.all():
+        active = bool(row.active)
+        if active and row.updated_at and (now - row.updated_at).total_seconds() > AGENT_ACTIVE_STALE_SECONDS:
+            active = False
+        entry = {
+            "active": active,
+            "lastAt": row.updated_at.isoformat() if row.updated_at else None,
+            "detail": row.detail,
+        }
+        if row.passed is not None:
+            entry["passed"] = row.passed
+        if row.live is not None:
+            entry["live"] = row.live
+        team[row.component] = entry
+
     resp = jsonify({
         "generatedAt": now.isoformat(),
         "components": components,
         "db": {"ok": db_ok, "latencyMs": db_latency_ms},
         "batchAccounts": batch_accounts,
+        "team": team,
     })
     resp.headers["Access-Control-Allow-Origin"] = "*"
     return resp
+
+
+_AGENT_COMPONENTS = ("plan", "dev", "qa", "deploy", "lead")
+
+
+@app.route("/api/ops/agent-status", methods=["POST"])
+@limiter.limit("240 per hour")
+def ops_agent_status():
+    """Claude(이 프로젝트에서 작업하는 에이전트)가 기획/개발/QA/배포/총괄 단계를
+    시작·종료할 때마다 직접 호출해 "지금 일하고 있다"를 보고하는 전용
+    엔드포인트(2026-10-17 - 운영 대시보드에서 에이전트 작업을 실시간으로
+    보고 싶다는 요청으로 추가). 로그인 세션이 없는 외부 호출(Claude Code
+    환경의 curl)이라 cron_run_daily_batch와 같은 패턴으로 CRON_SECRET을
+    그대로 재사용한다 - 새 비밀키를 따로 Render에 등록하는 번거로움을 피함."""
+    secret = os.environ.get("CRON_SECRET")
+    if not secret or not hmac.compare_digest(request.headers.get("X-Cron-Secret", ""), secret):
+        return jsonify({"error": "인증 실패"}), 403
+
+    body = request.json or {}
+    component = body.get("component")
+    if component not in _AGENT_COMPONENTS:
+        return jsonify({"error": "component는 " + "/".join(_AGENT_COMPONENTS) + " 중 하나여야 합니다"}), 400
+
+    from models import AgentActivity
+    row = AgentActivity.query.filter_by(component=component).first()
+    if not row:
+        row = AgentActivity(component=component)
+        db.session.add(row)
+    row.active = bool(body.get("active", False))
+    if "detail" in body:
+        row.detail = str(body["detail"])[:2000]
+    if "passed" in body:
+        row.passed = bool(body["passed"]) if body["passed"] is not None else None
+    if "live" in body:
+        row.live = bool(body["live"]) if body["live"] is not None else None
+    row.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+# cron_run_daily_batch와 같은 이유(로그인 세션 없는 외부 호출, CRON_SECRET으로
+# 인증)로 폼 기반 CSRF 검사에서 제외 - 위쪽 for _view 예외 목록보다 이 함수가
+# 뒤에 정의돼 있어(순방향 참조 불가) 별도로 뺐다.
+csrf.exempt(ops_agent_status)
 
 
 # ─── 백그라운드 알림 체크 ────────────────────────────────────────────────────

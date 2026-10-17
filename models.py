@@ -492,3 +492,30 @@ class OpsHeartbeat(db.Model):
     last_error_at = db.Column(db.DateTime)
     run_count = db.Column(db.Integer, nullable=False, default=0)
     error_count = db.Column(db.Integer, nullable=False, default=0)
+
+
+class AgentActivity(db.Model):
+    """OpsHeartbeat(위)와 짝을 이루는 테이블이지만 성격이 정반대다 - OpsHeartbeat는
+    24시간 자동으로 도는 백그라운드 스레드가 스스로 남기는 흔적인 반면, 이
+    테이블은 "일하는 주체"인 Claude(이 프로젝트에서 작업하는 에이전트) 본인이
+    기획/개발/QA/배포/총괄 단계를 시작·종료할 때마다 /api/ops/agent-status로
+    직접 보고해야만 채워진다(2026-10-17, 사용자가 "운영 대시보드에서 에이전트가
+    실시간으로 어떻게 동작하는지 보고 싶다"고 요청해 추가). 백그라운드 프로세스가
+    없으므로 Claude가 세션 중간에 끊기거나 active=True로 보고한 채 끄는 걸
+    깜빡하면 영영 "작업중"으로 멈춰 보일 수 있다 - 그래서 읽는 쪽(app.py의
+    ops_status)이 updated_at이 너무 오래된 active=True는 신뢰하지 않고 대기로
+    간주하는 안전장치를 둔다(정확한 시간은 app.py 주석 참고).
+
+    component는 "plan"(기획)/"dev"(개발)/"qa"(테스트)/"deploy"(배포)/"lead"
+    (총괄) 5종 고정 화이트리스트 - app.py의 ops_agent_status가 강제한다.
+    """
+
+    __tablename__ = "agent_activity"
+
+    id = db.Column(db.Integer, primary_key=True)
+    component = db.Column(db.String(20), unique=True, nullable=False)
+    active = db.Column(db.Boolean, nullable=False, default=False)
+    detail = db.Column(db.Text)
+    passed = db.Column(db.Boolean)  # qa 전용 - 마지막 검증 통과 여부
+    live = db.Column(db.Boolean)  # deploy 전용 - 마지막 배포 사이트 생존 확인 여부
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
