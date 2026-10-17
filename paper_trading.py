@@ -129,6 +129,16 @@ def fetch_realtime_prices(codes, market):
     return prices
 
 
+def _is_kr_trading_weekday():
+    """토/일요일이면 False(2026-10-17 발견 버그: 주말에도 fetch_realtime_prices가
+    금요일 종가를 "현재가"로 그대로 돌려주는데, 이걸 요일 체크 없이 오늘 날짜로
+    합성해 붙이던 탓에 토요일에도 "오늘 봉"이 생겨 신규 거래일로 오판 →
+    last_processed_date가 토요일로 전진하고 매매 알림 메일까지 나갔다. 공휴일은
+    이 체크로 못 거른다(별도 공휴일 캘린더 데이터 소스가 없음 - CLAUDE.md의
+    missing_filters와 같은 종류의 알려진 한계) - 주말만이라도 확실히 막는다."""
+    return datetime.today().weekday() < 5
+
+
 def _append_realtime_bar(bars_by_code, realtime_prices, today_str):
     """fetch_recent_bars가 받아온 과거 확정 봉 뒤에, 그날(today_str) 실시간가로 만든
     합성 "오늘 봉"을 붙인다(시가/고가/저가는 알 수 없어 전부 현재가로 채운다 -
@@ -647,11 +657,12 @@ def run_anonymous_daily_step(account):
     # 모든 판정은 이 "14:30 실시간가"를 그날의 종가처럼 취급한다(사용자 요청 -
     # 백테스트는 확정 종가만 쓰지만 실시간 모의투자는 매매 알림을 장마감 전에
     # 보내야 실전에서 그대로 따라 할 수 있으므로 다른 기준을 쓴다).
-    today_str = datetime.today().strftime("%Y-%m-%d")
-    realtime_codes = list(dict.fromkeys(held_codes + candidate_codes))
-    realtime_prices = fetch_realtime_prices(realtime_codes, params["market"])
-    _append_realtime_bar(held_bars, {c: p for c, p in realtime_prices.items() if c in held_codes}, today_str)
-    _append_realtime_bar(candidate_bars, {c: p for c, p in realtime_prices.items() if c in candidate_codes}, today_str)
+    if _is_kr_trading_weekday():
+        today_str = datetime.today().strftime("%Y-%m-%d")
+        realtime_codes = list(dict.fromkeys(held_codes + candidate_codes))
+        realtime_prices = fetch_realtime_prices(realtime_codes, params["market"])
+        _append_realtime_bar(held_bars, {c: p for c, p in realtime_prices.items() if c in held_codes}, today_str)
+        _append_realtime_bar(candidate_bars, {c: p for c, p in realtime_prices.items() if c in candidate_codes}, today_str)
 
     latest_date = max(
         [bars[-1]["date"] for bars in held_bars.values() if bars]
@@ -948,7 +959,7 @@ def run_watcher_daily_step(account):
     # 오늘 신호를 알아야 실전 계좌에서 같은 매매를 그대로 따라 할 수 있다).
     # APEX는 하지 않는다(use_realtime=False) - "종가로 재계산"이 필수조건이라
     # 확정 전 가격을 오늘 종가처럼 취급하면 안 된다.
-    if use_realtime:
+    if use_realtime and _is_kr_trading_weekday():
         today_str = datetime.today().strftime("%Y-%m-%d")
         realtime_codes = list(dict.fromkeys(held_codes + candidate_codes))
         realtime_prices = fetch_realtime_prices(realtime_codes, params["market"])
