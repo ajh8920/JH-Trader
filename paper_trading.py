@@ -222,7 +222,7 @@ def get_watchlist(account, limit=15):
                 .filter(TrendScreenCache.market_cap >= min_market_cap)
         rows = query.order_by(TrendScreenCache.rs_rating.desc()).limit((limit + len(held_codes)) * 3).all()
         rows = [r for r in rows if not vcp.is_preferred_stock(r.name)]
-    elif account.strategy in ("watcher", "watcher_v21", "apex", "apex_v2", "apex_v3", "jpex"):
+    elif account.strategy in ("watcher", "watcher_v21", "apex", "apex_v2", "apex_v3", "jpex", "spex"):
         # 조회 전용 근사치 - RS·시총·유동성만으로 좁힌다(지인 2단계 조건 전체와
         # 눌림목 확인은 실제 매매 판정(run_watcher_daily_step)에서만 정확히
         # 계산한다 - 캐시된 스냅샷 필드만으로는 52주 수익률/200일선이격도까지
@@ -286,7 +286,7 @@ def run_daily_step(account):
         return
     if account.strategy in ("anonymous", "sweeper"):
         return run_anonymous_daily_step(account)
-    if account.strategy in ("watcher", "watcher_v21", "apex", "apex_v2", "apex_v3", "jpex"):
+    if account.strategy in ("watcher", "watcher_v21", "apex", "apex_v2", "apex_v3", "jpex", "spex"):
         return run_watcher_daily_step(account)
 
     preset = STRATEGY_PRESETS.get(account.strategy)
@@ -889,6 +889,7 @@ _WATCHER_FAMILY_PARAMS = {
     "apex_v2": "APEX_V2_PARAMS",
     "apex_v3": "APEX_V3_PARAMS",
     "jpex": "JPEX_V11_PARAMS",
+    "spex": "SPEX_V4_PARAMS",
 }
 _APEX_STRATEGIES = ("apex", "apex_v2", "apex_v3")  # 전부 "매일 종가로 재계산" 필수조건 공유
 # JPEX는 이 "매일 종가로 재계산" 필수조건이 없다(APEX_PARAMS 계열만의 설계 제약) -
@@ -1339,7 +1340,7 @@ _ALERT_EXIT_REASON_LABEL = {
 STRATEGY_LABEL_KO = {
     "sweeper": "스위퍼", "anonymous": "어나니머스", "watcher": "와쳐", "watcher_v21": "와쳐 2.1",
     "minervini_v2": "미너비니 v2", "minervini_v21": "미너비니 v2.1",
-    "apex": "APEX", "apex_v2": "APEX 2", "apex_v3": "APEX 3", "jpex": "JPEX",
+    "apex": "APEX", "apex_v2": "APEX 2", "apex_v3": "APEX 3", "jpex": "JPEX", "spex": "SPEX",
 }
 
 

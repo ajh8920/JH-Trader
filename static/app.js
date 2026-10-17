@@ -581,6 +581,18 @@ const I18N = {
       + '다만 이미 1.25R 이상 번 포지션은 봐주고 원래 트레일링에 맡깁니다) — 모의투자 "JPEX" 전략이 신규 '
       + '진입/청산에 실제로 쓰는 조건과 동일합니다.',
   },
+  stratSpexTitle: { en: 'SPEX', ko: 'SPEX' },
+  stratSpexNote: {
+    en: 'The same validated JPEX signal (RS/pullback/quality blend), but built for stability instead of '
+      + 'max return: 7 slots at up to 21.2% each instead of JPEX\'s 2 slots at up to 50%, plus a wider '
+      + 'trailing stop (3.6x ATR vs 3.0x) that turned out to be the one lever that moves max drawdown '
+      + 'directly. Meets all three targets at once — Calmar ≥ 1, max drawdown within 20%, CAGR ≥ 23%.',
+    ko: 'JPEX와 같은 검증된 신호(RS·눌림목·품질점수 블렌드)를 쓰지만, 수익 극대화 대신 안정성을 목표로 '
+      + '다시 설계했습니다 — JPEX의 2슬롯·슬롯당 최대 50%와 달리 7슬롯·슬롯당 최대 21.2%로 훨씬 넓게 '
+      + '분산하고, 트레일링스탑도 더 넓게(3.6배 vs 3.0배) 잡았습니다 - 이 트레일링스탑 폭이 최대낙폭을 '
+      + '직접 움직이는 유일한 레버였습니다. Calmar 1 이상·최대낙폭 20% 이내·CAGR 23% 이상 세 조건을 '
+      + '동시에 만족합니다.',
+  },
   stratWatcherV21Title: { en: 'Watcher 2.1', ko: '와쳐 2.1' },
   stratWatcherV21Note: {
     en: 'Same entry conditions as "Watcher", plus: pullback must hold for 5+ consecutive trading days, wider '
@@ -4532,6 +4544,11 @@ const PAPER_STRATEGY_LIST = [
   // 2026-10-11에 breadth_min_pct(시장폭)도 추가로 이식했다(paper_trading.py
   // _market_breadth_pct).
   { key: 'jpex', titleKey: 'stratJpexTitle', emoji: '🧭', defaultSeed: 50_000_000, group: 'jpex' },
+  // SPEX - JPEX와 같은 신호를 쓰되 7슬롯·슬롯당 최대 21.2%로 훨씬 넓게 분산해
+  // 안정성(Calmar>=1·MDD<=20%)에 맞춘 전략(vcp_strategy.SPEX_V4_PARAMS.default_seed와
+  // 동일). 2026-10-17 research/spex/RESULTS.md 1~18단계 탐색 끝에 이 모듈에 처음 등록,
+  // JPEX와 같은 그룹 패턴(use_realtime=True)으로 동작한다.
+  { key: 'spex', titleKey: 'stratSpexTitle', emoji: '🛡️', defaultSeed: 50_000_000, group: 'spex' },
 ];
 
 const PAPER_TRADING_GROUPS = [
@@ -4541,6 +4558,7 @@ const PAPER_TRADING_GROUPS = [
   { key: 'watcher', icon: '🔭', titleKey: 'stratWatcherTitle' },
   { key: 'apex', icon: '⚡', titleKey: 'stratApexTitle' },
   { key: 'jpex', icon: '🧭', titleKey: 'stratJpexTitle' },
+  { key: 'spex', icon: '🛡️', titleKey: 'stratSpexTitle' },
 ];
 
 let ptActiveGroup = PAPER_TRADING_GROUPS[0].key;
@@ -5509,29 +5527,21 @@ function renderStrategyTab() {
 }
 
 // 전략 리스트를 "결과가 좋은 순서"(CAGR 내림차순)로 정렬하기 위한 대표값 계산.
-// 각 전략의 results 배열에서 VERIFIED 상태이면서 CAGR이 숫자로 파싱되는 첫
-// 항목을 그 전략의 대표 성과로 삼는다(작성자가 최신/최종 채택 결과를 보통
-// results[0]에 두는 기존 관례와 맞춤). VERIFIED가 하나도 없으면 상태를
-// 따지지 않고 CAGR이 있는 첫 항목으로, 그래도 없으면 정렬 최하위(-Infinity).
+// 목록 정렬/배지에 쓰는 CAGR도 상세 화면(pickBestResultIdx)과 똑같은 "최선의
+// 결과" 선택 로직을 써야 한다 - 예전엔 여기만 따로 "배열에서 첫 VERIFIED"를
+// 골랐는데, apex_stage3_best68처럼 current:true 항목보다 앞에 더 높은 CAGR의
+// VERIFIED 옛 기록(entry_rank_top_n 동순위 비결정성 버그 수정 전 측정값)이
+// 먼저 오는 경우 그 옛 값(42.78%)이 뽑혀 현재 신뢰값(38.12%)보다 위로
+// 잘못 정렬됐다. pickBestResultIdx를 그대로 재사용해 두 화면이 항상 같은
+// "현재 기준" 값을 보도록 통일한다.
 function strategyBestCagr(s) {
   const results = s.results || [];
-  const parse = (r) => {
-    const raw = r.metrics && r.metrics['CAGR'];
-    if (typeof raw !== 'string') return null;
-    const n = parseFloat(raw.replace('%', ''));
-    return Number.isNaN(n) ? null : n;
-  };
-  for (const r of results) {
-    if (r.status === 'VERIFIED') {
-      const n = parse(r);
-      if (n !== null) return n;
-    }
-  }
-  for (const r of results) {
-    const n = parse(r);
-    if (n !== null) return n;
-  }
-  return -Infinity;
+  if (!results.length) return -Infinity;
+  const r = results[pickBestResultIdx(results)];
+  const raw = r && r.metrics && r.metrics['CAGR'];
+  if (typeof raw !== 'string') return -Infinity;
+  const n = parseFloat(raw.replace('%', ''));
+  return Number.isNaN(n) ? -Infinity : n;
 }
 
 function selectStrategy(key) {
