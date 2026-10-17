@@ -2297,7 +2297,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       equity_dd_derisk_threshold_pct=None, equity_dd_derisk_factor=0.5,
                       vol_regime_enabled=False, vol_lookback_days=20, vol_threshold_pct=25.0,
                       breadth_exit_min_pct=None, breadth_exit_min_r=1.25,
-                      position_size_scale=1.0):
+                      position_size_scale=1.0, growth_rank_weight=0.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -3032,6 +3032,25 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             if foreign_vals:
                 foreign_vals.sort()
                 foreign_vals_sorted = foreign_vals
+
+        # 분기 EPS 성장률 순위 블렌드(growth_rank_weight, SPEX 20단계 다음,
+        # 2026-10-18 신규) - min_eps_growth_pct(하드 필터)는 23/24단계(JPEX)에서
+        # 후보를 너무 많이 걸러내 성과를 깎는 걸로 이미 확인됐지만, quality_
+        # rank_weight가 하드필터(min_quality_score) 대신 블렌드로 성공한 것과
+        # 같은 논리로 "EPS 성장률이 높을수록 가점"만 주는 소프트 버전은 아직
+        # 시험한 적이 없다. flow_rank_weight와 같은 이유로 percentile만 쓴다
+        # (종목마다 분기 EPS 절대 성장률 스케일이 달라 원시값 비교는 의미가 없다).
+        growth_vals_sorted = []
+        if growth_rank_weight and quarterly_rows_by_code:
+            growth_vals = []
+            for t in trend_ok_set:
+                code_t, *_ = info_by_ticker.get(t, (t,))
+                latest_g, _ = quarterly_eps_growth(quarterly_rows_by_code.get(code_t, {}), rd)
+                if latest_g is not None:
+                    growth_vals.append(latest_g)
+            if growth_vals:
+                growth_vals.sort()
+                growth_vals_sorted = growth_vals
 
         # 12개월 수익률 백분위 - 위 ROE 백분위와 같은 논리를 가격 모멘텀에
         # 적용한 것(38차 신규). evan_stage2의 min_return_12m(절대 문턱, 40%)은
@@ -3939,6 +3958,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             rd, foreign_rank_lookback_days)
                         if fcv is not None:
                             foreign_score = bisect.bisect_right(foreign_vals_sorted, fcv) / len(foreign_vals_sorted)
+                    growth_score = None
+                    if growth_rank_weight and growth_vals_sorted and quarterly_rows_by_code:
+                        code_g, *_ = info_by_ticker.get(ticker, (ticker,))
+                        latest_g, _ = quarterly_eps_growth(quarterly_rows_by_code.get(code_g, {}), rd)
+                        if latest_g is not None:
+                            growth_score = bisect.bisect_right(growth_vals_sorted, latest_g) / len(growth_vals_sorted)
                     # min_blend_score(기본 None=비활성, 2026-10-11 추가) - min_quality_score와
                     # 달리 품질 단독이 아니라 _rank_key와 동일한 RS+품질+저평가 블렌드 전체
                     # 점수로 하위 구간을 잘라낸다. jpex_v7 실거래 231건을 블렌드 점수
@@ -3955,7 +3980,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             excluded_low_blend += 1
                             continue
                     candidates.append((ticker, e, pivot, avg_vol50, avg_val, quality, value_score, is_continuation,
-                                       flow_score, pb_depth, clv, foreign_score))
+                                       flow_score, pb_depth, clv, foreign_score, growth_score))
 
                 # 슬롯보다 후보가 많을 때 누구를 먼저 담을지 정하는 순위.
                 # quality_rank_weight·value_rank_weight 둘 다 0이면 기존대로
@@ -3968,7 +3993,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 def _rank_key(c):
                     rs_w = max(0.0, 1 - quality_rank_weight - value_rank_weight - sector_rank_weight
                                - flow_rank_weight - proximity_rank_weight - depth_rank_weight
-                               - clv_rank_weight - foreign_rank_weight)
+                               - clv_rank_weight - foreign_rank_weight - growth_rank_weight)
                     rs = (c[1].get("rsRating") or 0) / 99
                     q = c[5] if c[5] is not None else 0.5
                     v = c[6] if c[6] is not None else 0.5
@@ -3980,10 +4005,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     d = max(0.0, min(1.0, 1 - c[9] / max_pullback_pct)) if max_pullback_pct else 0.5
                     cl = c[10] if c[10] is not None else 0.5
                     fr = c[11] if c[11] is not None else 0.5
+                    gr = c[12] if c[12] is not None else 0.5
                     return (-(rs * rs_w + q * quality_rank_weight + v * value_rank_weight
                               + s * sector_rank_weight + f * flow_rank_weight
                               + p * proximity_rank_weight + d * depth_rank_weight
-                              + cl * clv_rank_weight + fr * foreign_rank_weight), c[0])
+                              + cl * clv_rank_weight + fr * foreign_rank_weight
+                              + gr * growth_rank_weight), c[0])
 
                 candidates.sort(key=_rank_key)
                 held_sectors = {}
@@ -3992,7 +4019,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         sec_pt = info_by_ticker.get(pt, (None, None, None, None))[3]
                         if sec_pt is not None:
                             held_sectors[sec_pt] = held_sectors.get(sec_pt, 0) + 1
-                for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score, is_continuation, flow_score, pb_depth, clv, foreign_score in candidates:
+                for ticker, e, pivot, avg_vol50, avg_trade_val, quality, value_score, is_continuation, flow_score, pb_depth, clv, foreign_score, growth_score in candidates:
                     if open_slots <= 0:
                         break
                     if max_sector_concurrent is not None:
