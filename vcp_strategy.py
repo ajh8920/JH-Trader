@@ -2298,7 +2298,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       vol_regime_enabled=False, vol_lookback_days=20, vol_threshold_pct=25.0,
                       breadth_exit_min_pct=None, breadth_exit_min_r=1.25,
                       position_size_scale=1.0, growth_rank_weight=0.0,
-                      dynamic_equal_weight=False):
+                      dynamic_equal_weight=False, dynamic_equal_weight_strength=1.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -4157,7 +4157,15 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                                            else conviction_weight_low_pct)
                             target_value = equity_now * _weight_pct / 100
                         elif _dyn_fill_target:
-                            target_value = min(equity_now / _dyn_fill_target,
+                            # dynamic_equal_weight_strength(기본 1.0=완전동적, SPEX
+                            # 23단계에서 완전동적은 CAGR 25.72%로 올랐지만 MDD가
+                            # -19.89%->-26.29%로 깨짐 - 희소한 날 베팅이 커지는 폭을
+                            # 줄이기 위한 완화 계수. 0=기존 고정분할과 동일, 1=23단계
+                            # 그대로. eff_max_positions와 _dyn_fill_target 사이를
+                            # 선형보간(나눌 분모 자체를 보간)한다.
+                            _divisor = eff_max_positions - dynamic_equal_weight_strength * (
+                                eff_max_positions - _dyn_fill_target)
+                            target_value = min(equity_now / _divisor,
                                                 equity_now * eff_max_position_weight_pct / 100)
                         else:
                             target_value = equity_now / eff_max_positions
