@@ -2297,7 +2297,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       equity_dd_derisk_threshold_pct=None, equity_dd_derisk_factor=0.5,
                       vol_regime_enabled=False, vol_lookback_days=20, vol_threshold_pct=25.0,
                       breadth_exit_min_pct=None, breadth_exit_min_r=1.25,
-                      position_size_scale=1.0, growth_rank_weight=0.0):
+                      position_size_scale=1.0, growth_rank_weight=0.0,
+                      dynamic_equal_weight=False):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -4013,6 +4014,18 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                               + gr * growth_rank_weight), c[0])
 
                 candidates.sort(key=_rank_key)
+                # dynamic_equal_weight(기본 False=비활성, SPEX 23단계 다음,
+                # 2026-10-18 신규) - equal_weight 모드는 지금까지 후보 수와
+                # 무관하게 항상 equity/eff_max_positions(고정 슬롯수)로 나눴다 -
+                # 슬롯이 다 안 차는 날(후보 부족)에는 그만큼 현금이 그냥
+                # 묵는다("현금 끌림"). 켜면 그날 실제로 채울 수 있는 후보 수
+                # (min(len(candidates), open_slots))로 나눠 유휴현금을 줄이되,
+                # max_position_weight_pct를 상한으로 캡핑해 후보가 1~2개뿐인
+                # 날 과집중(예: 7슬롯 전부 비었는데 후보 1개 -> 전액 베팅)되는
+                # 것을 막는다 - conviction_weight(42단계, JPEX에서 신호강도
+                # 기반 차등사이징 실패 확정)와는 다른 축이다: 그건 "신호가 강한
+                # 종목에 더 걸기"였고 이건 "후보가 적은 날 덜 묵히기"다.
+                _dyn_fill_target = min(len(candidates), open_slots) if (dynamic_equal_weight and candidates) else None
                 held_sectors = {}
                 if max_sector_concurrent is not None:
                     for pt in positions:
@@ -4143,6 +4156,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                             _weight_pct = (conviction_weight_high_pct if _entry_blend_score >= conviction_score_threshold
                                            else conviction_weight_low_pct)
                             target_value = equity_now * _weight_pct / 100
+                        elif _dyn_fill_target:
+                            target_value = min(equity_now / _dyn_fill_target,
+                                                equity_now * eff_max_position_weight_pct / 100)
                         else:
                             target_value = equity_now / eff_max_positions
                         if max_position_value_abs is not None:
