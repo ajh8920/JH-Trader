@@ -1,0 +1,54 @@
+{
+  "spex_v1": {
+    "CAGR": 17.54,
+    "totalReturnPct": 472.64,
+    "MDD": 17.4,
+    "CAGR_MDD": 1.008,
+    "winRatePct": 34.2,
+    "profitLossRatio": 4.13,
+    "alphaPct": 223.61,
+    "avgHoldDays": 10.3,
+    "tradeCount": 357,
+    "tradesPerYear": 33.1,
+    "period": "2016-01-01~2026-10-19"
+  },
+  "spex_v2": {
+    "CAGR": 20.64,
+    "totalReturnPct": 658.73,
+    "MDD": 19.5,
+    "CAGR_MDD": 1.059,
+    "winRatePct": 34.8,
+    "profitLossRatio": 4.06,
+    "alphaPct": 409.7,
+    "avgHoldDays": 10.3,
+    "tradeCount": 353,
+    "tradesPerYear": 32.7,
+    "period": "2016-01-01~2026-10-19"
+  },
+  "spex_v3": {
+    "CAGR": 23.0,
+    "totalReturnPct": 835.07,
+    "MDD": 19.89,
+    "CAGR_MDD": 1.156,
+    "winRatePct": 33.7,
+    "profitLossRatio": 4.45,
+    "alphaPct": 586.04,
+    "avgHoldDays": 11.3,
+    "tradeCount": 347,
+    "tradesPerYear": 32.1,
+    "period": "2016-01-01~2026-10-19"
+  },
+  "spex_v4": {
+    "CAGR": 23.13,
+    "totalReturnPct": 845.72,
+    "MDD": 19.89,
+    "CAGR_MDD": 1.163,
+    "winRatePct": 33.7,
+    "profitLossRatio": 4.49,
+    "alphaPct": 596.69,
+    "avgHoldDays": 11.3,
+    "tradeCount": 347,
+    "tradesPerYear": 32.1,
+    "period": "2016-01-01~2026-10-19"
+  }
+}
