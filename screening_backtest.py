@@ -50,7 +50,12 @@ DEFAULT_STOP_LOSS_PCT = -8.0
 DEFAULT_MAX_POSITIONS = 10
 RESCAN_INTERVAL_DAYS = 7
 WARMUP_DAYS = 450  # MIN_BARS(200일선) + RS 계산용 12개월 수익률 확보
-BENCHMARK_TICKER = {"KR": "^KS11", "US": "^GSPC", "KR_KOSDAQ": "^KQ11", "OIL": "CL=F"}
+BENCHMARK_TICKER = {"KR": "^KS11", "US": "^GSPC", "KR_KOSDAQ": "^KQ11", "OIL": "CL=F",
+                     # KODEX 단기채권(153130) - rate_etf_parking(vcp_strategy.py)용 CD금리/
+                     # 단기채 ETF 프록시. 2012-02-22부터 데이터가 있어 2016년 백테스트 시작
+                     # 시점보다 이르다(실제 시장 구분이 아니라 _fetch_index_series를 그대로
+                     # 재사용하기 위한 가짜 market 키 - KR_KOSDAQ/OIL과 같은 패턴).
+                     "KR_RATE_ETF": "153130.KS"}
 # "KR_KOSDAQ"/"OIL"은 실제 백테스트 시장 구분이 아니라 _fetch_index_series를 그대로
 # 재사용하려고 추가한 별도 키다(vcp_strategy.py의 대형주 오버레이 - 코스피 vs
 # 코스닥 상대강도 신호용, 2026-10-12 추가 / 유가 국면필터 - WTI 원유 선물

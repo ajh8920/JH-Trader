@@ -2298,7 +2298,9 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                       vol_regime_enabled=False, vol_lookback_days=20, vol_threshold_pct=25.0,
                       breadth_exit_min_pct=None, breadth_exit_min_r=1.25,
                       position_size_scale=1.0, growth_rank_weight=0.0,
-                      dynamic_equal_weight=False, dynamic_equal_weight_strength=1.0):
+                      dynamic_equal_weight=False, dynamic_equal_weight_strength=1.0,
+                      debug_regime_log=None,
+                      rate_etf_parking=False, rate_etf_slippage_pct=0.1, rate_etf_max_pct=100.0):
     """VCP 명세서 기반 백테스트. 모듈 docstring의 "구현 범위"를 반드시 먼저 읽을 것 -
     관리종목/감사의견/정리매매/최대주주지분율/회계처리위반 이력, 생존편향 제거는
     데이터가 없어 반영하지 못했다.
@@ -2753,6 +2755,23 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     fetch_end = (datetime.fromisoformat(end_date) + timedelta(days=1)).strftime("%Y-%m-%d")
 
     regime_dates, regime_closes = _fetch_index_series_local(market, fetch_start, fetch_end)
+    # rate_etf_parking(기본 False=비활성, 2026-10-19 신규) - cash_equitize는
+    # 유휴현금을 벤치마크 지수(코스피 자체, 위 regime_closes)에 태워 국면이
+    # weak로 꺼지면 즉시 전량 현금화한다 - "주식을 못 사는 약세장엔 지수도
+    # 같이 빠진다"는 뜻이라, SPEX처럼 breadth 붕괴로 수개월씩 전량현금 상태가
+    # 지속되는 구간(사용자 보고 - 2026년 6월 이후 신규진입 0건, breadth가
+    # 거의 내내 gate_entries_breadth_min_pct=25 미달)에는 그 유휴기간 내내
+    # 그냥 현금(0%)으로 묶인다. rate_etf_parking은 그 유휴현금을 CD금리/
+    # 단기채 ETF(KODEX 단기채권 153130, 주식과 상관관계 거의 없음 - 실측
+    # 2016~2026 CAGR 1.85%/연환산변동성 0.29%/MDD -0.47%)에 대신 태운다 -
+    # 핵심 차이는 "국면과 무관하게 계속 보유"한다는 것(새 주식 매수에 필요한
+    # 만큼만 그때그때 현금화) - 약세장이라 주식을 못 사는 바로 그 기간에도
+    # 계속 들고 있어야 의미가 있으므로 cash_equitize의 "regime_ok 꺼지면
+    # 전량 매도" 로직을 일부러 적용하지 않는다. cash_equitize와 완전히
+    # 독립된 변수(rate_etf_units)로 구현해 기존 cash_equitize=True인
+    # 프리셋(ANONYMOUS/SWEEPER/WATCHER 등)에 전혀 영향 없음.
+    rate_etf_dates, rate_etf_closes = (
+        _fetch_index_series_local("KR_RATE_ETF", fetch_start, fetch_end) if rate_etf_parking else ([], []))
     # large_cap_overlay_tickers(60단계 신규) - 지인 실제 매매 로직("코스피가
     # 코스닥보다 우위일 때 대형주 편입") 재현용. 다른 백테스트에 불필요한 네트워크
     # 호출을 안 만들려고 large_cap_overlay_tickers가 설정됐을 때만 코스닥 지수를
@@ -2782,6 +2801,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     cash = float(seed)
     positions = {}  # ticker -> position dict
     index_units = 0.0  # cash_equitize용 지수 프록시 보유 수량(주식 아님, 벤치마크 시리즈 기준)
+    rate_etf_units = 0.0  # rate_etf_parking용 CD금리/단기채 ETF 보유 수량
     trades = []
     equity_curve = []
     peak_equity = float(seed)
@@ -3544,12 +3564,30 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
             if ri0 >= 0:
                 index_price = regime_closes[ri0]
         index_value = index_units * index_price if index_price is not None else 0.0
+        rate_etf_price = None
+        if rate_etf_dates:
+            rfi0 = bisect.bisect_right(rate_etf_dates, rd) - 1
+            if rfi0 >= 0:
+                rate_etf_price = rate_etf_closes[rfi0]
+        rate_etf_value = rate_etf_units * rate_etf_price if rate_etf_price is not None else 0.0
         held_value = sum(
             pos["shares"] * series[ticker][1][idx_at_rd[ticker]]
             for ticker, pos in positions.items() if ticker in idx_at_rd
         )
-        equity_now = cash + held_value + index_value
-        peak_equity = equity_now if not (positions or index_units > 0) else max(peak_equity, equity_now)
+        # equity_now에 rate_etf_value를 반드시 포함해야 한다 - 파킹된 자금은
+        # "써버린 돈"이 아니라 그냥 다른 자산으로 옮겨둔 투자 가능 자본이다.
+        # 한때 이걸 사이징용으로는 빼보려 했으나(순수 "파킹 수익" 효과를 거래
+        # 시퀀스 변화 없이 깨끗하게 분리하려는 의도) 그러면 전량 파킹된 날
+        # equity_now(사이징 분모)가 cash만으로 계산돼 거의 0으로 붕괴하고,
+        # target_value=equity_now/max_positions도 0이 돼 신규진입이 전부
+        # 막히는 치명적 버그가 났다(실측 - 10.75년에 거래 1건). quality_
+        # rank_weight·chandelier_atr_mult 등 이 세션의 다른 파라미터들도
+        # 전부 "포지션 크기가 바뀌면 거래 시퀀스가 2차적으로 달라진다"는
+        # 같은 효과를 겪었고(10단계 등) 이 프로젝트는 그걸 버그가 아니라
+        # 트레이드 diff로 단일거래 쏠림만 아니면 받아들이는 게 원칙이다.
+        equity_now = cash + held_value + index_value + rate_etf_value
+        peak_equity = (equity_now if not (positions or index_units > 0 or rate_etf_units > 0)
+                        else max(peak_equity, equity_now))
 
         # 3) 시장국면(코스피>200일선 and 200일선 20일 기울기>0)
         regime_ok = True
@@ -3583,6 +3621,15 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         if breadth_min_pct is not None and breadth_pct is not None and breadth_pct < breadth_min_pct:
             regime_ok = False
             regime_state = "weak"
+        # debug_regime_log(기본 None=비활성, 2026-10-19 신규) - SPEX 실전계좌가
+        # 2026년 5월 이후 신규진입이 전혀 없는 원인을 진단하기 위한 opt-in
+        # 후킹 포인트. 호출부가 리스트를 넘기면 매 rd마다 그 시점 breadth_pct/
+        # regime_state/entries_breadth_ok 판정에 쓰일 원재료를 그대로 기록한다
+        # - 새 계산을 하지 않고 이미 계산된 값만 옆으로 적어두므로 기존 동작에
+        # 전혀 영향 없음(리스트를 안 넘기면 완전히 no-op).
+        if debug_regime_log is not None:
+            debug_regime_log.append({"rd": rd, "breadthPct": breadth_pct, "regimeState": regime_state,
+                                      "regimeOk": regime_ok})
         # pyramid_gate_breadth_min_pct(기본 None=비활성, 2026-10-12 신규) - 53단계
         # gate_pyramid_on_regime(코스피+breadth AND 결합 regime_ok 기준)의 더 이른
         # 버전 - breadth 단독(코스피 조건과 무관)으로 피라미딩만 먼저 막는다.
@@ -3729,6 +3776,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         # 리스크 추가)에도 적용해보는 실험.
         entries_breadth_ok = (gate_entries_breadth_min_pct is None or breadth_pct is None
                                or breadth_pct >= gate_entries_breadth_min_pct)
+        if debug_regime_log is not None and debug_regime_log and debug_regime_log[-1]["rd"] == rd:
+            debug_regime_log[-1].update({"entriesBreadthOk": entries_breadth_ok, "openPositions": len(positions)})
         if ((regime_ok or not gate_entries_on_regime) and entries_breadth_ok and oil_ok
                 and earnings_blackout_ok and loss_streak_ok and vol_ok):
             open_slots = eff_max_positions - len(positions)
@@ -4013,6 +4062,8 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                               + cl * clv_rank_weight + fr * foreign_rank_weight
                               + gr * growth_rank_weight), c[0])
 
+                if debug_regime_log is not None and debug_regime_log and debug_regime_log[-1]["rd"] == rd:
+                    debug_regime_log[-1]["candidateCount"] = len(candidates)
                 candidates.sort(key=_rank_key)
                 # dynamic_equal_weight(기본 False=비활성, SPEX 23단계 다음,
                 # 2026-10-18 신규) - equal_weight 모드는 지금까지 후보 수와
@@ -4216,7 +4267,11 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                     # cap_shares가 0으로 계산돼 버린다.
                     available_cash = cash
                     if cash_equitize and index_units > 0 and index_price is not None:
-                        available_cash = cash + index_units * index_price * (1 - index_slippage_pct / 100)
+                        available_cash += index_units * index_price * (1 - index_slippage_pct / 100)
+                    # rate_etf_parking: 파킹해둔 ETF도 cash_equitize와 같은 방식으로
+                    # 매수여력에 포함시킨다(신규 주식 매수에 필요한 만큼만 아래에서 청산).
+                    if rate_etf_parking and rate_etf_units > 0 and rate_etf_price is not None:
+                        available_cash += rate_etf_units * rate_etf_price * (1 - rate_etf_slippage_pct / 100)
                     cap_shares = int(min(available_cash, max_pos_value) // fill_price)
                     shares = min(shares, cap_shares)
                     if shares <= 0:
@@ -4228,6 +4283,12 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                         sell_units = min(index_units, shortfall / (index_price * (1 - index_slippage_pct / 100)))
                         proceeds = sell_units * index_price * (1 - index_slippage_pct / 100)
                         index_units -= sell_units
+                        cash += proceeds
+                    if cost > cash and rate_etf_parking and rate_etf_units > 0 and rate_etf_price is not None:
+                        shortfall = cost - cash
+                        sell_units = min(rate_etf_units, shortfall / (rate_etf_price * (1 - rate_etf_slippage_pct / 100)))
+                        proceeds = sell_units * rate_etf_price * (1 - rate_etf_slippage_pct / 100)
+                        rate_etf_units -= sell_units
                         cash += proceeds
                     if cost > cash:
                         continue
@@ -4396,12 +4457,33 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
                 index_units += buy_cash * (1 - index_slippage_pct / 100) / index_price
                 cash -= buy_cash
 
+        # rate_etf_parking - cash_equitize와 거의 같은 패턴이지만 regime_ok
+        # 조건이 없다(국면과 무관하게 계속 보유 - 바로 그 약세장 유휴기간에
+        # 들고 있어야 의미가 있으므로). rescan_interval_days=1(SPEX는 매일
+        # 재평가)인데 "보유 종목이 있을 때도" 자투리 현금을 매일 파킹하면,
+        # 그 다음 거래일에 새 진입이 생길 때마다 하루 만에 다시 청산해야 해서
+        # 매수+매도 슬리피지(rate_etf_slippage_pct 왕복)가 거의 매 거래마다
+        # 반복되는 체결비용으로 쌓인다(실측 확인 - 매일 파킹으로 돌렸을 때
+        # 10.75년 최종자산이 오히려 기준보다 71% 낮아짐). `not positions`
+        # (보유 종목이 0개일 때만)로 좁혀 사용자가 실제로 보고한 상황(수개월
+        # 연속 전량현금)에만 작동하게 한다 - 활발히 매매 중인 기간에는 자투리
+        # 현금을 매일 왕복시키지 않는다.
+        if rate_etf_parking and rate_etf_price is not None and cash > 0 and not positions:
+            cap_value = equity_now * rate_etf_max_pct / 100
+            current_rate_etf_value = rate_etf_units * rate_etf_price
+            room = max(0.0, cap_value - current_rate_etf_value)
+            buy_cash = min(cash, room)
+            if buy_cash > 0:
+                rate_etf_units += buy_cash * (1 - rate_etf_slippage_pct / 100) / rate_etf_price
+                cash -= buy_cash
+
         held_value = sum(
             pos["shares"] * series[ticker][1][idx_at_rd[ticker]]
             for ticker, pos in positions.items() if ticker in idx_at_rd
         )
         index_value = index_units * index_price if index_price is not None else 0.0
-        equity_curve.append({"date": rd, "value": round(cash + held_value + index_value, 2)})
+        rate_etf_value = rate_etf_units * rate_etf_price if rate_etf_price is not None else 0.0
+        equity_curve.append({"date": rd, "value": round(cash + held_value + index_value + rate_etf_value, 2)})
         prev_rd = rd
 
     last_rd = rebalance_dates[-1]
@@ -4419,6 +4501,11 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
         if ri_last >= 0:
             cash += index_units * regime_closes[ri_last] * (1 - index_slippage_pct / 100)
             index_units = 0.0
+    if rate_etf_parking and rate_etf_units > 0 and rate_etf_dates:
+        rfi_last = bisect.bisect_right(rate_etf_dates, last_rd) - 1
+        if rfi_last >= 0:
+            cash += rate_etf_units * rate_etf_closes[rfi_last] * (1 - rate_etf_slippage_pct / 100)
+            rate_etf_units = 0.0
 
     trades.sort(key=lambda t: t["entryDate"])
     final_value = equity_curve[-1]["value"] if equity_curve else seed
