@@ -24,6 +24,7 @@ ATR(20) 기반 손절(최대 -8% 캡), 본전이동(+1R), 분할익절(+2R에 25
 VCP/ADX/트렌드템플릿 판정은 전부 그 시점까지의 데이터만 사용한다.
 """
 import bisect
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -2220,6 +2221,38 @@ def _full_exit(pos, price, date, reason, tax=True):
     return trade, proceeds
 
 
+def _cached_rate_etf_series(fetch_start, fetch_end, max_age_hours=20):
+    """rate_etf_parking(KODEX 단기채권 153130)용 가격 시계열을 로컬에
+    캐싱한다. 2026-10-20에 발견 - 이 시리즈는 매 run_vcp_backtest 호출마다
+    yfinance에서 새로 받아오는데(다른 종목들과 달리 로컬 parquet 캐시가
+    없음), 당일치 데이터가 호출 시점마다 조금씩 달라져(아직 장이 안
+    끝났거나 Yahoo 쪽 데이터가 정착되기 전) 같은 설정을 몇 시간 간격으로
+    재실행하면 MDD가 -19.10%~-21.26%까지 흔들리는 걸 확인했다(같은
+    프로세스 안에서 연달아 재실행하면 완전히 재현되는 것과 대조적 -
+    문제는 "프로세스 간" 호출 시점 차이). 로컬 파일에 max_age_hours
+    이내로 캐싱해, 하루 안에서 여러 번 돌리는 연구용 백테스트들이 서로
+    비교 가능한 동일 데이터를 쓰게 한다."""
+    cache_path = Path(__file__).resolve().parent / "data" / "rate_etf_153130_cache.json"
+    try:
+        if cache_path.exists():
+            age_hours = (datetime.now().timestamp() - cache_path.stat().st_mtime) / 3600
+            if age_hours < max_age_hours:
+                with open(cache_path, encoding="utf-8") as f:
+                    cached = json.load(f)
+                if cached.get("fetch_start") == fetch_start and cached.get("fetch_end") == fetch_end:
+                    return cached["dates"], cached["closes"]
+    except Exception:
+        pass
+    dates, closes = _fetch_index_series_local("KR_RATE_ETF", fetch_start, fetch_end)
+    try:
+        cache_path.parent.mkdir(exist_ok=True)
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump({"fetch_start": fetch_start, "fetch_end": fetch_end, "dates": dates, "closes": closes}, f)
+    except Exception:
+        pass
+    return dates, closes
+
+
 def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_positions=DEFAULT_MAX_POSITIONS_FALLBACK,
                       fetch_fn=None, shares_map=None, shareholder_rows_by_code=None, fundamentals_rows_by_code=None,
                       adx_threshold=ADX_THRESHOLD, min_market_cap=MIN_MARKET_CAP, max_market_cap=None,
@@ -2771,7 +2804,7 @@ def run_vcp_backtest(market, start_date, end_date, seed=10_000_000, max_position
     # 독립된 변수(rate_etf_units)로 구현해 기존 cash_equitize=True인
     # 프리셋(ANONYMOUS/SWEEPER/WATCHER 등)에 전혀 영향 없음.
     rate_etf_dates, rate_etf_closes = (
-        _fetch_index_series_local("KR_RATE_ETF", fetch_start, fetch_end) if rate_etf_parking else ([], []))
+        _cached_rate_etf_series(fetch_start, fetch_end) if rate_etf_parking else ([], []))
     # large_cap_overlay_tickers(60단계 신규) - 지인 실제 매매 로직("코스피가
     # 코스닥보다 우위일 때 대형주 편입") 재현용. 다른 백테스트에 불필요한 네트워크
     # 호출을 안 만들려고 large_cap_overlay_tickers가 설정됐을 때만 코스닥 지수를
