@@ -149,12 +149,20 @@ class KisClient:
         return h
 
     def _get(self, path, tr_id, params):
-        resp = requests.get(f"{self.base_url}{path}", headers=self._headers(tr_id),
-                             params=params, timeout=self.timeout)
-        body = resp.json()
-        if resp.status_code != 200 or body.get("rt_cd") != "0":
+        # EGW00201(초당 거래건수 초과)만 짧게 재시도한다 - 모의투자 서버가
+        # 실전보다 훨씬 낮은 호출 제한을 둬서(공식 저장소 주석 확인) 연달아
+        # 여러 조회를 하면 쉽게 걸린다. 그 외 에러는 절대 재시도하지 않고
+        # 바로 올린다(주문 실패 등을 조용히 숨기지 않는다는 원칙).
+        for attempt in range(3):
+            resp = requests.get(f"{self.base_url}{path}", headers=self._headers(tr_id),
+                                 params=params, timeout=self.timeout)
+            body = resp.json()
+            if resp.status_code == 200 and body.get("rt_cd") == "0":
+                return body
+            if body.get("msg_cd") == "EGW00201" and attempt < 2:
+                time.sleep(1.0)
+                continue
             raise KisApiError(f"{path} 조회 실패: {resp.status_code} {body}")
-        return body
 
     # ── 시세조회 ──────────────────────────────────────────────────────
     def get_price(self, code: str) -> float:
