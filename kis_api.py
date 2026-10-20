@@ -21,6 +21,15 @@ open-trading-api, 2026-10-20 확인)의 실제 코드에서 그대로 가져왔�
     새로 만들 뿐이라 그 방식을 따르지 않았다 - 토큰은 길어야 24시간
     유효하므로 워커별로 각자 발급받아도 비용이 작다.
 
+주의(2026-10-20 실측 확인) - 시세/잔고조회(GET)는 24시간 되지만,
+**주문(order_cash)은 KRX 정규장 시간(평일 09:00~15:30)에만 접수된다.**
+장외 시간에 주문을 넣으면 msg_cd="40580000"("모의투자 불가 종목입니다")
+를 돌려주는데, 이 메시지가 종목/계정 문제처럼 보여 혼동하기 쉽다 -
+실제로는 "지금 주문을 받을 수 없다"(장 마감)는 뜻이었다(한투 앱에서
+직접 시도하니 "모의투자 장 종료"라는 더 명확한 메시지가 떴다). 같은
+종목(005930)이든 다른 종목(000660)이든 장외 시간엔 전부 이 에러가
+난다 - 종목을 바꿔도 해결 안 됨.
+
 사용법(실전 투자 전 반드시 모의투자 서버로 먼저 검증):
     from kis_api import KisClient
     client = KisClient(env="demo")  # 모의투자. 실전은 env="real"
@@ -229,12 +238,20 @@ class KisClient:
                     "message": "dry_run=True - 실제 주문 미실행(검증 모드)"}
 
         tr_id = _ORDER_TR_ID[(self.env, side)]
-        resp = requests.post(
-            f"{self.base_url}/uapi/domestic-stock/v1/trading/order-cash",
-            headers=self._headers(tr_id), data=json.dumps(order_body), timeout=self.timeout,
-        )
-        body = resp.json()
-        if resp.status_code != 200 or body.get("rt_cd") != "0":
+        # EGW00201(초당 거래건수 초과)만 재시도한다 - 이 에러는 "주문이
+        # 아예 접수되기 전에" 거부되는 것이라 재시도해도 중복 주문 위험이
+        # 없다(_get과 같은 원칙). 그 외 에러는 절대 재시도하지 않는다 -
+        # 주문 거부/부분 실패를 자동으로 다시 쏘면 안 된다.
+        for attempt in range(3):
+            resp = requests.post(
+                f"{self.base_url}/uapi/domestic-stock/v1/trading/order-cash",
+                headers=self._headers(tr_id), data=json.dumps(order_body), timeout=self.timeout,
+            )
+            body = resp.json()
+            if resp.status_code == 200 and body.get("rt_cd") == "0":
+                return {**plan, "executed": True, "order_no": body.get("output", {}).get("ODNO"),
+                        "raw": body}
+            if body.get("msg_cd") == "EGW00201" and attempt < 2:
+                time.sleep(1.0)
+                continue
             raise KisApiError(f"주문 실패: {resp.status_code} {body}")
-        return {**plan, "executed": True, "order_no": body.get("output", {}).get("ODNO"),
-                "raw": body}
