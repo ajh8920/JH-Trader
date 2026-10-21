@@ -178,32 +178,52 @@ class PositionState:
         self.t_value = (self.net_deployed / amt) if (amt > 0 and self.holding_qty > 0) else 0.0
 
 
-def _crash_dip_extra_buys(existing_buy_qty, budget, current_price):
+CRASH_DIP_MIN_LEVELS = 6  # 평소에도 항상 미리 걸어두는 기본 단계 수
+
+
+def _crash_dip_extra_buys(existing_buy_qty, budget, current_price, floor_price=None,
+                           min_levels=CRASH_DIP_MIN_LEVELS):
     """폭락장 대비 추가 매수 - 라오어 공식 V2.2 방법론에는 없는 사용자 정의 확장
-    (2026-10-22 추가, 실사용자 요청). 1회 투자금(budget)을 기준으로 이미 걸려있는
-    매수 주문들의 수량 합(existing_buy_qty)보다 "지금 시세로 budget을 전부 쓰면
-    살 수 있는 수량"이 더 크면, 그 차이만큼 1주씩 LOC 매수 주문을 추가로 둔다
-    (가격 = budget/k, k=existing+1, existing+2, ...).
+    (2026-10-22 추가, 실사용자 요청). 1회 투자금(budget)을 기준으로, 이미 걸려있는
+    매수 주문들의 수량 합(existing_buy_qty) 바로 다음 단계부터 1주씩 LOC 매수를
+    추가로 둔다(가격 = budget/k, k=existing+1, existing+2, ...).
+
+    **항상 최소 min_levels단계는 미리 걸어둔다(2026-10-22 설계 변경)** - 처음엔
+    "현재가로 budget을 다 쓰면 더 살 수 있을 때만" 조건부로 걸었는데, 이 가이드가
+    계산되는 시점(한국시간 17시, 미국 프리마켓)의 가격은 전날 종가에 가깝고,
+    실제 폭락은 몇 시간 뒤 정규장 중에 일어난다 - 즉 "폭락이 이미 일어난 뒤에만
+    대비 주문을 거는" 모순이 있었다(실사용자 지적). 그래서 평소에도 기본
+    min_levels단계는 조건 없이 걸어두고(평소엔 체결 조건이 안 맞아 그냥 도망
+    주문으로 남음), 장전 시세가 이미 낮게 나오면(current_price) 그만큼 더
+    깊게 확장한다 - 두 신호를 OR로 합친다.
+
+    floor_price: 이미 있는 매수 주문들 중 가장 낮은 가격 - 그보다 낮은 레벨만
+    추가한다(이미 있는 주문과 가격이 겹치거나 역전되는 것을 막는 안전장치).
 
     이게 말이 되는 이유: LOC는 조건(종가 ≤ 지정가)을 만족하면 "그날 종가"에
     체결된다(지정가가 아니라). 그래서 서로 다른 지정가에 여러 LOC 매수를
     쌓아두면, 종가가 그 중 여러 개의 지정가 밑으로 떨어지는 날 전부 한꺼번에
     체결된다(전부 그 낮은 종가에) - 평소엔 발동할 일이 없지만 폭락장에만
-    조용히 더 많이 담기는 효과를 낸다. 평소(현재가가 기존 주문으로 이미 다
-    커버되는 범위)에는 추가 주문이 생기지 않는다."""
-    if not current_price or current_price <= 0 or budget <= 0:
+    조용히 더 많이 담기는 효과를 낸다."""
+    if budget <= 0 or existing_buy_qty < 0:
         return []
-    max_affordable = math.floor(budget / current_price)
-    if max_affordable <= existing_buy_qty:
-        return []
-    max_affordable = min(max_affordable, existing_buy_qty + 30)  # 극단값 방어(동전주 등)
+    reactive_count = 0
+    if current_price and current_price > 0:
+        reactive_count = max(0, math.floor(budget / current_price) - existing_buy_qty)
+    level_count = min(max(min_levels, reactive_count), 30)  # 극단값 방어(동전주 등)
+
     orders = []
-    for k in range(existing_buy_qty + 1, max_affordable + 1):
+    k = existing_buy_qty + 1
+    while len(orders) < level_count:
         price_k = round(budget / k, 4)
+        if floor_price is not None and price_k >= floor_price:
+            k += 1
+            continue
         orders.append({
             "action": "buy", "orderType": "LOC", "label": f"Crash-Dip Extra Buy ({k})",
             "pct": None, "price": price_k, "qty": 1,
         })
+        k += 1
     return orders
 
 
@@ -277,7 +297,7 @@ def build_guide(state, current_price=None):
                     "action": "sell", "orderType": "LIMIT", "label": "Sell (Target 3/4)",
                     "pct": target, "price": round(avg_price * (1 + target / 100), 4), "qty": qty_target,
                 },
-            ] + _crash_dip_extra_buys(qcr_buy_qty, split_amt, current_price),
+            ] + _crash_dip_extra_buys(qcr_buy_qty, split_amt, current_price, floor_price=buy_price),
             "note": (
                 f"쿼터손절모드 {state.quarter_cut_round}/10회차(T={t_value:.2f}) — 매수·매도를 모두 "
                 f"평단대비 {cut_pct:.1f}%에 걸고, {cut_pct:.1f}% 매도(1/4)가 체결되면 자동으로 "
@@ -325,7 +345,8 @@ def build_guide(state, current_price=None):
         "action": "sell", "orderType": "LIMIT", "label": "Sell (Target 3/4)", "pct": target,
         "price": round(avg_price * (1 + target / 100), 4), "qty": qty_target,
     })
-    extra_buys = _crash_dip_extra_buys(buy_qty_so_far, state.split_amount, current_price)
+    buy_floor_price = min((o["price"] for o in orders if o["action"] == "buy" and o["price"]), default=None)
+    extra_buys = _crash_dip_extra_buys(buy_qty_so_far, state.split_amount, current_price, floor_price=buy_floor_price)
     orders.extend(extra_buys)
 
     phase = "전반전" if t_value < half_point else "후반전"
