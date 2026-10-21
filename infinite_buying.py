@@ -178,7 +178,36 @@ class PositionState:
         self.t_value = (self.net_deployed / amt) if (amt > 0 and self.holding_qty > 0) else 0.0
 
 
-def build_guide(state):
+def _crash_dip_extra_buys(existing_buy_qty, budget, current_price):
+    """폭락장 대비 추가 매수 - 라오어 공식 V2.2 방법론에는 없는 사용자 정의 확장
+    (2026-10-22 추가, 실사용자 요청). 1회 투자금(budget)을 기준으로 이미 걸려있는
+    매수 주문들의 수량 합(existing_buy_qty)보다 "지금 시세로 budget을 전부 쓰면
+    살 수 있는 수량"이 더 크면, 그 차이만큼 1주씩 LOC 매수 주문을 추가로 둔다
+    (가격 = budget/k, k=existing+1, existing+2, ...).
+
+    이게 말이 되는 이유: LOC는 조건(종가 ≤ 지정가)을 만족하면 "그날 종가"에
+    체결된다(지정가가 아니라). 그래서 서로 다른 지정가에 여러 LOC 매수를
+    쌓아두면, 종가가 그 중 여러 개의 지정가 밑으로 떨어지는 날 전부 한꺼번에
+    체결된다(전부 그 낮은 종가에) - 평소엔 발동할 일이 없지만 폭락장에만
+    조용히 더 많이 담기는 효과를 낸다. 평소(현재가가 기존 주문으로 이미 다
+    커버되는 범위)에는 추가 주문이 생기지 않는다."""
+    if not current_price or current_price <= 0 or budget <= 0:
+        return []
+    max_affordable = math.floor(budget / current_price)
+    if max_affordable <= existing_buy_qty:
+        return []
+    max_affordable = min(max_affordable, existing_buy_qty + 30)  # 극단값 방어(동전주 등)
+    orders = []
+    for k in range(existing_buy_qty + 1, max_affordable + 1):
+        price_k = round(budget / k, 4)
+        orders.append({
+            "action": "buy", "orderType": "LOC", "label": f"Crash-Dip Extra Buy ({k})",
+            "pct": None, "price": price_k, "qty": 1,
+        })
+    return orders
+
+
+def build_guide(state, current_price=None):
     """현재 PositionState를 바탕으로 "오늘의 매매 가이드"(그날 걸어둘 주문 목록)를 계산한다.
 
     실전에서는 매수·매도 주문을 매일 동시에 미리 걸어두고(원문: "무한매수법은
@@ -186,6 +215,11 @@ def build_guide(state):
     보유 중이고 손절모드가 아니면 매수 주문(전반전 1~2개)과 매도 주문(쿼터 LOC +
     목표 지정가) 두 종류를 항상 함께 반환한다. 매수 지정가에는 매도가와 정확히
     겹치지 않도록 원문의 -$0.01 보정을 적용한다.
+
+    current_price(선택): 실시간 시세를 알 때만 "폭락장 대비 추가 매수"(아래
+    _crash_dip_extra_buys)를 덧붙인다 - 백테스트(backtest.py)는 이 함수를 호출
+    하지 않으므로 영향이 없고, 실전현황/무한매수 자동매매처럼 현재가를 아는
+    곳에서만 켜진다.
     """
     splits = state.splits
     target = state.target_return_pct
@@ -233,7 +267,7 @@ def build_guide(state):
                 {
                     "action": "buy", "orderType": "LOC", "label": f"Quarter-Cut Buy ({state.quarter_cut_round}/10)",
                     "pct": round(cut_pct, 2), "price": buy_price,
-                    "qty": math.floor(split_amt / buy_price) if buy_price > 0 else 0,
+                    "qty": (qcr_buy_qty := math.floor(split_amt / buy_price) if buy_price > 0 else 0),
                 },
                 {
                     "action": "sell", "orderType": "LOC", "label": "Quarter-Cut Exit Sell (1/4)",
@@ -243,7 +277,7 @@ def build_guide(state):
                     "action": "sell", "orderType": "LIMIT", "label": "Sell (Target 3/4)",
                     "pct": target, "price": round(avg_price * (1 + target / 100), 4), "qty": qty_target,
                 },
-            ],
+            ] + _crash_dip_extra_buys(qcr_buy_qty, split_amt, current_price),
             "note": (
                 f"쿼터손절모드 {state.quarter_cut_round}/10회차(T={t_value:.2f}) — 매수·매도를 모두 "
                 f"평단대비 {cut_pct:.1f}%에 걸고, {cut_pct:.1f}% 매도(1/4)가 체결되면 자동으로 "
@@ -279,6 +313,8 @@ def build_guide(state):
             "price": buy_price, "qty": math.floor(order_amt_full / buy_price) if buy_price > 0 else 0,
         })
 
+    buy_qty_so_far = sum(o["qty"] for o in orders if o["action"] == "buy")
+
     qty_quarter = math.floor(holding_qty * 0.25)
     qty_target = holding_qty - qty_quarter
     orders.append({
@@ -289,13 +325,18 @@ def build_guide(state):
         "action": "sell", "orderType": "LIMIT", "label": "Sell (Target 3/4)", "pct": target,
         "price": round(avg_price * (1 + target / 100), 4), "qty": qty_target,
     })
+    extra_buys = _crash_dip_extra_buys(buy_qty_so_far, state.split_amount, current_price)
+    orders.extend(extra_buys)
 
     phase = "전반전" if t_value < half_point else "후반전"
+    note = (
+        f"{phase}(T={t_value:.2f}/{splits}, ☆%={star:.2f}%) — 매수·매도 주문을 표에 나온 가격으로 "
+        f"동시에 걸어두고, 그날 종가가 어느 조건을 만족하는지에 따라 체결됩니다"
+    )
+    if extra_buys:
+        note += f" (폭락 대비 추가 매수 {len(extra_buys)}건 포함 - 평소엔 체결 안 됨)"
     return {
         "holding": True, "lossCutMode": False, "quarterCutRound": None,
         "orders": orders,
-        "note": (
-            f"{phase}(T={t_value:.2f}/{splits}, ☆%={star:.2f}%) — 매수·매도 주문을 표에 나온 가격으로 "
-            f"동시에 걸어두고, 그날 종가가 어느 조건을 만족하는지에 따라 체결됩니다"
-        ),
+        "note": note,
     }

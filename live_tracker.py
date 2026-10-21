@@ -47,7 +47,7 @@ def compute_position_status(position, current_price=None):
     target_price = round(state.avg_price * (1 + target / 100), 4) if state.holding_qty else None
     star_pct = round(state.star_pct, 2) if state.holding_qty else None
 
-    recommendation = build_guide(state)
+    recommendation = build_guide(state, current_price=current_price)
 
     return {
         "id": position.id,

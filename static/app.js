@@ -775,6 +775,8 @@ const I18N = {
   },
   backfillSubmit: { en: 'Add records', ko: '추가' },
   kakaoPreview: { en: 'Send Kakao preview', ko: '카카오 미리보기 발송' },
+  autoBlockedHint: { en: 'Disabled while fully automatic — the scheduler submits this at 17:00', ko: '완전 자동 제출 중에는 비활성화됩니다 - 17시에 스케줄러가 대신 제출합니다' },
+  autoSubmitPending: { en: 'Auto-submits at 17:00', ko: '17시 자동 제출' },
   multiCycleHint: {
     en: 'You can start more than one position for the same ticker at once (e.g. running two independent SOXL cycles in parallel) — give each a different label to tell them apart.',
     ko: '같은 티커로 포지션을 여러 개 동시에 시작할 수 있습니다(예: SOXL 사이클 2개를 동시에 독립적으로 운용). 서로 구분하려면 이름을 다르게 입력하세요.',
@@ -5167,21 +5169,27 @@ function autoInfiniteOrderRow(position, order, idx) {
   const orderType = (order.orderType || '').toLowerCase();
   const qty = order.qty;
   const price = order.price;
-  const submittable = qty && qty > 0 && (orderType === 'moc' || (price && price > 0));
+  // 완전 자동 제출이 켜진 포지션은 17~18시에 스케줄러가 이 가이드를 그대로
+  // 제출한다 - 수동으로도 누를 수 있게 두면 "사람이 먼저 누르고, 그걸 모르는
+  // 스케줄러가 같은 주문을 또 제출"하는 중복 주문 위험이 생긴다(2026-10-22,
+  // 사용자 지적). 자동이 켜진 동안은 버튼 자체를 비활성화한다.
+  const autoBlocked = position.autoTradingEnabled;
+  const submittable = !autoBlocked && qty && qty > 0 && (orderType === 'moc' || (price && price > 0));
   const orderJson = encodeURIComponent(JSON.stringify({ action: order.action, orderType, qty, price, label: order.label }));
   return `
     <div class="live-rec-order-row">
       <div class="live-rec-pills">
         <span class="pill ${order.action === 'sell' ? 'pill-sell' : 'pill-buy'}">${order.action === 'sell' ? t('sell') : t('buy')}</span>
         <span class="pill pill-rec">${order.orderType}</span>
-        ${order.pct !== undefined ? `<span style="font-size:12px;color:var(--text-secondary);">${order.pct>=0?'+':''}${order.pct}%</span>` : ''}
+        ${order.pct !== undefined && order.pct !== null ? `<span style="font-size:12px;color:var(--text-secondary);">${order.pct>=0?'+':''}${order.pct}%</span>` : ''}
       </div>
       <div class="live-rec-order-value">
         ${price ? '$' + price.toFixed(2) : t('marketPrice')}${price && qty ? ' × ' : ''}${qty ? qty + ' ' + t('sharesUnit') : ''}
       </div>
       <button class="btn-secondary" style="padding:4px 10px;" ${submittable ? '' : 'disabled'}
+        title="${autoBlocked ? t('autoBlockedHint') : ''}"
         onclick="submitAutoInfiniteOrderFromGuide(${position.id}, decodeURIComponent('${orderJson}'), this)">
-        <i class="ti ti-send" aria-hidden="true"></i> <span>${t('submitOrder')}</span>
+        <i class="ti ti-send" aria-hidden="true"></i> <span>${autoBlocked ? t('autoSubmitPending') : t('submitOrder')}</span>
       </button>
     </div>`;
 }

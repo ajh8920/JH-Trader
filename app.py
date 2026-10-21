@@ -2217,6 +2217,16 @@ def submit_auto_infinite_order(position_id):
         return jsonify({"error": "LOC/LIMIT 주문은 가격이 필요합니다"}), 400
     dry_run = bool(body.get("dryRun", False))
 
+    # 완전 자동 제출(auto_trading_enabled)이 켜진 포지션은 17시에 스케줄러가
+    # 이미 그날 가이드를 제출하므로, 보유 중(1일차 아님)인 동안 수동으로도 같은
+    # 주문을 낼 수 있게 두면 중복 제출 위험이 있다(프런트 버튼 비활성화는
+    # 눈속임 방지일 뿐이라 서버에서도 막는다). 1일차(보유 0)는 스케줄러가
+    # 건드리지 않는 영역이라 자동이 켜져 있어도 그대로 허용한다.
+    if not dry_run and position.auto_trading_enabled:
+        state, _ = auto_infinite.replay_position_state(position)
+        if state.holding_qty > 0:
+            return jsonify({"error": "완전 자동 제출이 켜진 포지션입니다 - 17시에 자동으로 제출됩니다(수동 제출 비활성화)"}), 409
+
     try:
         client = MeritzClient()
         result = auto_infinite.submit_order(

@@ -110,7 +110,7 @@ def compute_live_status(position, client):
     except MeritzApiError:
         pass
 
-    recommendation = build_guide(state)
+    recommendation = build_guide(state, current_price=current_price)
     holding_value = round(state.holding_qty * current_price, 2) if (current_price and state.holding_qty) else None
     unrealized = round(holding_value - state.holding_qty * state.avg_price, 2) if holding_value is not None else None
 
