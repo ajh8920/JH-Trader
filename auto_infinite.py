@@ -128,6 +128,7 @@ def compute_live_status(position, client):
         "ledgerCashUsd": round(state.cash, 2),
         "holdingQty": state.holding_qty,
         "avgPrice": round(state.avg_price, 4) if state.holding_qty else None,
+        "buyAmount": round(state.holding_qty * state.avg_price, 2) if state.holding_qty else 0.0,
         "currentPrice": current_price,
         "holdingValue": holding_value,
         "unrealizedPnl": unrealized,

@@ -5120,6 +5120,7 @@ function renderAutoInfinitePositions(positions, account) {
       <div class="bt-summary-grid live-info-grid">
         <div class="meta-item"><div class="meta-label">${t('avgPrice')}</div><div class="meta-value">${p.avgPrice ? '$' + p.avgPrice.toFixed(2) : '-'}</div></div>
         <div class="meta-item"><div class="meta-label">${t('holdingQty')}</div><div class="meta-value">${p.holdingQty}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('buyAmount')}</div><div class="meta-value">$${p.buyAmount.toLocaleString('en-US',{maximumFractionDigits:2})}</div></div>
         <div class="meta-item"><div class="meta-label">T</div><div class="meta-value">${p.tValue}</div></div>
       </div>
 
