@@ -2247,6 +2247,51 @@ def refresh_auto_infinite_fills(position_id):
                                    "orders": [o.to_dict() for o in reversed(position.orders)]}))
 
 
+@app.route("/api/auto-infinite/positions/<int:position_id>/kakao-preview", methods=["POST"])
+@admin_required
+@limiter.limit("10 per minute")
+def kakao_preview_auto_infinite(position_id):
+    """지금 등록된 실데이터(실계좌 조회+가이드 계산) 그대로 카카오톡 미리보기를
+    보낸다 - 실제 주문은 전혀 내지 않는다(auto_infinite.submit_order를 호출하지
+    않음). 매일 17시 자동 제출 시 올 알림이 어떤 모양인지 미리 확인하는 용도."""
+    from models import AutoInfinitePosition
+    from meritz_api import MeritzClient, MeritzApiError
+    import auto_infinite
+    import kakao_notify
+
+    position = AutoInfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+    try:
+        client = MeritzClient()
+        status = auto_infinite.compute_live_status(position, client)
+    except MeritzApiError as e:
+        return jsonify({"error": f"메리츠 조회 실패: {e}"}), 502
+
+    label_part = f" · {position.label}" if position.label else ""
+    lines = []
+    if status["holdingQty"]:
+        lines.append(f"{position.ticker}{label_part} - 보유 {status['holdingQty']}주 @ ${status['avgPrice']:.2f}")
+        if status["currentPrice"]:
+            lines.append(f"현재가 ${status['currentPrice']:.2f} / T값 {status['tValue']}/{status['splits']}")
+    else:
+        lines.append(f"{position.ticker}{label_part} - 보유 없음(1일차 대기, 자동 제출 대상 아님)")
+
+    rec = status["recommendation"]
+    if rec["holding"]:
+        for o in rec["orders"]:
+            action_ko = "매도" if o["action"] == "sell" else "매수"
+            price_text = f"${o['price']:.2f}" if o.get("price") else "시장가"
+            qty_text = f"{o['qty']}주" if o.get("qty") else "-"
+            lines.append(f"[{o['orderType']}] {action_ko} {qty_text} @ {price_text}")
+    lines.append("(미리보기 - 실제 주문은 제출되지 않았습니다)")
+
+    ok, message = kakao_notify.notify_verbose(f"[JH-Trader] {position.ticker} 오늘의 가이드(미리보기)", lines)
+    if not ok:
+        return jsonify({"error": f"발송 실패: {message}"}), 502
+    return jsonify({"ok": True})
+
+
 @app.route("/api/auto-infinite/positions/<int:position_id>/backfill", methods=["POST"])
 @admin_required
 def backfill_auto_infinite_trades(position_id):
@@ -2491,7 +2536,7 @@ for _view in (
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_auto_infinite_positions, add_auto_infinite_position, delete_auto_infinite_position,
     list_auto_infinite_orders, submit_auto_infinite_order, refresh_auto_infinite_fills,
-    backfill_auto_infinite_trades, set_auto_infinite_trading_enabled,
+    backfill_auto_infinite_trades, set_auto_infinite_trading_enabled, kakao_preview_auto_infinite,
     kakao_test_message,
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
     admin_set_trade_alert_email, admin_test_trade_alert_email, cron_run_daily_batch,

@@ -774,6 +774,7 @@ const I18N = {
     ko: '이 기능이 생기기 전 실계좌에서 이미 체결된 거래를 기록만 합니다 - 절대 주문을 내지 않습니다. 한 줄에 하나씩: 날짜,buy/sell,수량,가격',
   },
   backfillSubmit: { en: 'Add records', ko: '추가' },
+  kakaoPreview: { en: 'Send Kakao preview', ko: '카카오 미리보기 발송' },
   multiCycleHint: {
     en: 'You can start more than one position for the same ticker at once (e.g. running two independent SOXL cycles in parallel) — give each a different label to tell them apart.',
     ko: '같은 티커로 포지션을 여러 개 동시에 시작할 수 있습니다(예: SOXL 사이클 2개를 동시에 독립적으로 운용). 서로 구분하려면 이름을 다르게 입력하세요.',
@@ -5147,6 +5148,7 @@ function renderAutoInfinitePositions(positions, account) {
         <button class="btn-secondary" onclick="refreshAutoInfiniteFills(${p.id})"><i class="ti ti-refresh" aria-hidden="true"></i> <span data-i18n="checkFills">Check fills</span></button>
         <button class="btn-secondary" onclick="toggleAutoInfiniteOrders(${p.id})"><i class="ti ti-list" aria-hidden="true"></i> <span data-i18n="orderHistory">Order history</span></button>
         <button class="btn-secondary" onclick="toggleAutoInfiniteBackfill(${p.id})"><i class="ti ti-history" aria-hidden="true"></i> <span data-i18n="backfillTrades">Backfill past trades</span></button>
+        <button class="btn-secondary" onclick="sendAutoInfiniteKakaoPreview(${p.id})"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> <span data-i18n="kakaoPreview">Send Kakao preview</span></button>
       </div>
       <div id="autolive-orders-${p.id}" style="display:none;"></div>
       <div id="autolive-backfill-${p.id}" style="display:none;margin-top:8px;">
@@ -5244,6 +5246,13 @@ async function toggleAutoInfiniteBackfill(positionId) {
   const el = document.getElementById(`autolive-backfill-${positionId}`);
   if (!el) return;
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function sendAutoInfiniteKakaoPreview(positionId) {
+  try {
+    await api('POST', `/api/auto-infinite/positions/${positionId}/kakao-preview`, {});
+    alert('카카오톡으로 지금 상태 미리보기를 보냈습니다 - "나와의 채팅"을 확인하세요.');
+  } catch (e) { alert(e.message); }
 }
 
 async function submitAutoInfiniteBackfill(positionId) {
