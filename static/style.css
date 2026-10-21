@@ -232,12 +232,23 @@ body {
 .ticker-sep { color: var(--border-strong); }
 
 /* Tabs */
-.tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; }
+/* 탭이 13개까지 늘어나며 화면 폭을 넘치는 경우(특히 모바일)가 생겼다 - 기본
+   flex는 넘친 탭을 그냥 잘라내고 볼 방법을 안 준다(body의 전역 overflow-x:hidden은
+   body 자체에만 적용되고 이 안쪽 스크롤 컨테이너는 막지 않는다). 그래서 가로
+   스크롤을 이 컨테이너에 직접 걸어 터치 스와이프로 넘길 수 있게 한다. */
+.tabs {
+  display: flex; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;
+}
+.tabs::-webkit-scrollbar { height: 6px; }
+.tabs::-webkit-scrollbar-track { background: transparent; }
+.tabs::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
 .tab {
   padding: 10px 18px; font-size: 14px; font-weight: 500; cursor: pointer;
   color: var(--text-secondary); border: none; border-bottom: 2px solid transparent;
   background: none; font-family: inherit; display: flex; align-items: center; gap: 6px;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s, border-color 0.15s; flex-shrink: 0; white-space: nowrap;
 }
 .tab:hover { color: var(--text); }
 .tab.active { color: var(--text); border-bottom-color: var(--blue); }
