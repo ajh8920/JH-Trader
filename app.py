@@ -2268,14 +2268,15 @@ def kakao_preview_auto_infinite(position_id):
     except MeritzApiError as e:
         return jsonify({"error": f"메리츠 조회 실패: {e}"}), 502
 
-    label_part = f" · {position.label}" if position.label else ""
+    # 카카오 텍스트 메시지는 200자 제한이라(kakao_notify.py 참고) 최대한 짧게 쓴다 -
+    # 주문 4줄까지 전부 보여주는 게 목적이라 "현재가/T값"처럼 앱에서 바로 보이는
+    # 정보는 뺀다.
+    label_part = f"·{position.label}" if position.label else ""
     lines = []
     if status["holdingQty"]:
-        lines.append(f"{position.ticker}{label_part} - 보유 {status['holdingQty']}주 @ ${status['avgPrice']:.2f}")
-        if status["currentPrice"]:
-            lines.append(f"현재가 ${status['currentPrice']:.2f} / T값 {status['tValue']}/{status['splits']}")
+        lines.append(f"{position.ticker}{label_part} 보유{status['holdingQty']}주@${status['avgPrice']:.2f}(T{status['tValue']})")
     else:
-        lines.append(f"{position.ticker}{label_part} - 보유 없음(1일차 대기, 자동 제출 대상 아님)")
+        lines.append(f"{position.ticker}{label_part} 보유없음(1일차 대기)")
 
     rec = status["recommendation"]
     if rec["holding"]:
@@ -2283,10 +2284,9 @@ def kakao_preview_auto_infinite(position_id):
             action_ko = "매도" if o["action"] == "sell" else "매수"
             price_text = f"${o['price']:.2f}" if o.get("price") else "시장가"
             qty_text = f"{o['qty']}주" if o.get("qty") else "-"
-            lines.append(f"[{o['orderType']}] {action_ko} {qty_text} @ {price_text}")
-    lines.append("(미리보기 - 실제 주문은 제출되지 않았습니다)")
+            lines.append(f"{action_ko} {qty_text}@{price_text}({o['orderType']})")
 
-    ok, message = kakao_notify.notify_verbose(f"[JH-Trader] {position.ticker} 오늘의 가이드(미리보기)", lines)
+    ok, message = kakao_notify.notify_verbose(f"[JH-Trader]{position.ticker} 가이드 미리보기", lines)
     if not ok:
         return jsonify({"error": f"발송 실패: {message}"}), 502
     return jsonify({"ok": True})

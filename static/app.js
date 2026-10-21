@@ -5051,9 +5051,9 @@ function renderAutoInfinitePositions(positions, account) {
 
   const accountHtml = `
     <div class="card" style="margin-bottom:12px;">
-      <div class="live-section-label" data-i18n="accountOverview">Meritz account</div>
+      <div class="live-section-label" >${t('accountOverview')}</div>
       <div class="bt-summary-grid live-info-grid">
-        <div class="meta-item"><div class="meta-label" data-i18n="availableCashUsd">Available USD cash</div>
+        <div class="meta-item"><div class="meta-label" >${t('availableCashUsd')}</div>
           <div class="meta-value">${account.availableCashUsd != null ? '$' + account.availableCashUsd.toLocaleString('en-US',{maximumFractionDigits:2}) : '-'}</div></div>
       </div>
       ${(account.warnings || []).map(w => `
@@ -5093,7 +5093,7 @@ function renderAutoInfinitePositions(positions, account) {
       <div class="add-form" style="margin-bottom:10px;">
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
           <input type="checkbox" ${p.autoTradingEnabled ? 'checked' : ''} onchange="toggleAutoInfiniteTrading(${p.id}, this.checked)" />
-          <span data-i18n="autoTradingToggle">Fully automatic (17:00–18:00 KST daily)</span>
+          <span>${t('autoTradingToggle')}</span>
         </label>
         ${p.autoTradingEnabled ? `<span style="font-size:12px;color:var(--text-secondary);">
           ${t('autoLastRun')}: ${escapeHtml(p.autoLastRunDate || '-')}${p.autoLastRunHadError ? ` <span style="color:var(--red);">(${t('autoRunError')})</span>` : ''}
@@ -5104,7 +5104,7 @@ function renderAutoInfinitePositions(positions, account) {
       <div class="bt-summary-grid live-info-grid">
         <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">$${p.seed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
         <div class="meta-item"><div class="meta-label">${t('splitAmount')}</div><div class="meta-value">$${p.splitAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
-        <div class="meta-item"><div class="meta-label" data-i18n="ledgerCashUsd">This position's cash</div><div class="meta-value">$${p.ledgerCashUsd.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label" >${t('ledgerCashUsd')}</div><div class="meta-value">$${p.ledgerCashUsd.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
       </div>
 
       <div class="live-section-label">${t('positionInfo')}</div>
@@ -5130,7 +5130,7 @@ function renderAutoInfinitePositions(positions, account) {
         <div class="live-rec-note">${escapeHtml(rec.note)}</div>
       </div>` : `
       <div class="live-rec-box">
-        <div class="live-rec-title"><i class="ti ti-flag" aria-hidden="true"></i> <span data-i18n="day1EntryTitle">Day 1 entry</span></div>
+        <div class="live-rec-title"><i class="ti ti-flag" aria-hidden="true"></i> <span>${t('day1EntryTitle')}</span></div>
         <div class="live-rec-note" style="margin-bottom:8px;">${escapeHtml(rec.note)}</div>
         <div class="add-form">
           <select id="ail-day1-type-${p.id}" style="width:100px;">
@@ -5140,24 +5140,24 @@ function renderAutoInfinitePositions(positions, account) {
           </select>
           <input type="number" id="ail-day1-qty-${p.id}" placeholder="${t('qty')}" style="width:90px;" step="1" min="1" />
           <input type="number" id="ail-day1-price-${p.id}" placeholder="${t('price')} ($)" style="width:110px;" step="0.01" />
-          <button class="btn-primary" onclick="submitAutoInfiniteDay1(${p.id})"><i class="ti ti-send" aria-hidden="true"></i> <span data-i18n="submitOrder">Submit order</span></button>
+          <button class="btn-primary" onclick="submitAutoInfiniteDay1(${p.id})"><i class="ti ti-send" aria-hidden="true"></i> <span>${t('submitOrder')}</span></button>
         </div>
       </div>`}
 
       <div class="add-form">
-        <button class="btn-secondary" onclick="refreshAutoInfiniteFills(${p.id})"><i class="ti ti-refresh" aria-hidden="true"></i> <span data-i18n="checkFills">Check fills</span></button>
-        <button class="btn-secondary" onclick="toggleAutoInfiniteOrders(${p.id})"><i class="ti ti-list" aria-hidden="true"></i> <span data-i18n="orderHistory">Order history</span></button>
-        <button class="btn-secondary" onclick="toggleAutoInfiniteBackfill(${p.id})"><i class="ti ti-history" aria-hidden="true"></i> <span data-i18n="backfillTrades">Backfill past trades</span></button>
-        <button class="btn-secondary" onclick="sendAutoInfiniteKakaoPreview(${p.id})"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> <span data-i18n="kakaoPreview">Send Kakao preview</span></button>
+        <button class="btn-secondary" onclick="refreshAutoInfiniteFills(${p.id})"><i class="ti ti-refresh" aria-hidden="true"></i> <span>${t('checkFills')}</span></button>
+        <button class="btn-secondary" onclick="toggleAutoInfiniteOrders(${p.id})"><i class="ti ti-list" aria-hidden="true"></i> <span>${t('orderHistory')}</span></button>
+        <button class="btn-secondary" onclick="toggleAutoInfiniteBackfill(${p.id})"><i class="ti ti-history" aria-hidden="true"></i> <span>${t('backfillTrades')}</span></button>
+        <button class="btn-secondary" onclick="sendAutoInfiniteKakaoPreview(${p.id})"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> <span>${t('kakaoPreview')}</span></button>
       </div>
       <div id="autolive-orders-${p.id}" style="display:none;"></div>
       <div id="autolive-backfill-${p.id}" style="display:none;margin-top:8px;">
         <div class="info-box" style="margin-bottom:8px;">
           <i class="ti ti-info-circle" aria-hidden="true"></i>
-          <span data-i18n="backfillHint">Records trades that already happened in the real account before this app existed — never sends an order. One per line: date,buy/sell,qty,price</span>
+          <span>${t('backfillHint')}</span>
         </div>
         <textarea id="ail-backfill-text-${p.id}" rows="4" style="width:100%;font-family:monospace;font-size:12.5px;" placeholder="2026-10-15,buy,2,100.00&#10;2026-10-16,buy,1,107.35"></textarea>
-        <button class="btn-primary" style="margin-top:8px;" onclick="submitAutoInfiniteBackfill(${p.id})"><i class="ti ti-upload" aria-hidden="true"></i> <span data-i18n="backfillSubmit">Add records</span></button>
+        <button class="btn-primary" style="margin-top:8px;" onclick="submitAutoInfiniteBackfill(${p.id})"><i class="ti ti-upload" aria-hidden="true"></i> <span>${t('backfillSubmit')}</span></button>
       </div>
     </div>`;
   }).join('');
@@ -5181,7 +5181,7 @@ function autoInfiniteOrderRow(position, order, idx) {
       </div>
       <button class="btn-secondary" style="padding:4px 10px;" ${submittable ? '' : 'disabled'}
         onclick="submitAutoInfiniteOrderFromGuide(${position.id}, decodeURIComponent('${orderJson}'), this)">
-        <i class="ti ti-send" aria-hidden="true"></i> <span data-i18n="submitOrder">Submit order</span>
+        <i class="ti ti-send" aria-hidden="true"></i> <span>${t('submitOrder')}</span>
       </button>
     </div>`;
 }

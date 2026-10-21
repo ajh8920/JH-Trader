@@ -124,15 +124,21 @@ def _get_valid_access_token():
     return row.access_token
 
 
-def _send_feed(title, description, url, button_title):
-    """피드 템플릿(제목+본문+버튼)으로 발송한다 - 공식 문서의 object_type="feed"
-    스키마 그대로(content.title/description/link, buttons[].title/link)."""
+def _send_text(text, url, button_title):
+    """텍스트 템플릿(object_type="text")으로 발송한다. 처음엔 피드(카드) 템플릿을
+    썼는데, 카카오톡 채팅창에서 피드 카드의 description은 한두 줄만 보이고
+    나머지가 잘려 보이지 않는 문제가 실사용 중 확인됐다(카드형 UI의 한계 -
+    "자세히 보기"로 펼쳐지지 않음). 텍스트 템플릿은 메시지 전체가 채팅 버블에
+    그대로 보이는 대신 text 필드가 최대 200자로 제한된다(공식 문서) - 그래서
+    notify_verbose가 200자를 넘는 내용은 요약하고 "자세한 내용은 앱에서" 안내로
+    줄인다."""
     token = _get_valid_access_token()
     link = {"web_url": url, "mobile_web_url": url}
     template_object = {
-        "object_type": "feed",
-        "content": {"title": title, "description": description, "link": link},
-        "buttons": [{"title": button_title, "link": link}],
+        "object_type": "text",
+        "text": text[:200],
+        "link": link,
+        "button_title": button_title,
     }
     resp = requests.post(
         SEND_URL,
@@ -151,9 +157,14 @@ def notify_verbose(title, lines, url=None, button_title="웹에서 보기"):
     """성공/실패와 사유를 함께 돌려준다 - /admin의 "테스트 발송"처럼 사람이 바로
     원인을 알아야 하는 곳에서 쓴다. (title, 실패사유) 튜플이 아니라
     (ok: bool, message: str)을 돌려준다."""
-    description = "\n".join(lines)[:1000]
+    body = "\n".join([title, *lines])
+    if len(body) > 200:
+        # 200자를 넘기면 통째로 잘라 문장이 중간에 끊기는 대신, 앱에서 확인하라는
+        # 안내로 명확히 줄인다 - 전체 내용은 어차피 링크를 누르면 앱에서 볼 수 있다.
+        trimmed = body[:170].rsplit("\n", 1)[0]
+        body = trimmed + "\n…(전체 내용은 앱에서 확인)"
     try:
-        _send_feed(title, description, url or APP_BASE_URL, button_title)
+        _send_text(body, url or APP_BASE_URL, button_title)
         return True, "발송 성공"
     except KakaoApiError as e:
         return False, str(e)
