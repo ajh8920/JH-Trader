@@ -114,6 +114,7 @@ const BACKEND_TEXT_KO = {
   'Day 1 Buy': '1일차 매수', 'Stop-Loss Forced Sell (1/4)': '손절모드 강제매도(1/4)',
   'Buy (Avg Price)': '매수(평단가)', 'Buy (Threshold)': '매수(임계값)',
   'Sell (Quarter 1/4)': '매도(쿼터 1/4)', 'Sell (Target 3/4)': '매도(목표 3/4)',
+  'Quarter-Cut Exit Sell (1/4)': '쿼터손절 이탈매도(1/4)', 'Day 1 Buy (manual)': '1일차 매수(직접입력)',
   // 스크리너 재무 필터 - 카테고리명
   'Balance Sheet': '재무상태표', 'Income Statement': '손익계산서', 'Profitability': '수익성',
   'Growth (YoY)': '성장성(전년비)', 'Stability': '안정성', 'Valuation': '밸류에이션', 'Consensus': '컨센서스',
@@ -236,6 +237,8 @@ const BACKEND_TEXT_PATTERNS_KO = [
   [/^Target return \(([-\d.]+)%\) reached, sell$/, m => `목표수익률(${m[1]}%) 도달, 매도`],
   [/^MA(\d+) breakdown sell$/, m => `MA${m[1]} 이탈 매도`],
   [/^Trend\(MA(\d+)\)\+pullback\(MA(\d+)\)\+momentum\(K=([\d.]+)\) confirmed buy$/, m => `추세(MA${m[1]})+눌림목(MA${m[2]})+모멘텀(K=${m[3]}) 확인 매수`],
+  [/^Quarter-cut buy \((\d+)\/10\)$/, m => `쿼터손절 재매수(${m[1]}/10)`],
+  [/^Quarter-Cut Buy \((\d+)\/10\)$/, m => `쿼터손절 매수(${m[1]}/10)`],
 ];
 
 // "{티커} Buy & Hold" 처럼 값 일부에 티커가 끼어 있는 백엔드 문자열은 정확히
@@ -742,6 +745,30 @@ const I18N = {
   tabAlerts: { en: 'Alerts', ko: '알림' },
   tabBacktest: { en: 'Backtest', ko: '백테스트' },
   tabLive: { en: 'Live', ko: '실전현황' },
+  tabAutoLive: { en: 'Auto Trading', ko: '무한매수' },
+  autoLiveWarning: {
+    en: 'This connects to your real Meritz Securities account. Orders are only submitted when you click "Submit order" below — nothing is sent automatically. 2.2 version only (40 splits, no mid-cycle compounding).',
+    ko: '실제 메리츠증권 계좌와 연결됩니다. 아래 "주문 제출" 버튼을 직접 눌러야만 주문이 나가며, 자동으로 제출되는 주문은 없습니다. 2.2버전만 지원합니다(40분할, 중간 복리 없음).',
+  },
+  availableCashUsd: { en: 'Available USD cash', ko: '주문가능 예수금(USD)' },
+  checkFills: { en: 'Check fills', ko: '체결 확인' },
+  orderHistory: { en: 'Order history', ko: '주문 내역' },
+  submitOrder: { en: 'Submit order', ko: '주문 제출' },
+  marketPrice: { en: 'Market price', ko: '시장가' },
+  orderType: { en: 'Order type', ko: '주문구분' },
+  statusLabel: { en: 'Status', ko: '상태' },
+  brokerOrderNo: { en: 'Order #', ko: '주문번호' },
+  accountOverview: { en: 'Meritz account', ko: '메리츠 계좌 전체' },
+  ledgerCashUsd: { en: "This position's cash", ko: '이 포지션의 가상 잔고' },
+  quarterCut: { en: 'Quarter-cut', ko: '쿼터손절' },
+  quarterCutEntering: { en: 'Quarter-cut: forced sell', ko: '쿼터손절 진입(강제매도 대기)' },
+  day1EntryTitle: { en: 'Day 1 entry', ko: '1일차 매수 직접 입력' },
+  limitOrder: { en: 'Limit', ko: '지정가' },
+  positionLabelOptional: { en: 'Label (optional)', ko: '이름(선택)' },
+  multiCycleHint: {
+    en: 'You can start more than one position for the same ticker at once (e.g. running two independent SOXL cycles in parallel) — give each a different label to tell them apart.',
+    ko: '같은 티커로 포지션을 여러 개 동시에 시작할 수 있습니다(예: SOXL 사이클 2개를 동시에 독립적으로 운용). 서로 구분하려면 이름을 다르게 입력하세요.',
+  },
   tabLab: { en: 'Lab', ko: '실험실' },
   tabKrSwing: { en: 'KR Swing', ko: '국내 스윙' },
   tabKrQuant: { en: 'KR Quant', ko: '국내 퀀트' },
@@ -911,6 +938,7 @@ function switchTab(name) {
   if (name === 'alerts') loadAlerts();
   if (name === 'backtest') initBacktestDates();
   if (name === 'live') loadInfinitePositions();
+  if (name === 'autolive') loadAutoInfinitePositions();
   if (name === 'lab') initLabTab();
   if (name === 'krswing') initKrSwingDates();
   if (name === 'krquant') initKrQuantTab();
@@ -4962,6 +4990,261 @@ async function deleteInfiniteTrade(positionId, tradeId) {
   await api('DELETE', `/api/infinite/positions/${positionId}/trades/${tradeId}`);
   await loadInfinitePositions();
   await showLiveTrades(positionId);
+}
+
+// ─── 무한매수법 2.2버전 실매매 자동화(메리츠증권 해외주식) ──────────────────────
+
+async function addAutoInfinitePosition() {
+  const ticker = document.getElementById('al-ticker').value.trim().toUpperCase();
+  const label = document.getElementById('al-label').value.trim();
+  const targetReturn = parseFloat(document.getElementById('al-target').value);
+  const seed = parseFloat(document.getElementById('al-seed').value);
+
+  if (!ticker) { alert('티커를 입력하세요'); return; }
+  if (!seed || seed <= 0) { alert('시드를 입력하세요'); return; }
+  if (!targetReturn || targetReturn <= 0) { alert('목표수익률을 확인하세요'); return; }
+  if (!confirm(`${ticker}에 실제 메리츠 계좌로 연결되는 자동매매 포지션을 시작합니다. 계속할까요?`)) return;
+
+  try {
+    await api('POST', '/api/auto-infinite/positions', { ticker, label, targetReturn, seed });
+    document.getElementById('al-ticker').value = '';
+    document.getElementById('al-label').value = '';
+    loadAutoInfinitePositions();
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteAutoInfinitePosition(id) {
+  if (!confirm('이 포지션 기록을 앱에서 삭제하시겠습니까? (메리츠 실계좌 보유 종목에는 영향 없음)')) return;
+  try {
+    await api('DELETE', `/api/auto-infinite/positions/${id}`);
+    loadAutoInfinitePositions();
+  } catch (e) { alert(e.message); }
+}
+
+async function loadAutoInfinitePositions() {
+  const el = document.getElementById('autolive-positions');
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('loading')}</div>`;
+  try {
+    const data = await api('GET', '/api/auto-infinite/positions');
+    renderAutoInfinitePositions(data.positions || [], data.account || {});
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${e.message}</span></div>`;
+  }
+}
+
+function renderAutoInfinitePositions(positions, account) {
+  const el = document.getElementById('autolive-positions');
+
+  const accountHtml = `
+    <div class="card" style="margin-bottom:12px;">
+      <div class="live-section-label" data-i18n="accountOverview">Meritz account</div>
+      <div class="bt-summary-grid live-info-grid">
+        <div class="meta-item"><div class="meta-label" data-i18n="availableCashUsd">Available USD cash</div>
+          <div class="meta-value">${account.availableCashUsd != null ? '$' + account.availableCashUsd.toLocaleString('en-US',{maximumFractionDigits:2}) : '-'}</div></div>
+      </div>
+      ${(account.warnings || []).map(w => `
+        <div class="error-msg" style="margin-top:8px;"><i class="ti ti-alert-triangle" aria-hidden="true"></i><span>${escapeHtml(w)}</span></div>
+      `).join('')}
+    </div>`;
+
+  if (!positions.length) {
+    el.innerHTML = accountHtml + `<div class="empty-state"><i class="ti ti-robot-face" aria-hidden="true"></i><p>${t('noActiveInfinitePositions')}</p><small>${t('enterTickerToStart')}</small></div>`;
+    return;
+  }
+
+  el.innerHTML = accountHtml + positions.map(p => {
+    if (p.error) {
+      return `<div class="card"><div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(p.ticker)}: ${escapeHtml(p.error)}</span></div></div>`;
+    }
+    const pnlCls = (p.unrealizedPnl ?? 0) >= 0 ? 'positive' : 'negative';
+    const rec = p.recommendation;
+    const recBoxCls = rec.lossCutMode ? 'live-rec-box live-rec-warn' : 'live-rec-box';
+    const qcrBadge = (p.quarterCutRound !== null && p.quarterCutRound !== undefined)
+      ? `<span class="cycle-pill" style="background:var(--red-bg);color:var(--red);">${p.quarterCutRound === 0 ? t('quarterCutEntering') : `${t('quarterCut')} ${p.quarterCutRound}/10`}</span>`
+      : '';
+    return `
+    <div class="card" id="autolive-card-${p.id}">
+      <div class="stock-header">
+        <div>
+          <span class="ticker-badge">${escapeHtml(p.ticker)}</span>
+          ${p.label ? `<span class="cycle-pill">${escapeHtml(p.label)}</span>` : ''}
+          <span class="cycle-pill">${escapeHtml(p.exchange)}</span>
+          <span class="cycle-pill">V2.2</span>
+          <span class="cycle-pill">${t('cycle')} ${p.cycle}</span>
+          ${qcrBadge}
+        </div>
+        <button class="btn-icon" onclick="deleteAutoInfinitePosition(${p.id})" aria-label="Delete position"><i class="ti ti-trash" aria-hidden="true"></i></button>
+      </div>
+
+      <div class="live-section-label">${t('basicInfo')}</div>
+      <div class="bt-summary-grid live-info-grid">
+        <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">$${p.seed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('splitAmount')}</div><div class="meta-value">$${p.splitAmount.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div class="meta-item"><div class="meta-label" data-i18n="ledgerCashUsd">This position's cash</div><div class="meta-value">$${p.ledgerCashUsd.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+      </div>
+
+      <div class="live-section-label">${t('positionInfo')}</div>
+      <div class="bt-summary-grid live-info-grid">
+        <div class="meta-item"><div class="meta-label">${t('avgPrice')}</div><div class="meta-value">${p.avgPrice ? '$' + p.avgPrice.toFixed(2) : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('holdingQty')}</div><div class="meta-value">${p.holdingQty}</div></div>
+        <div class="meta-item"><div class="meta-label">T</div><div class="meta-value">${p.tValue}</div></div>
+      </div>
+
+      <div class="live-section-label">${t('valuation')}</div>
+      <div class="bt-summary-grid live-info-grid">
+        <div class="meta-item"><div class="meta-label">${t('price')}</div><div class="meta-value">${p.currentPrice ? '$' + p.currentPrice.toFixed(2) : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('unrealizedPl')}</div><div class="meta-value ${pnlCls}">${p.unrealizedPnl !== null ? (p.unrealizedPnl>=0?'+':'') + '$' + Math.abs(p.unrealizedPnl).toLocaleString('en-US',{maximumFractionDigits:2}) : '-'}</div></div>
+        <div class="meta-item"><div class="meta-label">${t('starPct')}</div><div class="meta-value">${p.starPct !== null ? p.starPct.toFixed(2) + '%' : '-'}</div></div>
+      </div>
+
+      ${rec.holding ? `
+      <div class="${recBoxCls}">
+        <div class="live-rec-title"><i class="ti ti-bulb" aria-hidden="true"></i> <span>${t('infiniteBuyingGuide')}</span></div>
+        <div class="live-rec-orders">
+          ${rec.orders.map((o, i) => autoInfiniteOrderRow(p, o, i)).join('')}
+        </div>
+        <div class="live-rec-note">${escapeHtml(rec.note)}</div>
+      </div>` : `
+      <div class="live-rec-box">
+        <div class="live-rec-title"><i class="ti ti-flag" aria-hidden="true"></i> <span data-i18n="day1EntryTitle">Day 1 entry</span></div>
+        <div class="live-rec-note" style="margin-bottom:8px;">${escapeHtml(rec.note)}</div>
+        <div class="add-form">
+          <select id="al-day1-type-${p.id}" style="width:100px;">
+            <option value="moc">MOC</option>
+            <option value="limit">${t('limitOrder') || 'Limit'}</option>
+            <option value="market">Market</option>
+          </select>
+          <input type="number" id="al-day1-qty-${p.id}" placeholder="${t('qty')}" style="width:90px;" step="1" min="1" />
+          <input type="number" id="al-day1-price-${p.id}" placeholder="${t('price')} ($)" style="width:110px;" step="0.01" />
+          <button class="btn-primary" onclick="submitAutoInfiniteDay1(${p.id})"><i class="ti ti-send" aria-hidden="true"></i> <span data-i18n="submitOrder">Submit order</span></button>
+        </div>
+      </div>`}
+
+      <div class="add-form">
+        <button class="btn-secondary" onclick="refreshAutoInfiniteFills(${p.id})"><i class="ti ti-refresh" aria-hidden="true"></i> <span data-i18n="checkFills">Check fills</span></button>
+        <button class="btn-secondary" onclick="toggleAutoInfiniteOrders(${p.id})"><i class="ti ti-list" aria-hidden="true"></i> <span data-i18n="orderHistory">Order history</span></button>
+      </div>
+      <div id="autolive-orders-${p.id}" style="display:none;"></div>
+    </div>`;
+  }).join('');
+}
+
+function autoInfiniteOrderRow(position, order, idx) {
+  const orderType = (order.orderType || '').toLowerCase();
+  const qty = order.qty;
+  const price = order.price;
+  const submittable = qty && qty > 0 && (orderType === 'moc' || (price && price > 0));
+  const orderJson = encodeURIComponent(JSON.stringify({ action: order.action, orderType, qty, price, label: order.label }));
+  return `
+    <div class="live-rec-order-row">
+      <div class="live-rec-pills">
+        <span class="pill ${order.action === 'sell' ? 'pill-sell' : 'pill-buy'}">${order.action === 'sell' ? t('sell') : t('buy')}</span>
+        <span class="pill pill-rec">${order.orderType}</span>
+        ${order.pct !== undefined ? `<span style="font-size:12px;color:var(--text-secondary);">${order.pct>=0?'+':''}${order.pct}%</span>` : ''}
+      </div>
+      <div class="live-rec-order-value">
+        ${price ? '$' + price.toFixed(2) : t('marketPrice')}${price && qty ? ' × ' : ''}${qty ? qty + ' ' + t('sharesUnit') : ''}
+      </div>
+      <button class="btn-secondary" style="padding:4px 10px;" ${submittable ? '' : 'disabled'}
+        onclick="submitAutoInfiniteOrderFromGuide(${position.id}, decodeURIComponent('${orderJson}'), this)">
+        <i class="ti ti-send" aria-hidden="true"></i> <span data-i18n="submitOrder">Submit order</span>
+      </button>
+    </div>`;
+}
+
+async function submitAutoInfiniteDay1(positionId) {
+  const orderType = document.getElementById(`al-day1-type-${positionId}`).value;
+  const qty = parseInt(document.getElementById(`al-day1-qty-${positionId}`).value, 10);
+  const priceInput = document.getElementById(`al-day1-price-${positionId}`).value;
+  const price = priceInput ? parseFloat(priceInput) : null;
+
+  if (!qty || qty <= 0) { alert('수량을 입력하세요'); return; }
+  if (orderType !== 'market' && orderType !== 'moc' && (!price || price <= 0)) {
+    alert('이 주문구분에는 가격이 필요합니다'); return;
+  }
+  const priceText = price ? `$${price.toFixed(2)}` : t('marketPrice');
+  if (!confirm(`실제 메리츠 계좌로 1일차 매수 주문을 제출합니다.\n\n매수 ${qty}주 @ ${priceText} (${orderType.toUpperCase()})\n\n정말 제출할까요?`)) return;
+
+  try {
+    const result = await api('POST', `/api/auto-infinite/positions/${positionId}/orders`, {
+      action: 'buy', orderType, qty, price, label: 'Day 1 Buy (manual)', dryRun: false,
+    });
+    alert(result.order ? `주문이 제출되었습니다 (주문번호: ${result.order.brokerOrderNo || '-'})` : '주문이 제출되었습니다');
+    await loadAutoInfinitePositions();
+  } catch (e) { alert(`주문 제출 실패: ${e.message}`); }
+}
+
+async function submitAutoInfiniteOrderFromGuide(positionId, orderJsonStr, btnEl) {
+  const order = JSON.parse(orderJsonStr);
+  const priceText = order.price ? `$${order.price.toFixed(2)}` : t('marketPrice');
+  const confirmMsg = `실제 메리츠 계좌로 주문을 제출합니다.\n\n${order.action === 'sell' ? '매도' : '매수'} ${order.qty}주 @ ${priceText} (${order.orderType.toUpperCase()})\n\n정말 제출할까요?`;
+  if (!confirm(confirmMsg)) return;
+
+  btnEl.disabled = true;
+  try {
+    const result = await api('POST', `/api/auto-infinite/positions/${positionId}/orders`, {
+      action: order.action, orderType: order.orderType, qty: order.qty, price: order.price,
+      label: order.label, dryRun: false,
+    });
+    alert(result.order ? `주문이 제출되었습니다 (주문번호: ${result.order.brokerOrderNo || '-'})` : '주문이 제출되었습니다');
+    await loadAutoInfinitePositions();
+  } catch (e) {
+    alert(`주문 제출 실패: ${e.message}`);
+    btnEl.disabled = false;
+  }
+}
+
+async function refreshAutoInfiniteFills(positionId) {
+  try {
+    const result = await api('POST', `/api/auto-infinite/positions/${positionId}/refresh-fills`, {});
+    await loadAutoInfinitePositions();
+    const ordersEl = document.getElementById(`autolive-orders-${positionId}`);
+    if (ordersEl && ordersEl.style.display !== 'none') await showAutoInfiniteOrders(positionId);
+    alert(`체결 상태 ${result.updated}건 갱신됨`);
+  } catch (e) { alert(e.message); }
+}
+
+async function toggleAutoInfiniteOrders(positionId) {
+  const el = document.getElementById(`autolive-orders-${positionId}`);
+  if (!el) return;
+  if (el.style.display === 'none') {
+    await showAutoInfiniteOrders(positionId);
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+async function showAutoInfiniteOrders(positionId) {
+  const el = document.getElementById(`autolive-orders-${positionId}`);
+  el.style.display = 'block';
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('loading')}</div>`;
+  try {
+    const orders = await api('GET', `/api/auto-infinite/positions/${positionId}/orders`);
+    if (!orders.length) {
+      el.innerHTML = `<div class="empty-state"><p>${t('noTradeHistory')}</p></div>`;
+      return;
+    }
+    el.innerHTML = `
+      <div class="pf-table-wrap">
+        <table class="pf-table">
+          <thead><tr><th>${t('date')}</th><th>${t('type')}</th><th data-i18n="orderType">Order type</th><th>${t('price')}</th><th>${t('qty')}</th><th data-i18n="statusLabel">Status</th><th data-i18n="brokerOrderNo">Order #</th></tr></thead>
+          <tbody>
+            ${orders.map(o => `
+              <tr>
+                <td>${o.date}</td>
+                <td><span class="${o.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${o.action === 'buy' ? t('buy') : t('sell')}</span></td>
+                <td>${o.orderType.toUpperCase()}</td>
+                <td>${o.price ? '$' + o.price.toFixed(2) : '-'}</td>
+                <td>${o.filledQty ?? o.qty}</td>
+                <td>${escapeHtml(o.status)}</td>
+                <td>${escapeHtml(o.brokerOrderNo || '-')}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><span>${e.message}</span></div>`;
+  }
 }
 
 // ─── 실험실(종목/지수 비교) ───────────────────────────────────────────────────

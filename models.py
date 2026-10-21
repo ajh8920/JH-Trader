@@ -23,6 +23,9 @@ class User(db.Model, UserMixin):
     infinite_positions = db.relationship(
         "InfinitePosition", backref="user", cascade="all, delete-orphan"
     )
+    auto_infinite_positions = db.relationship(
+        "AutoInfinitePosition", backref="user", cascade="all, delete-orphan"
+    )
 
     @property
     def is_admin(self):
@@ -119,6 +122,105 @@ class InfiniteTrade(db.Model):
         }
 
 
+class AutoInfinitePosition(db.Model):
+    """무한매수법 2.2버전 실매매 자동화 포지션 - 메리츠증권 해외주식 계좌(meritz_api.py)와
+    연동된다. 수기 입력 기반인 InfinitePosition/InfiniteTrade("실전 현황" 탭)와는
+    완전히 분리된 테이블이다 - 이 테이블의 포지션은 실제로 메리츠 계좌에 주문이
+    나간다.
+
+    평단가·보유수량·사이클은 이 테이블에 저장하지 않는다 - auto_infinite.py의
+    replay_position_state()가 이 포지션에 체결된(status="filled") AutoInfiniteOrder
+    기록을 처음부터 PositionState로 재생해 매번 다시 계산한다(live_tracker.py가
+    InfiniteTrade를 재생하는 것과 같은 패턴). **2026-10-22 설계 변경** - 이전에는
+    "메리츠 실계좌 잔고가 언제나 진실의 원천"이라는 원칙으로 실계좌를 직접 조회해
+    썼으나, 같은 티커에 여러 사이클/포지션을 동시에 운용할 수 있게 하면서(사용자
+    요청) 브로커 잔고는 "이 종목 전체 합계"만 알려줄 뿐 어느 주문이 어느 논리적
+    포지션 몫인지 구분하지 못하므로 포지션별 재생 방식으로 바꿨다. 대신 여러
+    포지션의 재생 결과 합계를 실계좌 보유량과 주기적으로 대조해(reconcile_holdings)
+    어긋나면 경고한다 - 계좌 밖에서 수동 거래가 있었거나 체결 기록 누락이 있을 때
+    이 대조에서 걸러진다.
+
+    2.2버전만 지원한다(splits=40 고정, 중간 복리 없음 - infinite_buying.py의
+    VERSION_DEFAULTS["v2"]와 동일). v3/v4 자동매매는 추후 범위."""
+
+    __tablename__ = "auto_infinite_positions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    ticker = db.Column(db.String(16), nullable=False)
+    exchange = db.Column(db.String(10), nullable=False)  # meritz_api.OVERSEAS_EXCHANGES 키
+    label = db.Column(db.String(60), default="")  # 같은 티커로 여러 사이클을 동시에 돌릴 때 구분용
+    splits = db.Column(db.Integer, nullable=False, default=40)
+    target_return_pct = db.Column(db.Float, nullable=False, default=10.0)
+    seed = db.Column(db.Float, nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    orders = db.relationship(
+        "AutoInfiniteOrder", backref="position", cascade="all, delete-orphan",
+        order_by="AutoInfiniteOrder.id",
+    )
+
+
+class AutoInfiniteOrder(db.Model):
+    """AutoInfinitePosition이 실제로 메리츠에 제출한(또는 제출을 시도한) 주문 1건의
+    기록 - "반자동"(사용자가 매일 가이드를 보고 승인 클릭) 흐름의 감사 로그다.
+    가이드 자체는 저장하지 않는다(매번 실계좌 상태로 다시 계산) - 사용자가 실제로
+    제출 버튼을 눌러 API 호출을 시도한 건만 이 테이블에 남는다.
+
+    status: "submitted"(API 제출 성공, 체결 대기) -> "filled"/"rejected"/
+    "cancelled"(체결 확인 API로 갱신) 또는 "error"(제출 자체가 실패, 체결 대상 아님)."""
+
+    __tablename__ = "auto_infinite_orders"
+
+    id = db.Column(db.Integer, primary_key=True)
+    position_id = db.Column(db.Integer, db.ForeignKey("auto_infinite_positions.id"), nullable=False)
+    cycle_no = db.Column(db.Integer)  # 표시용(제출 시점 재생 결과) - 재생 로직 자체는 이 값에 의존 안 함
+    trade_date = db.Column(db.String(20), nullable=False)
+    action = db.Column(db.String(4), nullable=False)  # "buy" | "sell"
+    order_type = db.Column(db.String(10), nullable=False)  # "loc" | "moc" | "limit" | "market"
+    label = db.Column(db.String(60), default="")
+    qty = db.Column(db.Integer, nullable=False)
+    price = db.Column(db.Float)  # moc는 null
+    status = db.Column(db.String(10), nullable=False, default="submitted")
+    broker_order_no = db.Column(db.String(40))
+    filled_qty = db.Column(db.Integer)
+    filled_price = db.Column(db.Float)
+    raw_response = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "date": self.trade_date, "action": self.action,
+            "orderType": self.order_type, "label": self.label, "qty": self.qty,
+            "price": self.price, "status": self.status,
+            "brokerOrderNo": self.broker_order_no,
+            "filledQty": self.filled_qty, "filledPrice": self.filled_price,
+        }
+
+
+class KakaoToken(db.Model):
+    """카카오톡 "나에게 보내기" API(kakao_notify.py)용 OAuth 토큰 저장소. 단일 행만
+    쓴다(purpose="default" 고정) - 이 앱 소유자 한 명의 카카오 계정에만 연동한다.
+
+    DB에 저장하는 이유: 액세스 토큰은 약 12시간, 리프레시 토큰은 약 60일마다
+    갱신되는데(카카오 로그인 REST API 문서, 2026-10-22 확인) gunicorn 워커가 2개라
+    모듈 전역 변수에 두면 워커마다 따로 토큰을 들고 있게 되어 서로 어긋난다
+    (RULES.md R5와 같은 이유). 갱신 시 리프레시 토큰이 항상 재발급되는 건 아니다
+    (남은 유효기간이 1개월 미만일 때만 새로 옴) - refresh_token 컬럼은 응답에
+    새 값이 왔을 때만 덮어쓴다."""
+
+    __tablename__ = "kakao_tokens"
+
+    id = db.Column(db.Integer, primary_key=True)
+    purpose = db.Column(db.String(20), unique=True, nullable=False, default="default")
+    access_token = db.Column(db.Text, nullable=False)
+    refresh_token = db.Column(db.Text, nullable=False)
+    access_expires_at = db.Column(db.DateTime, nullable=False)
+    refresh_expires_at = db.Column(db.DateTime)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class KrFundamental(db.Model):
     """DART(전자공시시스템)에서 받아온 국내 상장사 연간 재무제표 캐시.
 
@@ -169,6 +271,105 @@ class KrFundamental(db.Model):
             return None
         d = self.rcept_no[:8]
         return f"{d[0:4]}-{d[4:6]}-{d[6:8]}"
+
+
+class KrFundamentalQuarter(db.Model):
+    """DART 분기/반기 보고서 재무 캐시. KrFundamental(연간)과 따로 두는 이유는
+    "누적 금액"이라는 성질이 완전히 다르기 때문이다.
+
+    미너비니 SEPA는 "직전 분기 EPS·매출 증가율이 그 이전 분기보다 더 높아지는가"
+    (성장 가속)를 본다. 연간 결산만으로는 이 판정이 불가능해서 분기가 필요하다.
+
+    ## 왜 "누적"으로 저장하는가
+    DART 손익 항목은 같은 보고서 안에서도 계정마다 해석이 다르다 - 실측(삼성전자
+    2023 반기)에서 매출액은 thstrm_amount가 2분기 단독(60.0조)이고
+    thstrm_add_amount가 상반기 누적(123.8조)인 반면, 당기순이익은 thstrm_amount에
+    이미 상반기 누적(3.3조)이 들어 있고 thstrm_add_amount는 비어 있었다.
+    그래서 "누적값이 있으면 그것, 없으면 당기값을 누적으로 간주"라는 한 가지
+    규칙으로 통일해 항상 누적으로 저장한다. 분기 단독 실적이 필요하면 읽는 쪽에서
+    인접 분기 누적값을 차분한다(2분기=반기누적-1분기, 4분기=연간-3분기누적).
+    이렇게 해두면 계정별 표기 차이에 휘둘리지 않는다.
+
+    재무상태표 항목(자본총계 등)은 시점 잔액이라 누적 개념이 없어 그대로 담는다.
+
+    quarter: 1=1분기(11013), 2=반기(11012), 3=3분기(11014). 4분기 보고서는 따로
+    없고 사업보고서(연간)가 그 역할이라 여기 담지 않는다 - KrFundamental을 쓴다.
+    """
+
+    __tablename__ = "kr_fundamentals_quarter"
+    __table_args__ = (
+        db.UniqueConstraint("stock_code", "bsns_year", "quarter", name="uq_kr_fund_q_stock_year_q"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    stock_code = db.Column(db.String(10), nullable=False, index=True)
+    corp_code = db.Column(db.String(10), nullable=False)
+    bsns_year = db.Column(db.String(4), nullable=False)
+    quarter = db.Column(db.Integer, nullable=False)  # 1=1분기, 2=반기, 3=3분기(전부 누적)
+    fs_div = db.Column(db.String(4), default="CFS")
+    rcept_no = db.Column(db.String(20), default="")
+    # 손익 항목 - 전부 그 사업연도 1분기부터의 "누적" 금액
+    revenue_cum = db.Column(db.Float)
+    operating_income_cum = db.Column(db.Float)
+    net_income_cum = db.Column(db.Float)
+    gross_profit_cum = db.Column(db.Float)
+    # 기본주당이익(누적). DART가 직접 실어주는 값이라 과거 발행주식수 없이도
+    # SEPA의 분기 EPS 성장 가속을 판정할 수 있다(dart_fetch._Q_INCOME_MAP 주석 참고).
+    eps_cum = db.Column(db.Float)
+    # 재무상태표 항목 - 그 시점 잔액(누적 아님)
+    total_equity = db.Column(db.Float)
+    total_assets = db.Column(db.Float)
+    total_liabilities = db.Column(db.Float)
+    fetched_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def rcept_date(self):
+        """공시 제출일(YYYY-MM-DD). KrFundamental.rcept_date와 같은 이유로,
+        백테스트는 이 날짜 이후에만 이 수치를 알 수 있었던 것으로 취급해야 한다."""
+        if not self.rcept_no or len(self.rcept_no) < 8:
+            return None
+        d = self.rcept_no[:8]
+        return f"{d[0:4]}-{d[4:6]}-{d[6:8]}"
+
+
+class KrDisclosure(db.Model):
+    """DART 공시 목록(제목·접수일) 캐시. 미너비니 SEPA 3단계 "촉매(Catalyst)" 판정용.
+
+    ## 왜 유형을 안 가리고 전부 담는가
+    공시를 받아오는 게 비싼 작업이고(10년치 수만 건) 어떤 제목을 촉매로 볼지
+    분류하는 건 공짜다. 받을 때 골라 담으면 분류 기준을 조금만 바꿔도 전부
+    다시 받아야 한다. 그래서 제목(report_nm)을 원문 그대로 저장하고, 촉매냐
+    아니냐는 읽는 쪽에서 판정한다(양의 촉매/음의 신호 분류를 나중에 바꿔도
+    재수집이 필요 없다).
+
+    ## 실측으로 확인한 주요 유형(2017/2020/2023/2025 표본 4,800건 기준)
+    양의 촉매 후보: 단일판매ㆍ공급계약체결(505건 - 정기주총 다음으로 많다),
+      타법인주식및출자증권취득결정(105), 투자판단관련주요경영사항(95),
+      신규시설투자등(35), 매출액또는손익구조30%변동(15 - 어닝서프라이즈 성격)
+    음의 신호 후보: 유상증자결정(43), 단기차입금증가결정(41), 전환사채(39),
+      조회공시요구(57), 주권매매거래정지(22), 타인에대한채무보증결정(157),
+      횡령ㆍ배임혐의발생, 회계처리기준위반 - 이 마지막 둘은 CLAUDE.md가
+      "데이터가 없어 반영 못 했다"고 적어둔 관리종목/회계위반 이력에 해당한다.
+
+    rcept_dt(접수일)가 곧 시장이 그 정보를 알게 된 날이라, 백테스트는 이 날짜
+    이후에만 해당 촉매를 참조해야 한다(KrFundamental.rcept_date와 같은 원칙).
+    """
+
+    __tablename__ = "kr_disclosures"
+    __table_args__ = (
+        db.UniqueConstraint("rcept_no", name="uq_kr_disclosure_rcept"),
+        db.Index("ix_kr_disclosure_code_date", "stock_code", "rcept_dt"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    stock_code = db.Column(db.String(10), index=True)
+    corp_code = db.Column(db.String(10), nullable=False)
+    corp_name = db.Column(db.String(128), default="")
+    rcept_no = db.Column(db.String(20), nullable=False)
+    rcept_dt = db.Column(db.String(10), nullable=False)  # YYYY-MM-DD(시장이 알게 된 날)
+    report_nm = db.Column(db.String(300), default="")  # 공시 제목 원문
+    corp_cls = db.Column(db.String(2), default="")  # Y=유가증권, K=코스닥
+    fetched_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class QuantBacktestJob(db.Model):

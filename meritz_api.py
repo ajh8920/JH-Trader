@@ -45,6 +45,28 @@ _BASE_URL = "https://openapi.imeritz.com:9443"
 # 이 모듈은 01(지정가)만 쓴다 - kis_api.py와 같은 이유로 시장가를 막는다.
 ODER_CLS_LIMIT = "01"
 
+# 해외주식 주문구분코드(공식 catalog.json의 /trading/v1/overseas/orders/buy 확인) -
+# 무한매수법이 요구하는 LOC/MOC를 메리츠가 네이티브로 지원한다(국내주식과 달리
+# 워크어라운드가 필요 없다). oder_cond_cls_code는 이 표와 1:1로 고정되어 있다
+# (01/05=0 조건없음, 31/33=2 개장전, 32/34=7 종가) - 호출부가 따로 넣지 않는다.
+OVERSEAS_ORDER_TYPES = {
+    "limit": {"oder_cls_code": "01", "oder_cond_cls_code": "0"},   # 지정가
+    "market": {"oder_cls_code": "05", "oder_cond_cls_code": "0"},  # 시장가
+    "loc": {"oder_cls_code": "32", "oder_cond_cls_code": "7"},     # LOC(장마감 지정가) - 무한매수 매수/매도 주력
+    "moc": {"oder_cls_code": "34", "oder_cond_cls_code": "7"},     # MOC(장마감 시장가) - 손절모드 강제매도
+}
+
+# 해외거래소 코드 - 시세조회(mrkt_cls_code)와 주문(ovrs_exch_vndr_idno)이 서로
+# 다른 코드체계를 쓴다(공식 catalog.json 확인) - 섞어 쓰면 안 된다. 무한매수법
+# 대상 종목(SOXL/TQQQ/KORU 등)은 모두 NYSE Arca 상장이지만 메리츠 코드 목록에는
+# Arca가 따로 없어 뉴욕(NYSE) 코드로 조회/주문되는지 실제 응답으로 확인 후 썼다
+# (check_meritz_overseas_connection.py 참고).
+OVERSEAS_EXCHANGES = {
+    "NASDAQ": {"price": "OQ", "order": "0537"},
+    "NYSE": {"price": "NY", "order": "0321"},
+    "AMEX": {"price": "AX", "order": "0066"},
+}
+
 
 class MeritzApiError(Exception):
     """메리츠 API가 에러를 돌려줬을 때 - 호출부가 반드시 처리해야 한다.
@@ -176,3 +198,92 @@ class MeritzClient:
         if resp.status_code != 200:
             raise MeritzApiError(f"주문 실패: {resp.status_code} {body}")
         return {**plan, "executed": True, "raw": body}
+
+    # ── 해외주식(무한매수법 2.2버전 실매매용) ───────────────────────────
+    def get_overseas_price(self, symbol: str, exchange: str) -> float:
+        """symbol: 해외주식 심볼(접두 없음, 예: "SOXL"). exchange: OVERSEAS_EXCHANGES의
+        키("NASDAQ"/"NYSE"/"AMEX"). 종목코드가 틀린 거래소로 조회되면 공식 문서에
+        명시된 대로 오류 없이 iscd가 빈 값·가격이 0으로 내려오므로 그 경우를
+        명시적으로 걸러낸다(조용히 가격 0을 반환하면 더 위험하다)."""
+        mrkt_cls_code = OVERSEAS_EXCHANGES[exchange]["price"]
+        body = self._get("/market/v1/overseas/prices",
+                          {"mrkt_div_code": "OV", "mrkt_cls_code": mrkt_cls_code,
+                           "iscd": symbol, "dely_rltm_cls_code": "0"})
+        data = body.get("data") or {}
+        if not data.get("iscd"):
+            raise MeritzApiError(
+                f"{symbol}을 거래소 {exchange}({mrkt_cls_code})로 조회했지만 "
+                f"종목코드가 빈 값으로 내려왔습니다 - 거래소가 틀렸을 가능성이 높습니다 "
+                f"(실측 확인: SOXL/KORU는 AMEX, TQQQ는 NASDAQ)")
+        return float(data["prpr"])
+
+    def get_overseas_holdings(self):
+        """해외주식 잔고 조회(/accounts/v1/me/overseas/holdings). 필드: iscd/isnm/
+        rmnd_dqty(보유수량)/avrg_unpr(평균단가)/psnt_prc(현재가)/byov_camt(매수금액) 등."""
+        body = self._get("/accounts/v1/me/overseas/holdings", {})
+        return body.get("data") or []
+
+    def get_overseas_currencies(self):
+        """해외주식 외화 예수금 조회(/accounts/v1/me/overseas/currencies). USD 행의
+        frcr_amt가 해외주식 주문 가능 현금(달러)이다."""
+        body = self._get("/accounts/v1/me/overseas/currencies", {})
+        return body.get("data") or []
+
+    def get_overseas_orders_today(self, cntg_cls_code="0"):
+        """금일 해외주식 주문체결내역 조회(/trading/v1/overseas/orders/today).
+        cntg_cls_code: "0"전체/"1"체결/"2"미체결. 체결수량(cntg_qty)·미체결수량
+        (ncnt_qty)·주문상태구분코드(ovrs_stck_oder_stat_cls_code)로 체결 여부를
+        판단한다 - place_overseas_order() 제출 후 체결 확인에 쓴다."""
+        body = self._get("/trading/v1/overseas/orders/today",
+                          {"cntg_cls_code": cntg_cls_code, "seln_byov_clcd": "0"})
+        return body.get("data") or []
+
+    def place_overseas_order(self, symbol: str, exchange: str, qty: int, side: str,
+                              order_type: str, price: float | None = None,
+                              dry_run: bool = True):
+        """symbol/exchange: get_overseas_price()와 동일. side: "buy"/"sell".
+        order_type: OVERSEAS_ORDER_TYPES의 키("limit"/"market"/"loc"/"moc") -
+        무한매수법은 "loc"(매수·매도 기본)과 "moc"(손절모드 강제매도)만 쓴다.
+        price: 지정가 계열(limit/loc)에는 필수, 시장가 계열(market/moc)에는
+        무시하고 0을 보낸다(공식 문서 명시).
+
+        dry_run=True(기본값)면 실제 API 호출을 하지 않는다 - 모의투자가 없으므로
+        kis_api.py의 env="demo"처럼 안전하게 연습할 방법이 없다는 점을 호출부가
+        반드시 인지해야 한다."""
+        if side not in ("buy", "sell"):
+            raise ValueError('side는 "buy" 또는 "sell"이어야 합니다')
+        if order_type not in OVERSEAS_ORDER_TYPES:
+            raise ValueError(f'order_type은 {list(OVERSEAS_ORDER_TYPES)} 중 하나여야 합니다')
+        if qty <= 0:
+            raise ValueError("qty는 1 이상이어야 합니다")
+
+        order_cls = OVERSEAS_ORDER_TYPES[order_type]
+        is_limit_family = order_cls["oder_cls_code"] in ("01", "32")
+        if is_limit_family and price is None:
+            raise ValueError(f'order_type="{order_type}"은 price가 필수입니다')
+
+        order_body = {
+            "ovrs_stck_symb_iscd": symbol,
+            "ovrs_exch_vndr_idno": OVERSEAS_EXCHANGES[exchange]["order"],
+            "oder_cls_code": order_cls["oder_cls_code"],
+            "oder_cond_cls_code": order_cls["oder_cond_cls_code"],
+            "odqt": qty,
+            "ovrs_stck_oder_prc": round(price, 4) if is_limit_family else 0,
+        }
+        plan = {"side": side, "symbol": symbol, "exchange": exchange, "qty": qty,
+                "order_type": order_type, "price": price, "dry_run": dry_run}
+        if dry_run:
+            return {**plan, "executed": False,
+                    "message": "dry_run=True - 실제 주문 미실행(검증 모드)"}
+
+        path = f"/trading/v1/overseas/orders/{side}"
+        resp = requests.post(f"{_BASE_URL}{path}", headers=self._headers(),
+                              data=json.dumps(order_body), timeout=self.timeout)
+        body = resp.json()
+        # rsp_cd 성공값은 엔드포인트마다 달라 일반화할 수 없다(실측: 조회 성공인데도
+        # "5766"이 내려온 적 있음) - kis_api.py/meritz_api.py 전체와 같은 원칙으로
+        # HTTP 상태코드만 성공 판정 기준으로 쓴다.
+        if resp.status_code != 200:
+            raise MeritzApiError(f"해외주식 주문 실패: {resp.status_code} {body}")
+        return {**plan, "executed": True, "raw": body,
+                "orderNo": (body.get("data") or {}).get("oder_no")}

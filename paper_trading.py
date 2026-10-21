@@ -1424,8 +1424,22 @@ def _send_one_trade_alert(account_id):
         )
 
     subject = f"[JH-Trader] {label} 오늘의 매매 ({target_date})"
-    if email_utils.send_email(account.alert_email, subject, body):
+    email_sent = email_utils.send_email(account.alert_email, subject, body)
+    if email_sent:
         account.last_alert_sent_date = target_date
         db.session.commit()
     else:
         db.session.rollback()
+
+    # 카카오톡 발송은 반드시 위 커밋/롤백 뒤에 한다 - kakao_notify.notify()가
+    # (토큰 갱신 시) 내부적으로 db.session.commit()을 호출할 수 있는데, 그게 이
+    # 함수 앞쪽의 with_for_update() 잠금 안에서 일어나면 트랜잭션이 끝나며 잠금이
+    # 조기 해제되어(RULES.md R5와 같은 동시성 문제) 워커 2개가 동시에 중복 발송할
+    # 수 있다. 이메일 실패 여부와 무관하게 시도하되, 매매가 없는 날(lines 빈
+    # 경우)은 성가시지 않도록 카카오 쪽만 건너뛴다.
+    if lines:
+        import kakao_notify
+        kakao_notify.notify(
+            f"[JH-Trader] {label} 오늘의 매매 ({target_date})", lines,
+            url=f"{kakao_notify.APP_BASE_URL}/",
+        )

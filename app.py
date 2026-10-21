@@ -1903,6 +1903,68 @@ def admin_test_trade_alert_email(account_id):
     return jsonify({"ok": True})
 
 
+# ─── 카카오톡 "나에게 보내기" 매매 알림 연동 ──────────────────────────────────────
+# 최초 연동(인가 코드 동의)만 사람이 브라우저로 한 번 해야 한다 - 이후 토큰 갱신·
+# 발송은 kakao_notify.py가 전부 자동으로 한다. OAuth 콜백은 외부(카카오)가 우리
+# 서버로 리다이렉트하는 일반 GET 요청이라 CSRF 토큰이 없고, admin_required로
+# 막아 로그인 세션이 있는 관리자만 이 절차를 시작/완료할 수 있게 한다.
+
+def _kakao_redirect_uri():
+    import kakao_notify
+    return f"{kakao_notify.APP_BASE_URL}/api/admin/kakao/oauth/callback"
+
+
+@app.route("/api/admin/kakao/oauth/start")
+@admin_required
+def kakao_oauth_start():
+    import kakao_notify
+    from kakao_notify import KakaoApiError
+    try:
+        url = kakao_notify.build_authorize_url(_kakao_redirect_uri())
+    except KakaoApiError as e:
+        return f"카카오 연동을 시작할 수 없습니다: {e}", 400
+    return redirect(url)
+
+
+@app.route("/api/admin/kakao/oauth/callback")
+@admin_required
+def kakao_oauth_callback():
+    import kakao_notify
+    from kakao_notify import KakaoApiError
+
+    error = request.args.get("error")
+    if error:
+        return f"카카오 로그인 동의가 취소되거나 실패했습니다: {error}", 400
+    code = request.args.get("code")
+    if not code:
+        return "code 파라미터가 없습니다", 400
+    try:
+        kakao_notify.exchange_code(code, _kakao_redirect_uri())
+    except KakaoApiError as e:
+        return f"토큰 교환 실패: {e}", 502
+    return redirect("/admin?kakao=connected")
+
+
+@app.route("/api/admin/kakao/status", methods=["GET"])
+@admin_required
+def kakao_status():
+    import kakao_notify
+    return jsonify({"connected": kakao_notify.is_connected()})
+
+
+@app.route("/api/admin/kakao/test", methods=["POST"])
+@admin_required
+@limiter.limit("5 per minute")
+def kakao_test_message():
+    import kakao_notify
+    ok, message = kakao_notify.notify_verbose(
+        "[JH-Trader] 카카오톡 알림 테스트", ["이 메시지는 카카오톡 매매 알림 연동이 정상 동작하는지 확인하기 위한 테스트입니다."],
+    )
+    if not ok:
+        return jsonify({"error": f"발송 실패: {message}"}), 502
+    return jsonify({"ok": True})
+
+
 # ─── 무한매수법 실전 현황 API ─────────────────────────────────────────────────
 
 @app.route("/api/infinite/positions", methods=["GET"])
@@ -2018,6 +2080,171 @@ def get_infinite_trades(position_id):
     if not position:
         return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
     return jsonify([t.to_dict() for t in position.trades])
+
+
+# ─── 무한매수법 2.2버전 실매매 자동화 API(메리츠증권 해외주식 연동) ───────────────
+#
+# 레버리지(신용/공매도) 절대 쓰지 않는다 - meritz_api.py에 현금 매수/매도만
+# 구현되어 있다. admin_required로 막은 이유는 실제 돈이 오가는 개인 계좌
+# 기능이라서다(기존 "실전 현황" 탭도 show_all_tabs=is_admin으로 같은 제약).
+# 반자동 설계: 가이드는 매번 실계좌 조회로 다시 계산해 보여주고, 실제 주문
+# 제출은 사용자가 각 행의 "주문 제출" 버튼을 눌러야만 나간다 - 자동 스케줄러가
+# 임의로 주문을 넣지 않는다.
+
+@app.route("/api/auto-infinite/positions", methods=["GET"])
+@admin_required
+def list_auto_infinite_positions():
+    from models import AutoInfinitePosition
+    from meritz_api import MeritzClient, MeritzApiError
+    import auto_infinite
+
+    try:
+        client = MeritzClient()
+    except MeritzApiError as e:
+        return jsonify({"error": f"메리츠 연결 실패: {e}"}), 502
+
+    positions = AutoInfinitePosition.query.filter_by(user_id=current_user.id).order_by(
+        AutoInfinitePosition.id
+    ).all()
+    results = []
+    for p in positions:
+        try:
+            results.append(auto_infinite.compute_live_status(p, client))
+        except MeritzApiError as e:
+            results.append({"id": p.id, "ticker": p.ticker, "error": str(e)})
+
+    try:
+        account = auto_infinite.compute_account_overview(client, positions)
+    except MeritzApiError as e:
+        account = {"availableCashUsd": None, "warnings": [f"계좌 조회 실패: {e}"]}
+    return jsonify(sanitize_json({"positions": results, "account": account}))
+
+
+@app.route("/api/auto-infinite/positions", methods=["POST"])
+@admin_required
+def add_auto_infinite_position():
+    from models import AutoInfinitePosition
+    from meritz_api import MeritzClient, MeritzApiError
+    from infinite_buying import get_target_default
+    import auto_infinite
+
+    body = request.json or {}
+    ticker = body.get("ticker", "").strip().upper()
+    if not TICKER_RE.match(ticker):
+        return jsonify({"error": "티커 형식이 올바르지 않습니다"}), 400
+    label = (body.get("label") or "").strip()[:60]
+    try:
+        seed = float(body.get("seed", 0))
+        target_return = float(body.get("targetReturn", get_target_default(ticker)))
+    except (TypeError, ValueError):
+        return jsonify({"error": "시드/목표수익률은 숫자여야 합니다"}), 400
+    if seed <= 0:
+        return jsonify({"error": "시드는 0보다 커야 합니다"}), 400
+    if not (0 < target_return <= 200):
+        return jsonify({"error": "목표수익률은 0~200 사이여야 합니다"}), 400
+
+    try:
+        client = MeritzClient()
+        exchange = auto_infinite.detect_exchange(client, ticker)
+    except MeritzApiError as e:
+        return jsonify({"error": f"메리츠에서 {ticker}의 거래소를 확인하지 못했습니다: {e}"}), 400
+
+    # 같은 티커로 포지션을 여러 개(여러 사이클) 동시에 만들 수 있다 - 막지 않는다.
+    # 각 포지션은 자신에게 체결된 주문만 재생해 상태를 계산하므로 서로 간섭하지
+    # 않는다(auto_infinite.replay_position_state 참고).
+    position = AutoInfinitePosition(
+        user_id=current_user.id, ticker=ticker, exchange=exchange, label=label,
+        splits=40, target_return_pct=target_return, seed=seed,
+    )
+    db.session.add(position)
+    db.session.commit()
+    return jsonify(sanitize_json(auto_infinite.compute_live_status(position, client)))
+
+
+@app.route("/api/auto-infinite/positions/<int:position_id>", methods=["DELETE"])
+@admin_required
+def delete_auto_infinite_position(position_id):
+    from models import AutoInfinitePosition
+    position = AutoInfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+    db.session.delete(position)
+    db.session.commit()
+    return jsonify({"ok": True, "note": "앱의 기록만 삭제됩니다 - 메리츠 실계좌의 보유 종목은 그대로입니다"})
+
+
+@app.route("/api/auto-infinite/positions/<int:position_id>/orders", methods=["GET"])
+@admin_required
+def list_auto_infinite_orders(position_id):
+    from models import AutoInfinitePosition
+    position = AutoInfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+    return jsonify([o.to_dict() for o in reversed(position.orders)])
+
+
+@app.route("/api/auto-infinite/positions/<int:position_id>/orders", methods=["POST"])
+@admin_required
+def submit_auto_infinite_order(position_id):
+    from models import AutoInfinitePosition
+    from meritz_api import MeritzClient, MeritzApiError
+    import auto_infinite
+
+    position = AutoInfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+
+    body = request.json or {}
+    action = body.get("action", "").strip().lower()
+    order_type = body.get("orderType", "").strip().lower()
+    label = (body.get("label") or "")[:60]
+    if action not in ("buy", "sell"):
+        return jsonify({"error": "구분은 buy 또는 sell이어야 합니다"}), 400
+    # 가이드(infinite_buying.build_guide)가 내는 주문은 LOC(매수/쿼터매도)·MOC(손절모드
+    # 강제매도)·LIMIT(목표가 3/4 매도)뿐이지만, 1일차(새 사이클) 매수는 사용자가 직접
+    # 입력하므로 market도 허용한다(meritz_api.OVERSEAS_ORDER_TYPES 전체).
+    if order_type not in ("loc", "moc", "limit", "market"):
+        return jsonify({"error": "주문구분은 loc/moc/limit/market 중 하나여야 합니다"}), 400
+    try:
+        qty = int(body.get("qty", 0))
+        price = body.get("price")
+        price = float(price) if price is not None else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "수량/가격은 숫자여야 합니다"}), 400
+    if qty <= 0:
+        return jsonify({"error": "수량은 1 이상이어야 합니다"}), 400
+    if order_type in ("loc", "limit") and (price is None or price <= 0):
+        return jsonify({"error": "LOC/LIMIT 주문은 가격이 필요합니다"}), 400
+    dry_run = bool(body.get("dryRun", False))
+
+    try:
+        client = MeritzClient()
+        result = auto_infinite.submit_order(
+            position, client, action, order_type, qty, price, label, dry_run=dry_run,
+        )
+    except MeritzApiError as e:
+        return jsonify({"error": f"주문 제출 실패: {e}"}), 502
+    return jsonify(sanitize_json(result))
+
+
+@app.route("/api/auto-infinite/positions/<int:position_id>/refresh-fills", methods=["POST"])
+@admin_required
+def refresh_auto_infinite_fills(position_id):
+    from models import AutoInfinitePosition
+    from meritz_api import MeritzClient, MeritzApiError
+    import auto_infinite
+
+    position = AutoInfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+    try:
+        client = MeritzClient()
+        updated = auto_infinite.refresh_fill_status(position, client)
+        status = auto_infinite.compute_live_status(position, client)
+    except MeritzApiError as e:
+        return jsonify({"error": f"체결 확인 실패: {e}"}), 502
+    return jsonify(sanitize_json({"updated": updated, "status": status,
+                                   "orders": [o.to_dict() for o in reversed(position.orders)]}))
 
 
 # ─── 관리자 API ──────────────────────────────────────────────────────────────
@@ -2200,6 +2427,9 @@ for _view in (
     list_screener_watchlist, add_screener_watchlist, remove_screener_watchlist,
     list_infinite_positions, add_infinite_position, delete_infinite_position,
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
+    list_auto_infinite_positions, add_auto_infinite_position, delete_auto_infinite_position,
+    list_auto_infinite_orders, submit_auto_infinite_order, refresh_auto_infinite_fills,
+    kakao_test_message,
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
     admin_set_trade_alert_email, admin_test_trade_alert_email, cron_run_daily_batch,
     persona_debate_start,

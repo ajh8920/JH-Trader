@@ -68,7 +68,18 @@ def threshold_pct(target_return_pct, splits, t_value):
 
 
 class PositionState:
-    """무한매수법 한 포지션의 상태(평단가·보유수량·T값·사이클)를 담는 값 객체."""
+    """무한매수법 한 포지션의 상태(평단가·보유수량·T값·사이클·쿼터손절모드)를 담는 값 객체.
+
+    quarter_cut_round: 쿼터손절모드(T>분할수-1) 진행 단계.
+      None = 정상모드(전반전/후반전). 0 = 방금 모드에 진입했거나 10회 매수가 끝나
+      MOC 1/4 강제매도를 해야 하는 단계. 1~10 = 그 강제매도 이후 재매수 배치의
+      몇 번째 회차인지.
+    quarter_cut_split_amount: 그 재매수 배치에서 쓰는 1회 매수금(원문: "(매수후
+      남은 자금 + 기존수익금)/10, 단 기존 1회매수금보다 많게 하지는 않음").
+    전부 apply_buy/apply_sell 안에서 T값 변화에 따라 자동으로 전이한다(원문의
+    "쿼터매도 성공 시 후반전 복귀", "10회째 MOC가 우연히 좋은 가격이면 복귀"를
+    모두 "매도 후 T가 분할수-1 이하로 내려가면 이탈"이라는 하나의 규칙으로
+    일반화했다 - 세 경우 모두 결과적으로 같은 조건이다)."""
 
     def __init__(self, seed, splits, target_return_pct, compound_mid_cycle=False):
         self.seed = seed
@@ -84,6 +95,8 @@ class PositionState:
         self.avg_price = 0.0
         self.t_value = 0.0
         self.cycle_no = 1
+        self.quarter_cut_round = None
+        self.quarter_cut_split_amount = 0.0
 
     @property
     def split_amount(self):
@@ -110,6 +123,17 @@ class PositionState:
         self.holding_qty += qty
         self.net_deployed += spend
         self._recalc_t()
+
+        if self.quarter_cut_round is None:
+            if self.t_value > self.splits - 1:
+                # 새로 쿼터손절모드 진입 - 0단계(MOC 1/4 강제매도 대기)부터 시작
+                self.quarter_cut_round = 0
+        elif self.quarter_cut_round >= 1:
+            # 재매수 배치 중 매수 1건 체결 = 회차 +1. 10회를 넘기면 다시 MOC
+            # 강제매도 단계(0)로 돌아간다(원문: "10회 매수가 끝난 직후에는... MOC 매도").
+            self.quarter_cut_round += 1
+            if self.quarter_cut_round > 10:
+                self.quarter_cut_round = 0
         return spend
 
     def apply_sell(self, price, qty):
@@ -127,10 +151,25 @@ class PositionState:
             self.avg_price = 0.0
             self.net_deployed = 0.0
             self.t_value = 0.0
+            self.quarter_cut_round = None
+            self.quarter_cut_split_amount = 0.0
         else:
             if self.compound_mid_cycle and profit > 0:
                 self.bonus_per_split += profit / 40
             self._recalc_t()
+
+            if self.t_value <= self.splits - 1:
+                # 이 매도로 T가 정상범위로 복귀 - 쿼터손절모드 이탈(후반전 복귀).
+                # 원문의 "-목표% LOC 매도 성공" / "10회째 MOC가 우연히 -목표%
+                # 안쪽" 두 경우 모두 이 조건으로 수렴한다.
+                self.quarter_cut_round = None
+                self.quarter_cut_split_amount = 0.0
+            elif self.quarter_cut_round == 0:
+                # 방금 그 MOC 1/4 강제매도가 체결됨 - 남은 자금(=이 시점의 cash,
+                # 실현손익이 이미 반영된 값)으로 10회 배치용 1회 매수금을 재계산하고
+                # 1회차로 진입한다. 원문: "기존 1회매수금보다 많게 하지는 않습니다."
+                self.quarter_cut_split_amount = min(self.split_amount, self.cash / 10) if self.cash > 0 else 0.0
+                self.quarter_cut_round = 1
 
         return proceeds, profit
 
@@ -155,20 +194,60 @@ def build_guide(state):
     holding_qty = state.holding_qty
 
     if holding_qty == 0:
+        # 원문의 1일차 매수 기준("+목표% LOC")이 실제로 어느 가격 대비인지 불명확하고
+        # (라오어 카페 원문 자체가 모호함, 2026-10-21 확인), 애초에 새 사이클을 시작할지
+        # 말지·얼마로 시작할지는 사용자가 정할 문제이므로 시스템이 추측해 주문을 만들지
+        # 않는다 - 사용자가 수량/가격을 직접 입력해 제출하면 거기서부터 정상모드가
+        # 자동으로 이어진다.
         return {
-            "holding": False, "lossCutMode": False,
-            "orders": [{"action": "buy", "orderType": "MOC", "label": "Day 1 Buy", "price": None, "qty": None}],
-            "note": "보유 중인 수량이 없습니다 — 새 사이클 1일차(원금/분할수 만큼 종가 매수)를 시작하세요",
+            "holding": False, "lossCutMode": False, "quarterCutRound": None,
+            "orders": [],
+            "note": "보유 중인 수량이 없습니다 — 새 사이클 1일차 매수 수량·가격을 직접 정해 기록하세요",
+        }
+
+    if state.loss_cut_mode and state.quarter_cut_round == 0:
+        qty_moc = math.floor(holding_qty * 0.25)
+        return {
+            "holding": True, "lossCutMode": True, "quarterCutRound": 0,
+            "orders": [{"action": "sell", "orderType": "MOC", "label": "Stop-Loss Forced Sell (1/4)", "price": None, "qty": qty_moc}],
+            "note": (
+                f"분할을 모두 소진했습니다(T={t_value:.2f}/{splits}) — 쿼터손절모드 진입: "
+                f"보유수량의 1/4인 {qty_moc}주를 오늘 종가로 무조건(MOC) 매도하세요. "
+                f"체결되면 남은 자금으로 10회 재매수 배치가 자동으로 시작됩니다"
+            ),
         }
 
     if state.loss_cut_mode:
-        qty_moc = math.floor(holding_qty * 0.25)
+        # 쿼터손절모드 1~10회차: 매수는 평단대비 -목표% 고정 LOC(T에 따라 안 변함),
+        # 매도는 같은 자리 1/4 LOC(체결되면 후반전으로 자동 복귀) + 나머지 3/4는
+        # 평소와 같은 +목표% 지정가. 원문: "매수는 -12% LOC 매수로 쭉 가면 됩니다 /
+        # 누적수량의 1/4를 -12% LOC 매도... 나머지는 12% 지정가매도".
+        cut_pct = -target
+        buy_price = round(avg_price * (1 + cut_pct / 100) - 0.01, 4)
+        split_amt = state.quarter_cut_split_amount
+        qty_quarter = math.floor(holding_qty * 0.25)
+        qty_target = holding_qty - qty_quarter
         return {
-            "holding": True, "lossCutMode": True,
-            "orders": [{"action": "sell", "orderType": "MOC", "label": "Stop-Loss Forced Sell (1/4)", "price": None, "qty": qty_moc}],
+            "holding": True, "lossCutMode": True, "quarterCutRound": state.quarter_cut_round,
+            "orders": [
+                {
+                    "action": "buy", "orderType": "LOC", "label": f"Quarter-Cut Buy ({state.quarter_cut_round}/10)",
+                    "pct": round(cut_pct, 2), "price": buy_price,
+                    "qty": math.floor(split_amt / buy_price) if buy_price > 0 else 0,
+                },
+                {
+                    "action": "sell", "orderType": "LOC", "label": "Quarter-Cut Exit Sell (1/4)",
+                    "pct": round(cut_pct, 2), "price": round(avg_price * (1 + cut_pct / 100), 4), "qty": qty_quarter,
+                },
+                {
+                    "action": "sell", "orderType": "LIMIT", "label": "Sell (Target 3/4)",
+                    "pct": target, "price": round(avg_price * (1 + target / 100), 4), "qty": qty_target,
+                },
+            ],
             "note": (
-                f"분할을 모두 소진했습니다(T={t_value:.2f}/{splits}) — "
-                f"보유수량의 1/4인 {qty_moc}주를 오늘 종가로 무조건(MOC) 매도하는 것을 검토하세요"
+                f"쿼터손절모드 {state.quarter_cut_round}/10회차(T={t_value:.2f}) — 매수·매도를 모두 "
+                f"평단대비 {cut_pct:.1f}%에 걸고, {cut_pct:.1f}% 매도(1/4)가 체결되면 자동으로 "
+                f"후반전 모드로 복귀합니다. 10회를 다 채우면 다시 1/4 MOC 강제매도부터 반복됩니다"
             ),
         }
 
@@ -179,7 +258,11 @@ def build_guide(state):
 
     orders = []
     if t_value < half_point:
-        buy_price_a = round(avg_price - 0.01, 4)
+        # -0.01 보정은 ☆%(임계값) 매수점에만 적용한다 - 그 지점이 쿼터 LOC 매도가와
+        # 겹치기 때문(원문: "☆% 지점매수점에 -0.01달러를 합니다"). 평단(0%) 매수점은
+        # 어느 매도 가격과도 겹치지 않으므로 보정이 필요 없다 - 둘 다에 적용하던 것은
+        # 버그였다(2026-10-21, 실계좌 화면과 대조해 발견).
+        buy_price_a = round(avg_price, 4)
         buy_price_b = round(avg_price * (1 + star / 100) - 0.01, 4)
         orders.append({
             "action": "buy", "orderType": "LOC", "label": "Buy (Avg Price)", "pct": 0.0,
@@ -209,7 +292,7 @@ def build_guide(state):
 
     phase = "전반전" if t_value < half_point else "후반전"
     return {
-        "holding": True, "lossCutMode": False,
+        "holding": True, "lossCutMode": False, "quarterCutRound": None,
         "orders": orders,
         "note": (
             f"{phase}(T={t_value:.2f}/{splits}, ☆%={star:.2f}%) — 매수·매도 주문을 표에 나온 가격으로 "

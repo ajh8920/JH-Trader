@@ -89,8 +89,12 @@ def run_infinite_buying(ticker, start, end, seed, splits, target_return_pct, ver
             equity_curve.append({"date": display_date, "value": round(state.cash + state.holding_qty * c, 2)})
             continue
 
-        # 1) 매도 확인
-        star = state.star_pct
+        # 1) 매도 확인 — 정상모드는 T에 따라 변하는 ☆%, 쿼터손절모드(1~10회차)는
+        # 평단대비 -목표% 고정가가 "쿼터" 매도 기준이다(원문: "매수는 -12% LOC 매수로
+        # 쭉 가면 됩니다 / 누적수량의 1/4를 -12% LOC 매도"). 둘 다 나머지 3/4는
+        # 항상 +목표% 지정가로 동일.
+        in_cut_round = state.quarter_cut_round is not None and state.quarter_cut_round >= 1
+        star = (-target_return_pct) if in_cut_round else state.star_pct
         quarter_limit = state.avg_price * (1 + star / 100)
         target_limit = state.avg_price * (1 + target_return_pct / 100)
         c_fill = c >= quarter_limit
@@ -142,8 +146,10 @@ def run_infinite_buying(ticker, start, end, seed, splits, target_return_pct, ver
 
         # 2) 매수/손절 진행 (오늘 매도가 없었고, 아직 포지션이 남아있을 때)
         if not sold_today and state.holding_qty > 0:
-            if state.loss_cut_mode:
-                # 분할 소진(T > N-1): 매수 대신 보유수량의 1/4을 그날 종가로 무조건(MOC) 매도
+            if state.loss_cut_mode and state.quarter_cut_round == 0:
+                # 분할 소진(T > N-1) 진입 직후: 보유수량의 1/4을 그날 종가로 무조건(MOC)
+                # 매도. 체결되면 PositionState.apply_sell이 자동으로 재매수 분할금을
+                # 계산하고 1회차로 전이한다.
                 qty_moc = math.floor(state.holding_qty * 0.25)
                 if qty_moc > 0:
                     cycle_before = state.cycle_no
@@ -152,6 +158,22 @@ def run_infinite_buying(ticker, start, end, seed, splits, target_return_pct, ver
                         "cycle": cycle_before, "date": display_date, "action": "sell",
                         "price": round(c, 4), "qty": qty_moc, "note": "Stop-loss (splits exhausted) MOC sell (1/4)",
                     })
+            elif in_cut_round:
+                # 쿼터손절모드 1~10회차: 평단대비 -목표% 고정 LOC 매수(T와 무관,
+                # 재매수 분할금은 state.quarter_cut_split_amount). 원문: "매수는
+                # -12% LOC 매수로 쭉 가면 됩니다."
+                buy_price = state.avg_price * (1 + star / 100) - 0.01
+                if c <= buy_price:
+                    order_amt = min(state.quarter_cut_split_amount, state.cash)
+                    qty = math.floor(order_amt / c)
+                    if qty > 0:
+                        round_before = state.quarter_cut_round
+                        state.apply_buy(c, qty)
+                        trades.append({
+                            "cycle": state.cycle_no, "date": display_date, "action": "buy",
+                            "price": round(c, 4), "qty": qty,
+                            "note": f"Quarter-cut buy ({round_before}/10)",
+                        })
             else:
                 half_point = splits / 2
                 amt = state.split_amount
