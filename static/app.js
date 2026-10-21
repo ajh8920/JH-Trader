@@ -5004,10 +5004,14 @@ async function deleteInfiniteTrade(positionId, tradeId) {
 // ─── 무한매수법 2.2버전 실매매 자동화(메리츠증권 해외주식) ──────────────────────
 
 async function addAutoInfinitePosition() {
-  const ticker = document.getElementById('al-ticker').value.trim().toUpperCase();
-  const label = document.getElementById('al-label').value.trim();
-  const targetReturn = parseFloat(document.getElementById('al-target').value);
-  const seed = parseFloat(document.getElementById('al-seed').value);
+  // 'al-' 접두사는 알림(Alerts) 탭 폼이 이미 쓰고 있어(al-ticker/al-price/al-type) 이
+  // 무한매수 폼의 필드 id는 'ail-'(Auto-Infinite Live)로 분리한다 - 예전엔 al-ticker를
+  // 그대로 썼다가 getElementById가 알림 탭의 숨겨진 al-ticker를 먼저 집어 "티커를
+  // 입력하세요" 오류가 항상 뜨는 버그가 있었다(2026-10-21 실사용 중 발견).
+  const ticker = document.getElementById('ail-ticker').value.trim().toUpperCase();
+  const label = document.getElementById('ail-label').value.trim();
+  const targetReturn = parseFloat(document.getElementById('ail-target').value);
+  const seed = parseFloat(document.getElementById('ail-seed').value);
 
   if (!ticker) { alert('티커를 입력하세요'); return; }
   if (!seed || seed <= 0) { alert('시드를 입력하세요'); return; }
@@ -5016,8 +5020,8 @@ async function addAutoInfinitePosition() {
 
   try {
     await api('POST', '/api/auto-infinite/positions', { ticker, label, targetReturn, seed });
-    document.getElementById('al-ticker').value = '';
-    document.getElementById('al-label').value = '';
+    document.getElementById('ail-ticker').value = '';
+    document.getElementById('ail-label').value = '';
     loadAutoInfinitePositions();
   } catch (e) { alert(e.message); }
 }
@@ -5128,13 +5132,13 @@ function renderAutoInfinitePositions(positions, account) {
         <div class="live-rec-title"><i class="ti ti-flag" aria-hidden="true"></i> <span data-i18n="day1EntryTitle">Day 1 entry</span></div>
         <div class="live-rec-note" style="margin-bottom:8px;">${escapeHtml(rec.note)}</div>
         <div class="add-form">
-          <select id="al-day1-type-${p.id}" style="width:100px;">
+          <select id="ail-day1-type-${p.id}" style="width:100px;">
             <option value="moc">MOC</option>
             <option value="limit">${t('limitOrder') || 'Limit'}</option>
             <option value="market">Market</option>
           </select>
-          <input type="number" id="al-day1-qty-${p.id}" placeholder="${t('qty')}" style="width:90px;" step="1" min="1" />
-          <input type="number" id="al-day1-price-${p.id}" placeholder="${t('price')} ($)" style="width:110px;" step="0.01" />
+          <input type="number" id="ail-day1-qty-${p.id}" placeholder="${t('qty')}" style="width:90px;" step="1" min="1" />
+          <input type="number" id="ail-day1-price-${p.id}" placeholder="${t('price')} ($)" style="width:110px;" step="0.01" />
           <button class="btn-primary" onclick="submitAutoInfiniteDay1(${p.id})"><i class="ti ti-send" aria-hidden="true"></i> <span data-i18n="submitOrder">Submit order</span></button>
         </div>
       </div>`}
@@ -5150,7 +5154,7 @@ function renderAutoInfinitePositions(positions, account) {
           <i class="ti ti-info-circle" aria-hidden="true"></i>
           <span data-i18n="backfillHint">Records trades that already happened in the real account before this app existed — never sends an order. One per line: date,buy/sell,qty,price</span>
         </div>
-        <textarea id="al-backfill-text-${p.id}" rows="4" style="width:100%;font-family:monospace;font-size:12.5px;" placeholder="2026-10-15,buy,2,100.00&#10;2026-10-16,buy,1,107.35"></textarea>
+        <textarea id="ail-backfill-text-${p.id}" rows="4" style="width:100%;font-family:monospace;font-size:12.5px;" placeholder="2026-10-15,buy,2,100.00&#10;2026-10-16,buy,1,107.35"></textarea>
         <button class="btn-primary" style="margin-top:8px;" onclick="submitAutoInfiniteBackfill(${p.id})"><i class="ti ti-upload" aria-hidden="true"></i> <span data-i18n="backfillSubmit">Add records</span></button>
       </div>
     </div>`;
@@ -5181,9 +5185,9 @@ function autoInfiniteOrderRow(position, order, idx) {
 }
 
 async function submitAutoInfiniteDay1(positionId) {
-  const orderType = document.getElementById(`al-day1-type-${positionId}`).value;
-  const qty = parseInt(document.getElementById(`al-day1-qty-${positionId}`).value, 10);
-  const priceInput = document.getElementById(`al-day1-price-${positionId}`).value;
+  const orderType = document.getElementById(`ail-day1-type-${positionId}`).value;
+  const qty = parseInt(document.getElementById(`ail-day1-qty-${positionId}`).value, 10);
+  const priceInput = document.getElementById(`ail-day1-price-${positionId}`).value;
   const price = priceInput ? parseFloat(priceInput) : null;
 
   if (!qty || qty <= 0) { alert('수량을 입력하세요'); return; }
@@ -5243,7 +5247,7 @@ async function toggleAutoInfiniteBackfill(positionId) {
 }
 
 async function submitAutoInfiniteBackfill(positionId) {
-  const raw = document.getElementById(`al-backfill-text-${positionId}`).value.trim();
+  const raw = document.getElementById(`ail-backfill-text-${positionId}`).value.trim();
   if (!raw) { alert('입력된 내역이 없습니다'); return; }
   const trades = [];
   for (const line of raw.split('\n')) {
@@ -5257,7 +5261,7 @@ async function submitAutoInfiniteBackfill(positionId) {
   try {
     const result = await api('POST', `/api/auto-infinite/positions/${positionId}/backfill`, { trades });
     alert(`${result.added}건 추가되었습니다.`);
-    document.getElementById(`al-backfill-text-${positionId}`).value = '';
+    document.getElementById(`ail-backfill-text-${positionId}`).value = '';
     await loadAutoInfinitePositions();
   } catch (e) { alert(e.message); }
 }
