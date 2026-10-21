@@ -2963,6 +2963,7 @@ def _send_auto_infinite_failure_alerts(today):
     from models import AutoInfinitePosition
     import kakao_notify
     import email_utils
+    import email_templates
 
     positions = AutoInfinitePosition.query.filter_by(is_active=True, auto_trading_enabled=True).all()
     for position in positions:
@@ -2981,11 +2982,8 @@ def _send_auto_infinite_failure_alerts(today):
             url=f"{kakao_notify.APP_BASE_URL}/",
         )
         if position.alert_email:
-            body = (
-                f"{position.ticker}{(' · ' + position.label) if position.label else ''} - {reason}\n\n"
-                f"앱의 무한매수 탭에서 주문 내역/연결 상태를 직접 확인해주세요: {kakao_notify.APP_BASE_URL}/"
-            )
-            email_utils.send_email(position.alert_email, title, body)
+            html, body = email_templates.build_auto_infinite_failure_email(position, reason)
+            email_utils.send_email(position.alert_email, title, body, html=html)
         position.auto_last_failure_notified_date = today
         db.session.commit()
 

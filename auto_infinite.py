@@ -24,7 +24,7 @@ LOC"가 정확히 무엇 기준인지 불명확하고, 애초에 시작 여부·
 짝을 이룬다).
 """
 import json
-from datetime import date
+from datetime import date, datetime
 
 from infinite_buying import PositionState, build_guide
 from meritz_api import MeritzApiError, OVERSEAS_EXCHANGES
@@ -79,22 +79,41 @@ def _broker_qty_for_ticker(client, ticker, exchange):
 
 def replay_position_state(position):
     """이 포지션에 체결된 주문을 시간순으로 재생해 현재 PositionState를 만든다
-    (live_tracker.compute_position_status와 같은 패턴). 반환값: (state, 체결건수)."""
+    (live_tracker.compute_position_status와 같은 패턴). 반환값: (state, 체결건수).
+
+    state.cycle_start_date/cycle_day(2026-10-22 추가, 사용자 요청: "1회의 몇일차인지
+    정보가 추가되었음 함") - 현재 사이클(아직 전량매도 안 된 회차)의 첫 매수
+    체결일부터 오늘까지 경과한 "달력일" 수다. 거래일 캘린더 데이터가 없어
+    영업일 기준으로는 못 세고(CLAUDE.md missing_filters와 같은 종류의 한계),
+    달력일로 센다 - 원문의 "n일차"도 보통 주말 포함 경과일 감각으로 쓰인다."""
     state = PositionState(position.seed, position.splits, position.target_return_pct,
                            compound_mid_cycle=False)
     filled = sorted(
         (o for o in position.orders if o.status == "filled"),
         key=lambda o: (o.trade_date, o.id),
     )
+    cycle_start_date = None
     for o in filled:
         qty = o.filled_qty if o.filled_qty else o.qty
         price = o.filled_price if o.filled_price else o.price
         if o.action == "buy":
             if state.holding_qty == 0:
                 state.start_cycle()
+                cycle_start_date = o.trade_date
             state.apply_buy(price, qty)
         else:
             state.apply_sell(price or 0.0, qty)
+            if state.holding_qty == 0:
+                cycle_start_date = None
+
+    state.cycle_start_date = cycle_start_date
+    state.cycle_day = None
+    if cycle_start_date and state.holding_qty > 0:
+        try:
+            start_d = datetime.strptime(cycle_start_date[:10], "%Y-%m-%d").date()
+            state.cycle_day = (date.today() - start_d).days + 1
+        except ValueError:
+            pass
     return state, len(filled)
 
 
@@ -124,6 +143,8 @@ def compute_live_status(position, client):
         "seed": position.seed,
         "cycleSeed": round(state.cycle_seed, 2),
         "cycle": state.cycle_no,
+        "cycleDay": state.cycle_day,
+        "cycleStartDate": state.cycle_start_date,
         "splitAmount": round(state.split_amount, 2),
         "ledgerCashUsd": round(state.cash, 2),
         "holdingQty": state.holding_qty,
@@ -182,13 +203,15 @@ def compute_account_overview(client, positions):
     return {"availableCashUsd": round(cash, 2), "warnings": warnings}
 
 
-def _notify_order_submitted(position, action, order_type, qty, price):
+def _notify_order_submitted(position, action, order_type, qty, price, state=None):
     """실제(dry_run=False) 주문이 메리츠에 제출된 직후 카카오톡+이메일로 알린다 -
     실제 돈이 나가는 이벤트라 즉시성이 중요하다(paper_trading.py의 일일 요약
     알림과 달리 매 건마다 보낸다). 둘 다 발송 실패를 내부에서 삼키므로 여기서
     예외 처리를 따로 할 필요가 없다 - 주문 자체는 이미 끝난 뒤라 알림 실패가
     주문 결과에 영향을 주지 않는다. 카카오·이메일은 서로 독립된 채널이라
-    한쪽이 꺼져 있거나(연동 안 함/이메일 미설정) 실패해도 다른 쪽엔 영향 없다."""
+    한쪽이 꺼져 있거나(연동 안 함/이메일 미설정) 실패해도 다른 쪽엔 영향 없다.
+    state는 호출부(submit_order)가 주문 직전에 이미 replay_position_state로 계산해둔
+    것을 그대로 재사용한다(API를 다시 부르지 않음)."""
     import kakao_notify
 
     action_ko = "매도" if action == "sell" else "매수"
@@ -202,12 +225,11 @@ def _notify_order_submitted(position, action, order_type, qty, price):
 
     if position.alert_email:
         import email_utils
-        body = (
-            f"{position.ticker}{(' · ' + position.label) if position.label else ''} 포지션에 실제 주문이 제출됐습니다.\n\n"
-            f"구분: {action_ko}\n수량: {qty}주\n주문구분: {order_type.upper()}\n가격: {price_text}\n\n"
-            f"자세한 내용(체결 여부 포함)은 앱의 무한매수 탭에서 확인하세요: {kakao_notify.APP_BASE_URL}/"
+        import email_templates
+        html, body = email_templates.build_auto_infinite_order_email(
+            position, action, order_type, qty, price, state=state,
         )
-        email_utils.send_email(position.alert_email, title, body)
+        email_utils.send_email(position.alert_email, title, body, html=html)
 
 
 def submit_order(position, client, action, order_type, qty, price, label, dry_run=True):
@@ -247,7 +269,7 @@ def submit_order(position, client, action, order_type, qty, price, label, dry_ru
     db.session.add(order)
     db.session.commit()
 
-    _notify_order_submitted(position, action, order_type, qty, price)
+    _notify_order_submitted(position, action, order_type, qty, price, state=state)
     return {"dryRun": False, "order": order.to_dict()}
 
 

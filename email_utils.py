@@ -21,22 +21,29 @@ def is_valid_email(addr):
     return bool(addr) and len(addr) <= 255 and "\n" not in addr and "\r" not in addr and bool(EMAIL_RE.match(addr))
 
 
-def send_email_verbose(to_addr, subject, body):
+def send_email_verbose(to_addr, subject, body, html=None):
     """send_email과 같은 로직이지만 실패 원인을 함께 돌려준다 - 관리자 페이지의
     "테스트 발송"처럼 사람이 바로 원인(API 키 미설정/Resend 측 오류 등)을 알아야
     하는 곳에서 쓴다. 백그라운드 스케줄러는 원인까지 필요 없어 send_email()을
-    그대로 쓴다."""
+    그대로 쓴다.
+
+    html을 넘기면 Resend에 text+html을 함께 보낸다(html 지원 안 하는 클라이언트용
+    폴백으로 text도 항상 유지) - email_templates.py가 html을 만들고 body는 그
+    html에서 태그만 뺀 요약을 넘기는 식으로 쓴다."""
     if not is_valid_email(to_addr):
         return False, "이메일 형식이 올바르지 않습니다"
     api_key = os.environ.get("RESEND_API_KEY")
     if not api_key:
         return False, "서버에 RESEND_API_KEY 환경변수가 설정되어 있지 않습니다"
     from_addr = os.environ.get("RESEND_FROM") or DEFAULT_FROM
+    payload = {"from": from_addr, "to": [to_addr], "subject": subject, "text": body}
+    if html:
+        payload["html"] = html
     try:
         res = requests.post(
             RESEND_API_URL,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"from": from_addr, "to": [to_addr], "subject": subject, "text": body},
+            json=payload,
             timeout=20,
         )
         if res.status_code >= 400:
@@ -46,7 +53,7 @@ def send_email_verbose(to_addr, subject, body):
         return False, str(e)
 
 
-def send_email(to_addr, subject, body):
+def send_email(to_addr, subject, body, html=None):
     """성공하면 True, 설정이 비어 있거나 발송에 실패하면 False."""
-    ok, _ = send_email_verbose(to_addr, subject, body)
+    ok, _ = send_email_verbose(to_addr, subject, body, html=html)
     return ok

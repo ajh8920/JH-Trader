@@ -369,6 +369,7 @@ const I18N = {
   priceChartBuySell: { en: 'Price Chart (Buy/Sell Points)', ko: '가격 차트(매수/매도 시점)' },
   priceChart: { en: 'price chart', ko: '가격 차트' },
   cycle: { en: 'Cycle', ko: '회차' },
+  cycleDaySuffix: { en: 'd', ko: '일차' },
   date: { en: 'Date', ko: '날짜' },
   type: { en: 'Type', ko: '구분' },
   cumQty: { en: 'Cum. Qty', ko: '누적수량' },
@@ -5088,7 +5089,7 @@ function renderAutoInfinitePositions(positions, account) {
           ${p.label ? `<span class="cycle-pill">${escapeHtml(p.label)}</span>` : ''}
           <span class="cycle-pill">${escapeHtml(p.exchange)}</span>
           <span class="cycle-pill">V2.2</span>
-          <span class="cycle-pill">${t('cycle')} ${p.cycle}</span>
+          <span class="cycle-pill">${t('cycle')} ${p.cycle}${p.cycleDay ? ` · ${p.cycleDay}${t('cycleDaySuffix')}` : ''}</span>
           ${qcrBadge}
         </div>
         <button class="btn-icon" onclick="deleteAutoInfinitePosition(${p.id})" aria-label="Delete position"><i class="ti ti-trash" aria-hidden="true"></i></button>

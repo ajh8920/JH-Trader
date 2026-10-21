@@ -1374,6 +1374,7 @@ def send_trade_alerts():
 
 def _send_one_trade_alert(account_id):
     import email_utils
+    import email_templates
 
     # gunicorn 워커 2개가 같은 시각(14:30)에 동시에 깨어날 수 있어, 중복 발송을
     # 막으려고 행 잠금을 걸고 나서야 last_alert_sent_date를 확인한다(RULES.md의
@@ -1392,39 +1393,32 @@ def _send_one_trade_alert(account_id):
     pyramids = PaperPosition.query.filter_by(account_id=account.id, last_pyramid_date=target_date).all()
     sells = PaperTrade.query.filter_by(account_id=account.id, exit_date=target_date).all()
 
-    lines = []
-    if buys:
-        lines.append("[신규 매수]")
-        lines += [f"- {p.name}({p.code}): {p.shares:,}주 @ {round(p.entry_price):,}원" for p in buys]
-    if pyramids:
-        if lines:
-            lines.append("")
-        lines.append("[추가 매수(피라미딩)]")
-        lines += [
-            f"- {p.name}({p.code}): {(p.last_pyramid_shares or 0):,}주 추가 @ {round(p.last_entry_price):,}원"
-            for p in pyramids
-        ]
-    if sells:
-        if lines:
-            lines.append("")
-        lines.append("[매도]")
-        lines += [
-            f"- {t.name}({t.code}): {t.shares:,}주 @ {round(t.exit_price):,}원 "
-            f"(사유: {_ALERT_EXIT_REASON_LABEL.get(t.exit_reason, t.exit_reason)}, 손익 {t.pnl_pct:+.1f}%)"
-            for t in sells
-        ]
+    # 보유 종목 테이블(오늘 거래 여부 무관, 전체 현재 보유) - 현재가는
+    # fetch_realtime_prices로 시도하되(보유 종목이라 많아야 수 종목, 실패해도
+    # 메일 자체는 진입가/손절가만으로 계속 보낸다).
+    all_positions = PaperPosition.query.filter_by(account_id=account.id).all()
+    current_prices = {}
+    if all_positions:
+        try:
+            current_prices = fetch_realtime_prices([p.code for p in all_positions], account.market)
+        except Exception:
+            current_prices = {}
+    holdings = [
+        {
+            "code": p.code, "name": p.name, "entry_price": p.entry_price,
+            "current_price": current_prices.get(p.code), "stop_price": p.stop_price,
+            "bars_held": p.bars_held,
+        }
+        for p in all_positions
+    ]
 
-    if not lines:
-        body = f"{target_date} 기준, {label} 전략에서 오늘 실행할 매매가 없습니다."
-    else:
-        body = (
-            f"{target_date} 14:30 실시간가 기준, {label} 전략의 오늘 매매 내역입니다.\n\n"
-            + "\n".join(lines)
-            + "\n\n※ 위 가격은 계산 기준가이며, 실제 체결가는 다를 수 있습니다."
-        )
+    html, body = email_templates.build_paper_trading_email(
+        label, target_date, buys, pyramids, sells, holdings,
+        exit_reason_label=_ALERT_EXIT_REASON_LABEL,
+    )
 
     subject = f"[JH-Trader] {label} 오늘의 매매 ({target_date})"
-    email_sent = email_utils.send_email(account.alert_email, subject, body)
+    email_sent = email_utils.send_email(account.alert_email, subject, body, html=html)
     if email_sent:
         account.last_alert_sent_date = target_date
         db.session.commit()
