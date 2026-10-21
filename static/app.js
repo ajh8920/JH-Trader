@@ -765,6 +765,15 @@ const I18N = {
   day1EntryTitle: { en: 'Day 1 entry', ko: '1일차 매수 직접 입력' },
   limitOrder: { en: 'Limit', ko: '지정가' },
   positionLabelOptional: { en: 'Label (optional)', ko: '이름(선택)' },
+  autoTradingToggle: { en: 'Fully automatic (17:00–18:00 KST daily)', ko: '완전 자동 제출(매일 17:00~18:00)' },
+  autoLastRun: { en: 'Last auto-run', ko: '마지막 자동 실행' },
+  autoRunError: { en: 'had errors', ko: '실패 있음' },
+  backfillTrades: { en: 'Backfill past trades', ko: '과거 거래 기록 추가' },
+  backfillHint: {
+    en: 'Records trades that already happened in the real account before this app existed — never sends an order. One per line: date,buy/sell,qty,price',
+    ko: '이 기능이 생기기 전 실계좌에서 이미 체결된 거래를 기록만 합니다 - 절대 주문을 내지 않습니다. 한 줄에 하나씩: 날짜,buy/sell,수량,가격',
+  },
+  backfillSubmit: { en: 'Add records', ko: '추가' },
   multiCycleHint: {
     en: 'You can start more than one position for the same ticker at once (e.g. running two independent SOXL cycles in parallel) — give each a different label to tell them apart.',
     ko: '같은 티커로 포지션을 여러 개 동시에 시작할 수 있습니다(예: SOXL 사이클 2개를 동시에 독립적으로 운용). 서로 구분하려면 이름을 다르게 입력하세요.',
@@ -5076,6 +5085,16 @@ function renderAutoInfinitePositions(positions, account) {
         <button class="btn-icon" onclick="deleteAutoInfinitePosition(${p.id})" aria-label="Delete position"><i class="ti ti-trash" aria-hidden="true"></i></button>
       </div>
 
+      <div class="add-form" style="margin-bottom:10px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" ${p.autoTradingEnabled ? 'checked' : ''} onchange="toggleAutoInfiniteTrading(${p.id}, this.checked)" />
+          <span data-i18n="autoTradingToggle">Fully automatic (17:00–18:00 KST daily)</span>
+        </label>
+        ${p.autoTradingEnabled ? `<span style="font-size:12px;color:var(--text-secondary);">
+          ${t('autoLastRun')}: ${escapeHtml(p.autoLastRunDate || '-')}${p.autoLastRunHadError ? ` <span style="color:var(--red);">(${t('autoRunError')})</span>` : ''}
+        </span>` : ''}
+      </div>
+
       <div class="live-section-label">${t('basicInfo')}</div>
       <div class="bt-summary-grid live-info-grid">
         <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">$${p.seed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
@@ -5123,8 +5142,17 @@ function renderAutoInfinitePositions(positions, account) {
       <div class="add-form">
         <button class="btn-secondary" onclick="refreshAutoInfiniteFills(${p.id})"><i class="ti ti-refresh" aria-hidden="true"></i> <span data-i18n="checkFills">Check fills</span></button>
         <button class="btn-secondary" onclick="toggleAutoInfiniteOrders(${p.id})"><i class="ti ti-list" aria-hidden="true"></i> <span data-i18n="orderHistory">Order history</span></button>
+        <button class="btn-secondary" onclick="toggleAutoInfiniteBackfill(${p.id})"><i class="ti ti-history" aria-hidden="true"></i> <span data-i18n="backfillTrades">Backfill past trades</span></button>
       </div>
       <div id="autolive-orders-${p.id}" style="display:none;"></div>
+      <div id="autolive-backfill-${p.id}" style="display:none;margin-top:8px;">
+        <div class="info-box" style="margin-bottom:8px;">
+          <i class="ti ti-info-circle" aria-hidden="true"></i>
+          <span data-i18n="backfillHint">Records trades that already happened in the real account before this app existed — never sends an order. One per line: date,buy/sell,qty,price</span>
+        </div>
+        <textarea id="al-backfill-text-${p.id}" rows="4" style="width:100%;font-family:monospace;font-size:12.5px;" placeholder="2026-10-15,buy,2,100.00&#10;2026-10-16,buy,1,107.35"></textarea>
+        <button class="btn-primary" style="margin-top:8px;" onclick="submitAutoInfiniteBackfill(${p.id})"><i class="ti ti-upload" aria-hidden="true"></i> <span data-i18n="backfillSubmit">Add records</span></button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -5192,6 +5220,46 @@ async function submitAutoInfiniteOrderFromGuide(positionId, orderJsonStr, btnEl)
     alert(`주문 제출 실패: ${e.message}`);
     btnEl.disabled = false;
   }
+}
+
+async function toggleAutoInfiniteTrading(positionId, enabled) {
+  if (enabled && !confirm('완전 자동 제출을 켭니다 — 매일 17:00~18:00 사이에 사람 확인 없이 실제 메리츠 계좌로 주문이 자동 제출됩니다. 계속할까요?')) {
+    await loadAutoInfinitePositions();  // 체크박스를 원래 상태로 되돌리기 위해 다시 로드
+    return;
+  }
+  try {
+    await api('PATCH', `/api/auto-infinite/positions/${positionId}/auto-trading`, { enabled });
+    await loadAutoInfinitePositions();
+  } catch (e) {
+    alert(e.message);
+    await loadAutoInfinitePositions();
+  }
+}
+
+async function toggleAutoInfiniteBackfill(positionId) {
+  const el = document.getElementById(`autolive-backfill-${positionId}`);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function submitAutoInfiniteBackfill(positionId) {
+  const raw = document.getElementById(`al-backfill-text-${positionId}`).value.trim();
+  if (!raw) { alert('입력된 내역이 없습니다'); return; }
+  const trades = [];
+  for (const line of raw.split('\n')) {
+    const parts = line.split(',').map(s => s.trim());
+    if (parts.length < 4 || !parts[0]) continue;
+    const [date, action, qty, price] = parts;
+    trades.push({ date, action: action.toLowerCase(), qty: parseInt(qty, 10), price: parseFloat(price) });
+  }
+  if (!trades.length) { alert('형식을 확인하세요 (날짜,buy/sell,수량,가격)'); return; }
+  if (!confirm(`${trades.length}건을 과거 체결 기록으로 추가합니다(실주문 아님). 계속할까요?`)) return;
+  try {
+    const result = await api('POST', `/api/auto-infinite/positions/${positionId}/backfill`, { trades });
+    alert(`${result.added}건 추가되었습니다.`);
+    document.getElementById(`al-backfill-text-${positionId}`).value = '';
+    await loadAutoInfinitePositions();
+  } catch (e) { alert(e.message); }
 }
 
 async function refreshAutoInfiniteFills(positionId) {

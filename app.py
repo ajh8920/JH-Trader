@@ -2247,6 +2247,68 @@ def refresh_auto_infinite_fills(position_id):
                                    "orders": [o.to_dict() for o in reversed(position.orders)]}))
 
 
+@app.route("/api/auto-infinite/positions/<int:position_id>/backfill", methods=["POST"])
+@admin_required
+def backfill_auto_infinite_trades(position_id):
+    """이 앱이 생기기 전에 이미 실계좌에서 체결된 과거 매매를 기록만 해둔다 - 절대
+    메리츠에 주문을 내지 않는다(submit_order와 다름). body.trades는
+    [{date, action, qty, price}, ...] 배열이며, 한 줄에 "날짜,구분,수량,가격"
+    형식의 텍스트를 줄바꿈으로 여러 건 붙여넣는 용도(프런트의 벌크 입력칸)."""
+    from models import AutoInfinitePosition, AutoInfiniteOrder
+
+    position = AutoInfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+
+    trades = (request.json or {}).get("trades") or []
+    if not isinstance(trades, list) or not trades:
+        return jsonify({"error": "trades 배열이 비어 있습니다"}), 400
+
+    added = []
+    for i, t in enumerate(trades):
+        trade_date = str(t.get("date", "")).strip()
+        action = str(t.get("action", "")).strip().lower()
+        try:
+            datetime.strptime(trade_date, "%Y-%m-%d")
+        except ValueError:
+            return jsonify({"error": f"{i+1}번째 줄: 날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)"}), 400
+        if action not in ("buy", "sell"):
+            return jsonify({"error": f"{i+1}번째 줄: 구분은 buy 또는 sell이어야 합니다"}), 400
+        try:
+            qty = int(t.get("qty", 0))
+            price = float(t.get("price", 0))
+        except (TypeError, ValueError):
+            return jsonify({"error": f"{i+1}번째 줄: 수량/가격은 숫자여야 합니다"}), 400
+        if qty <= 0 or price <= 0:
+            return jsonify({"error": f"{i+1}번째 줄: 수량/가격은 0보다 커야 합니다"}), 400
+        added.append((trade_date, action, qty, price))
+
+    for trade_date, action, qty, price in added:
+        order = AutoInfiniteOrder(
+            position_id=position.id, trade_date=trade_date, action=action,
+            order_type="loc", label="실계좌 과거 체결(백필)", qty=qty, price=price,
+            status="filled", filled_qty=qty, filled_price=price,
+        )
+        db.session.add(order)
+    db.session.commit()
+    return jsonify({"ok": True, "added": len(added)})
+
+
+@app.route("/api/auto-infinite/positions/<int:position_id>/auto-trading", methods=["PATCH"])
+@admin_required
+def set_auto_infinite_trading_enabled(position_id):
+    """완전 자동 제출(auto_infinite_scheduler) 대상 여부를 켜고 끈다. 기본값은
+    꺼짐(모델 정의 참고) - 새로 만든 포지션이 실수로 자동매매되지 않도록."""
+    from models import AutoInfinitePosition
+
+    position = AutoInfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+    position.auto_trading_enabled = bool((request.json or {}).get("enabled"))
+    db.session.commit()
+    return jsonify({"ok": True, "autoTradingEnabled": position.auto_trading_enabled})
+
+
 # ─── 관리자 API ──────────────────────────────────────────────────────────────
 
 @app.route("/api/admin/users", methods=["GET"])
@@ -2429,6 +2491,7 @@ for _view in (
     add_infinite_trade, delete_infinite_trade, get_infinite_trades,
     list_auto_infinite_positions, add_auto_infinite_position, delete_auto_infinite_position,
     list_auto_infinite_orders, submit_auto_infinite_order, refresh_auto_infinite_fills,
+    backfill_auto_infinite_trades, set_auto_infinite_trading_enabled,
     kakao_test_message,
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
     admin_set_trade_alert_email, admin_test_trade_alert_email, cron_run_daily_batch,
@@ -2701,6 +2764,150 @@ def paper_trading_scheduler():
                 except Exception:
                     pass
         time.sleep(90)  # 목표 시각 부근에서 곧바로 다시 깨어나 중복 처리하지 않도록 여유
+
+
+def _run_auto_infinite_submissions(today):
+    """auto_trading_enabled 포지션의 오늘자 가이드 주문을 전부 실제로 메리츠에
+    제출한다(반자동 "주문 제출" 버튼을 대신 눌러주는 것 - submit_order()를 그대로
+    재사용하므로 체결 성공 시 카카오 알림도 기존 경로로 똑같이 나간다).
+
+    gunicorn 워커 2개가 같은 시각에 깨어날 수 있어, **먼저 auto_last_run_date를
+    today로 찍어 커밋(선점)한 뒤에야** 실제 주문을 제출한다 - 순서를 반대로 하면
+    (제출부터 하고 나중에 찍으면) 두 워커가 거의 동시에 들어와 같은 포지션에
+    주문을 중복 제출할 수 있다(RULES.md의 "워커 간 공유 상태" 문제, 다만 여기선
+    실제 돈이 두 번 나갈 수 있어 더 엄격하게 다룬다)."""
+    from models import AutoInfinitePosition
+    from meritz_api import MeritzClient, MeritzApiError
+    import auto_infinite
+
+    position_ids = [
+        p.id for p in AutoInfinitePosition.query.filter_by(
+            is_active=True, auto_trading_enabled=True,
+        ).all()
+    ]
+    if not position_ids:
+        return
+    try:
+        client = MeritzClient()
+    except MeritzApiError as e:
+        print(f"[무한매수 자동매매] 메리츠 연결 실패: {e}", flush=True)
+        return
+
+    for position_id in position_ids:
+        position = AutoInfinitePosition.query.filter_by(id=position_id).with_for_update().first()
+        if not position or position.auto_last_run_date == today:
+            db.session.commit()
+            continue
+        position.auto_last_run_date = today  # 선점 커밋 - 잠금을 여기서 즉시 해제
+        db.session.commit()
+
+        had_error = False
+        try:
+            status = auto_infinite.compute_live_status(position, client)
+            rec = status["recommendation"]
+            if rec["holding"]:  # 1일차(새 사이클)는 자동 대상 아님 - 사용자 직접 입력 대기
+                for order in rec["orders"]:
+                    qty = order.get("qty")
+                    price = order.get("price")
+                    order_type = (order.get("orderType") or "").lower()
+                    if not qty or qty <= 0:
+                        continue
+                    if order_type in ("loc", "limit") and (not price or price <= 0):
+                        continue
+                    try:
+                        auto_infinite.submit_order(
+                            position, client, order["action"], order_type, qty, price,
+                            f"자동매매({order.get('label', '')})", dry_run=False,
+                        )
+                    except MeritzApiError as e:
+                        had_error = True
+                        print(f"[무한매수 자동매매] 포지션 {position.id} 주문 실패: {e}", flush=True)
+        except Exception as e:
+            had_error = True
+            print(f"[무한매수 자동매매] 포지션 {position.id} 처리 오류: {e}", flush=True)
+
+        position = AutoInfinitePosition.query.filter_by(id=position_id).first()
+        position.auto_last_run_had_error = had_error
+        db.session.commit()
+
+
+def _send_auto_infinite_failure_alerts(today):
+    """오늘 자동 제출이 실패(연결 실패 또는 일부 주문 거부)한 포지션이 있으면
+    카카오톡으로 한 번만 알린다. 18:00에 호출되므로 그 전까지 재시도 중일 수 있는
+    상태는 아직 "실패 확정"으로 보지 않는다."""
+    from models import AutoInfinitePosition
+    import kakao_notify
+
+    positions = AutoInfinitePosition.query.filter_by(is_active=True, auto_trading_enabled=True).all()
+    for position in positions:
+        if position.auto_last_failure_notified_date == today:
+            continue
+        failed = position.auto_last_run_date != today or position.auto_last_run_had_error
+        if not failed:
+            continue
+        reason = ("메리츠 연결 또는 처리 자체가 실패했습니다" if position.auto_last_run_date != today
+                   else "일부 주문 제출이 실패했습니다")
+        kakao_notify.notify(
+            f"[JH-Trader] {position.ticker} 자동매매 실패",
+            [f"{position.ticker}{(' · ' + position.label) if position.label else ''} - {reason}",
+             "앱에서 주문 내역/연결 상태를 직접 확인해주세요."],
+            url=f"{kakao_notify.APP_BASE_URL}/",
+        )
+        position.auto_last_failure_notified_date = today
+        db.session.commit()
+
+
+def auto_infinite_scheduler():
+    """무한매수법 2.2버전 완전자동 포지션의 오늘자 가이드 주문을 매일 한국시간
+    17:00에 실제로 제출하고, 18:00에 실패 여부를 확인해 카카오톡으로 알린다
+    (2026-10-22, 사용자 요청: "무한매수는 오후 5시에서 6시 사이에 진행... 실패했을
+    경우 6시 이후에 카톡으로 알림 발송"). 17시인 이유: LOC/MOC 주문은 하루 중
+    아무때나 걸어두면 그날 미국장 마감 때 체결되므로(원문: "매수매도를 매일 미리
+    거는 매매법"), 미국장이 열리기도 전인 이 시각(동부시간 기준 새벽)에 미리
+    걸어두면 된다 - 한국시간 17시는 어느 쪽 DST든 미국 동부시간 자정~새벽 5시
+    사이라 항상 그날 장 시작 전이다. 주말(한국시간 기준 토/일, 미국도 같은
+    달력일이라 이 변환에서 요일이 안 바뀐다)은 건너뛴다."""
+    from zoneinfo import ZoneInfo
+
+    kst = ZoneInfo("Asia/Seoul")
+    while True:
+        now = datetime.now(kst)
+        target = now.replace(hour=17, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        time.sleep(max(1.0, (target - now).total_seconds()))
+
+        now = datetime.now(kst)
+        today = now.strftime("%Y-%m-%d")
+        if now.weekday() < 5:
+            with app.app_context():
+                try:
+                    _run_auto_infinite_submissions(today)
+                    _record_heartbeat("auto_infinite_scheduler")
+                except Exception as e:
+                    app.logger.exception("무한매수 자동매매 제출 오류")
+                    try:
+                        db.session.rollback()
+                        _record_heartbeat("auto_infinite_scheduler", error=e)
+                    except Exception:
+                        pass
+
+        now = datetime.now(kst)
+        notify_target = now.replace(hour=18, minute=0, second=0, microsecond=0)
+        if now < notify_target:
+            time.sleep((notify_target - now).total_seconds())
+        now = datetime.now(kst)
+        if now.weekday() < 5:
+            with app.app_context():
+                try:
+                    _send_auto_infinite_failure_alerts(now.strftime("%Y-%m-%d"))
+                except Exception as e:
+                    app.logger.exception("무한매수 자동매매 실패 알림 오류")
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+        time.sleep(90)  # 18:00 부근에서 곧바로 다시 깨어나 중복 처리하지 않도록 여유
 
 
 def kr_quant_price_cache_refresher():
@@ -3236,6 +3443,10 @@ with app.app_context():
     _ensure_column("paper_strategy_accounts", "alert_email", "VARCHAR(255)")
     _ensure_column("paper_strategy_accounts", "last_alert_sent_date", "VARCHAR(10)")
     _ensure_column("kr_delisted_prices", "open", "FLOAT")
+    _ensure_column("auto_infinite_positions", "auto_trading_enabled", "BOOLEAN DEFAULT FALSE")
+    _ensure_column("auto_infinite_positions", "auto_last_run_date", "VARCHAR(10)")
+    _ensure_column("auto_infinite_positions", "auto_last_run_had_error", "BOOLEAN DEFAULT FALSE")
+    _ensure_column("auto_infinite_positions", "auto_last_failure_notified_date", "VARCHAR(10)")
     _backfill_stage_column()
 
 threading.Thread(target=alert_checker, daemon=True).start()
@@ -3244,6 +3455,7 @@ threading.Thread(target=trend_screen_refresher, daemon=True).start()
 threading.Thread(target=us_fundamentals_refresher, daemon=True).start()
 threading.Thread(target=dart_fundamentals_refresher, daemon=True).start()
 threading.Thread(target=paper_trading_scheduler, daemon=True).start()
+threading.Thread(target=auto_infinite_scheduler, daemon=True).start()
 
 
 # ─── 실행 (로컬 개발 서버) ───────────────────────────────────────────────────

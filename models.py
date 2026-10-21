@@ -156,6 +156,17 @@ class AutoInfinitePosition(db.Model):
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # 완전 자동 제출(app.py의 auto_infinite_scheduler, 2026-10-22 추가) - 기본값
+    # False(안전 기본값, 새로 만든 포지션이 실수로 자동매매되지 않도록). True인
+    # 포지션만 매일 한국시간 17~18시 사이에 그날 가이드 주문이 전부 실제로
+    # 제출된다(반자동 수동 클릭을 대신함). auto_last_run_date로 하루 중복 실행을
+    # 막고, had_error/failure_notified_date로 18시 이후 카카오 실패 알림을
+    # 하루 한 번만 보낸다.
+    auto_trading_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    auto_last_run_date = db.Column(db.String(10))
+    auto_last_run_had_error = db.Column(db.Boolean, default=False)
+    auto_last_failure_notified_date = db.Column(db.String(10))
+
     orders = db.relationship(
         "AutoInfiniteOrder", backref="position", cascade="all, delete-orphan",
         order_by="AutoInfiniteOrder.id",

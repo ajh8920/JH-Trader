@@ -138,6 +138,9 @@ def compute_live_status(position, client):
         "recommendation": recommendation,
         "isActive": position.is_active,
         "filledOrderCount": filled_count,
+        "autoTradingEnabled": position.auto_trading_enabled,
+        "autoLastRunDate": position.auto_last_run_date,
+        "autoLastRunHadError": position.auto_last_run_had_error,
     }
 
 
