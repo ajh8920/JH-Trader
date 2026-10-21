@@ -2561,13 +2561,17 @@ def cron_run_auto_infinite():
     그날 자동매매 제출이 통째로 스킵된다(실제로 모의투자가 이 문제로 와쳐 메일을
     놓친 전례가 있다 - cron_run_daily_batch 도입 배경과 동일).
 
-    외부(GitHub Actions, .github/workflows/auto-infinite-trigger.yml)가 17:00~
-    18:45 KST 사이 여러 번 이 엔드포인트를 직접 호출한다 - 호출 자체가 Render를
-    깨우므로 콜드슬립 여부와 무관하다. 호출마다 "지금이 제출 시간대인지 실패확인
-    시간대인지"를 서버가 현재 한국시간으로 직접 판단하므로, 외부에서 정확한
-    타이밍을 맞출 필요 없이 그냥 여러 번 불러도 안전하다(auto_last_run_date/
-    auto_last_failure_notified_date 가드로 멱등적). 인메모리 스케줄러 스레드는
-    이중 안전망으로 그대로 둔다(로컬 개발 등 외부 크론이 없는 환경 대비)."""
+    외부(GitHub Actions, .github/workflows/auto-infinite-trigger.yml)가 06:00~
+    07:40, 17:00~18:45 KST 사이 여러 번 이 엔드포인트를 직접 호출한다 - 호출
+    자체가 Render를 깨우므로 콜드슬립 여부와 무관하다. 호출마다 "지금이 체결확인/
+    제출/실패확인 중 어느 시간대인지"를 서버가 현재 한국시간으로 직접 판단하므로,
+    외부에서 정확한 타이밍을 맞출 필요 없이 그냥 여러 번 불러도 안전하다
+    (auto_last_run_date/auto_last_failure_notified_date 가드와
+    refresh_fill_status 자체의 멱등성으로 중복 호출이 안전함). 06~08시 체결확인
+    구간은 주말 가드(아래) 밖에 둔다 - 금요일 17시 주문은 토요일 새벽(한국시간)에
+    체결되므로 그 체결확인은 토요일 아침에 돌아야 한다(_refresh_all_auto_infinite_
+    fills 참고). 인메모리 스케줄러 스레드는 이중 안전망으로 그대로 둔다(로컬
+    개발 등 외부 크론이 없는 환경 대비)."""
     from zoneinfo import ZoneInfo
 
     secret = os.environ.get("CRON_SECRET")
@@ -2578,13 +2582,17 @@ def cron_run_auto_infinite():
         with app.app_context():
             try:
                 now = datetime.now(ZoneInfo("Asia/Seoul"))
+                today = now.strftime("%Y-%m-%d")
+                if 6 <= now.hour < 8:
+                    _refresh_all_auto_infinite_fills()
+                    _record_heartbeat("auto_infinite_fill_refresh")
+                    return
                 if now.weekday() >= 5:  # 주말은 미국장도 없음
                     return
-                today = now.strftime("%Y-%m-%d")
-                if now.hour < 18:
+                if 17 <= now.hour < 18:
                     _run_auto_infinite_submissions(today)
                     _record_heartbeat("auto_infinite_scheduler")
-                else:
+                elif now.hour >= 18:
                     _send_auto_infinite_failure_alerts(today)
             except Exception as e:
                 app.logger.exception("외부 크론 무한매수 자동매매 처리 오류")
@@ -2660,6 +2668,8 @@ OPS_COMPONENT_EXPECTED_INTERVAL_SECONDS = {
     "us_fundamentals_refresher": 1 * 3600,
     "dart_fundamentals_refresher": 8 * 3600,
     "paper_trading_scheduler": 30 * 3600,
+    "auto_infinite_scheduler": 30 * 3600,
+    "auto_infinite_fill_refresh": 30 * 3600,
 }
 
 
@@ -2956,6 +2966,45 @@ def _run_auto_infinite_submissions(today):
         db.session.commit()
 
 
+def _refresh_all_auto_infinite_fills():
+    """LOC/MOC 주문은 제출(17시) 당일이 아니라 미국장 마감 시각(한국시간 새벽
+    05~06시대, DST에 따라 다름)에 체결된다. 지금까지 체결 확인은 사용자가
+    무한매수 탭에서 "체결확인" 버튼을 직접 눌러야만 반영됐다(2026-10-22 사용자
+    지적: "LOC라서 오전5시에 매매되는데 이 기록은 언제 저장됩니까?"). 이게 단순
+    가시성 문제가 아니라 정확성 문제인 이유 - _run_auto_infinite_submissions가
+    매일 17시에 쓰는 compute_live_status()는 replay_position_state()로
+    status="filled" 주문만 재생해 평단가/T값/사이클을 계산한다. 전날 주문이
+    "submitted" 상태로 멈춰 있으면(아무도 체결확인을 안 눌렀다면) 다음날 17시
+    계산도 전날 제출 시점 상태 그대로 멈춰서, 사다리가 진행되지 않고 비슷한
+    가격대의 주문을 다시 계산해 중복 제출할 위험이 있다 - 다음 제출 전에 반드시
+    체결을 먼저 확인해야 하는 이유다. 장마감 직후(한국시간 06~08시, cron_run_
+    auto_infinite/auto_infinite_scheduler가 호출)에 자동으로 한 번 돌려 이
+    간극을 없앤다. is_active인 포지션 전부 대상(자동매매 여부 무관 - 반자동
+    사용자도 버튼을 안 눌러도 최신 상태를 보게 됨)."""
+    from models import AutoInfinitePosition
+    from meritz_api import MeritzClient, MeritzApiError
+    import auto_infinite
+
+    positions = AutoInfinitePosition.query.filter_by(is_active=True).all()
+    if not positions:
+        return
+    try:
+        client = MeritzClient()
+    except MeritzApiError as e:
+        print(f"[무한매수 체결확인] 메리츠 연결 실패: {e}", flush=True)
+        return
+    for position in positions:
+        try:
+            updated = auto_infinite.refresh_fill_status(position, client)
+            if updated:
+                print(f"[무한매수 체결확인] 포지션 {position.id}({position.ticker}) {updated}건 갱신", flush=True)
+        except MeritzApiError as e:
+            print(f"[무한매수 체결확인] 포지션 {position.id} 조회 실패: {e}", flush=True)
+        except Exception as e:
+            db.session.rollback()
+            print(f"[무한매수 체결확인] 포지션 {position.id} 처리 오류: {e}", flush=True)
+
+
 def _send_auto_infinite_failure_alerts(today):
     """오늘 자동 제출이 실패(연결 실패 또는 일부 주문 거부)한 포지션이 있으면
     카카오톡+이메일로 한 번만 알린다. 18:00에 호출되므로 그 전까지 재시도 중일
@@ -2997,11 +3046,36 @@ def auto_infinite_scheduler():
     거는 매매법"), 미국장이 열리기도 전인 이 시각(동부시간 기준 새벽)에 미리
     걸어두면 된다 - 한국시간 17시는 어느 쪽 DST든 미국 동부시간 자정~새벽 5시
     사이라 항상 그날 장 시작 전이다. 주말(한국시간 기준 토/일, 미국도 같은
-    달력일이라 이 변환에서 요일이 안 바뀐다)은 건너뛴다."""
+    달력일이라 이 변환에서 요일이 안 바뀐다)은 건너뛴다.
+
+    06:30 KST 체결확인 단계(2026-10-22 추가, 사용자 지적: "LOC라서 오전5시에
+    매매되는데 이 기록은 언제 저장됩니까?")는 17시 제출 전에 먼저 돈다 - LOC 체결은
+    제출 당일이 아니라 그날 밤~다음날 새벽 미국장 마감 때 일어나므로, 이 단계가
+    없으면 다음날 17시 계산이 전날 체결을 모른 채(여전히 "submitted") 사다리를
+    진행시켜 중복/어긋난 주문을 만들 위험이 있다(_refresh_all_auto_infinite_fills
+    참고). 금요일 주문은 토요일 새벽에 체결되므로 이 단계만 주말 가드 밖에 둔다."""
     from zoneinfo import ZoneInfo
 
     kst = ZoneInfo("Asia/Seoul")
     while True:
+        now = datetime.now(kst)
+        target = now.replace(hour=6, minute=30, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        time.sleep(max(1.0, (target - now).total_seconds()))
+
+        with app.app_context():
+            try:
+                _refresh_all_auto_infinite_fills()
+                _record_heartbeat("auto_infinite_fill_refresh")
+            except Exception as e:
+                app.logger.exception("무한매수 체결확인 오류")
+                try:
+                    db.session.rollback()
+                    _record_heartbeat("auto_infinite_fill_refresh", error=e)
+                except Exception:
+                    pass
+
         now = datetime.now(kst)
         target = now.replace(hour=17, minute=0, second=0, microsecond=0)
         if now >= target:
