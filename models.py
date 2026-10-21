@@ -167,6 +167,12 @@ class AutoInfinitePosition(db.Model):
     auto_last_run_had_error = db.Column(db.Boolean, default=False)
     auto_last_failure_notified_date = db.Column(db.String(10))
 
+    # 카카오톡과 별개 채널(2026-10-22 추가, 사용자 요청: "모의투자처럼 메일링으로도
+    # 보고") - 주문 제출 성공/자동매매 실패 둘 다 이 주소로도 보낸다. 비워두면
+    # 그 포지션은 메일 알림이 꺼진 상태(paper_strategy_accounts.alert_email과
+    # 같은 패턴 - 비어있으면 조용히 건너뜀).
+    alert_email = db.Column(db.String(255))
+
     orders = db.relationship(
         "AutoInfiniteOrder", backref="position", cascade="all, delete-orphan",
         order_by="AutoInfiniteOrder.id",

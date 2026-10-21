@@ -141,6 +141,7 @@ def compute_live_status(position, client):
         "autoTradingEnabled": position.auto_trading_enabled,
         "autoLastRunDate": position.auto_last_run_date,
         "autoLastRunHadError": position.auto_last_run_had_error,
+        "alertEmail": position.alert_email or "",
     }
 
 
@@ -181,11 +182,12 @@ def compute_account_overview(client, positions):
 
 
 def _notify_order_submitted(position, action, order_type, qty, price):
-    """실제(dry_run=False) 주문이 메리츠에 제출된 직후 카카오톡으로 알린다 - 실제
-    돈이 나가는 이벤트라 즉시성이 중요하다(paper_trading.py의 일일 요약 알림과
-    달리 매 건마다 보낸다). 발송 실패는 notify()가 내부에서 삼키므로 여기서
+    """실제(dry_run=False) 주문이 메리츠에 제출된 직후 카카오톡+이메일로 알린다 -
+    실제 돈이 나가는 이벤트라 즉시성이 중요하다(paper_trading.py의 일일 요약
+    알림과 달리 매 건마다 보낸다). 둘 다 발송 실패를 내부에서 삼키므로 여기서
     예외 처리를 따로 할 필요가 없다 - 주문 자체는 이미 끝난 뒤라 알림 실패가
-    주문 결과에 영향을 주지 않는다."""
+    주문 결과에 영향을 주지 않는다. 카카오·이메일은 서로 독립된 채널이라
+    한쪽이 꺼져 있거나(연동 안 함/이메일 미설정) 실패해도 다른 쪽엔 영향 없다."""
     import kakao_notify
 
     action_ko = "매도" if action == "sell" else "매수"
@@ -196,6 +198,15 @@ def _notify_order_submitted(position, action, order_type, qty, price):
         f"주문구분: {order_type.upper()} / 가격: {price_text}",
     ]
     kakao_notify.notify(title, lines, url=f"{kakao_notify.APP_BASE_URL}/")
+
+    if position.alert_email:
+        import email_utils
+        body = (
+            f"{position.ticker}{(' · ' + position.label) if position.label else ''} 포지션에 실제 주문이 제출됐습니다.\n\n"
+            f"구분: {action_ko}\n수량: {qty}주\n주문구분: {order_type.upper()}\n가격: {price_text}\n\n"
+            f"자세한 내용(체결 여부 포함)은 앱의 무한매수 탭에서 확인하세요: {kakao_notify.APP_BASE_URL}/"
+        )
+        email_utils.send_email(position.alert_email, title, body)
 
 
 def submit_order(position, client, action, order_type, qty, price, label, dry_run=True):

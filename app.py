@@ -2364,6 +2364,27 @@ def set_auto_infinite_trading_enabled(position_id):
     return jsonify({"ok": True, "autoTradingEnabled": position.auto_trading_enabled})
 
 
+@app.route("/api/auto-infinite/positions/<int:position_id>/alert-email", methods=["PATCH"])
+@admin_required
+def set_auto_infinite_alert_email(position_id):
+    """카카오톡과 별개로, 주문 제출 성공/자동매매 실패를 이 주소로도 메일 발송한다
+    (paper_strategy_accounts.alert_email과 같은 패턴 - 2026-10-22 사용자 요청:
+    "카카오 알림을 쓰지 않고도 모의투자처럼 메일링으로 보고"). 카카오 알림
+    기능은 그대로 유지하고 이메일을 추가 채널로 둔다."""
+    from models import AutoInfinitePosition
+    import email_utils
+
+    position = AutoInfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+    email = str((request.json or {}).get("email", "")).strip()
+    if email and not email_utils.is_valid_email(email):
+        return jsonify({"error": "이메일 형식이 올바르지 않습니다"}), 400
+    position.alert_email = email or None
+    db.session.commit()
+    return jsonify({"ok": True, "alertEmail": position.alert_email})
+
+
 # ─── 관리자 API ──────────────────────────────────────────────────────────────
 
 @app.route("/api/admin/users", methods=["GET"])
@@ -2547,6 +2568,7 @@ for _view in (
     list_auto_infinite_positions, add_auto_infinite_position, delete_auto_infinite_position,
     list_auto_infinite_orders, submit_auto_infinite_order, refresh_auto_infinite_fills,
     backfill_auto_infinite_trades, set_auto_infinite_trading_enabled, kakao_preview_auto_infinite,
+    set_auto_infinite_alert_email,
     kakao_test_message,
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
     admin_set_trade_alert_email, admin_test_trade_alert_email, cron_run_daily_batch,
@@ -2888,10 +2910,11 @@ def _run_auto_infinite_submissions(today):
 
 def _send_auto_infinite_failure_alerts(today):
     """오늘 자동 제출이 실패(연결 실패 또는 일부 주문 거부)한 포지션이 있으면
-    카카오톡으로 한 번만 알린다. 18:00에 호출되므로 그 전까지 재시도 중일 수 있는
-    상태는 아직 "실패 확정"으로 보지 않는다."""
+    카카오톡+이메일로 한 번만 알린다. 18:00에 호출되므로 그 전까지 재시도 중일
+    수 있는 상태는 아직 "실패 확정"으로 보지 않는다."""
     from models import AutoInfinitePosition
     import kakao_notify
+    import email_utils
 
     positions = AutoInfinitePosition.query.filter_by(is_active=True, auto_trading_enabled=True).all()
     for position in positions:
@@ -2902,12 +2925,19 @@ def _send_auto_infinite_failure_alerts(today):
             continue
         reason = ("메리츠 연결 또는 처리 자체가 실패했습니다" if position.auto_last_run_date != today
                    else "일부 주문 제출이 실패했습니다")
+        title = f"[JH-Trader] {position.ticker} 자동매매 실패"
         kakao_notify.notify(
-            f"[JH-Trader] {position.ticker} 자동매매 실패",
+            title,
             [f"{position.ticker}{(' · ' + position.label) if position.label else ''} - {reason}",
              "앱에서 주문 내역/연결 상태를 직접 확인해주세요."],
             url=f"{kakao_notify.APP_BASE_URL}/",
         )
+        if position.alert_email:
+            body = (
+                f"{position.ticker}{(' · ' + position.label) if position.label else ''} - {reason}\n\n"
+                f"앱의 무한매수 탭에서 주문 내역/연결 상태를 직접 확인해주세요: {kakao_notify.APP_BASE_URL}/"
+            )
+            email_utils.send_email(position.alert_email, title, body)
         position.auto_last_failure_notified_date = today
         db.session.commit()
 
@@ -3502,6 +3532,7 @@ with app.app_context():
     _ensure_column("auto_infinite_positions", "auto_last_run_date", "VARCHAR(10)")
     _ensure_column("auto_infinite_positions", "auto_last_run_had_error", "BOOLEAN DEFAULT FALSE")
     _ensure_column("auto_infinite_positions", "auto_last_failure_notified_date", "VARCHAR(10)")
+    _ensure_column("auto_infinite_positions", "alert_email", "VARCHAR(255)")
     _backfill_stage_column()
 
 threading.Thread(target=alert_checker, daemon=True).start()

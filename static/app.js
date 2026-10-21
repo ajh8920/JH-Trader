@@ -777,6 +777,8 @@ const I18N = {
   kakaoPreview: { en: 'Send Kakao preview', ko: '카카오 미리보기 발송' },
   autoBlockedHint: { en: 'Disabled while fully automatic — the scheduler submits this at 17:00', ko: '완전 자동 제출 중에는 비활성화됩니다 - 17시에 스케줄러가 대신 제출합니다' },
   autoSubmitPending: { en: 'Auto-submits at 17:00', ko: '17시 자동 제출' },
+  alertEmailPlaceholder: { en: 'Alert email (optional)', ko: '알림 이메일(선택)' },
+  alertEmailSave: { en: 'Save', ko: '저장' },
   multiCycleHint: {
     en: 'You can start more than one position for the same ticker at once (e.g. running two independent SOXL cycles in parallel) — give each a different label to tell them apart.',
     ko: '같은 티커로 포지션을 여러 개 동시에 시작할 수 있습니다(예: SOXL 사이클 2개를 동시에 독립적으로 운용). 서로 구분하려면 이름을 다르게 입력하세요.',
@@ -5102,6 +5104,11 @@ function renderAutoInfinitePositions(positions, account) {
         </span>` : ''}
       </div>
 
+      <div class="add-form" style="margin-bottom:10px;">
+        <input type="email" id="ail-email-${p.id}" value="${escapeHtml(p.alertEmail || '')}" placeholder="${t('alertEmailPlaceholder')}" style="width:220px;" />
+        <button class="btn-secondary" onclick="saveAutoInfiniteAlertEmail(${p.id})"><i class="ti ti-mail" aria-hidden="true"></i> <span>${t('alertEmailSave')}</span></button>
+      </div>
+
       <div class="live-section-label">${t('basicInfo')}</div>
       <div class="bt-summary-grid live-info-grid">
         <div class="meta-item"><div class="meta-label">${t('capital')}</div><div class="meta-value">$${p.seed.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
@@ -5254,6 +5261,15 @@ async function toggleAutoInfiniteBackfill(positionId) {
   const el = document.getElementById(`autolive-backfill-${positionId}`);
   if (!el) return;
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function saveAutoInfiniteAlertEmail(positionId) {
+  const email = document.getElementById(`ail-email-${positionId}`).value.trim();
+  try {
+    await api('PATCH', `/api/auto-infinite/positions/${positionId}/alert-email`, { email });
+    alert(email ? '알림 이메일이 저장되었습니다.' : '알림 이메일을 껐습니다.');
+    await loadAutoInfinitePositions();
+  } catch (e) { alert(e.message); }
 }
 
 async function sendAutoInfiniteKakaoPreview(positionId) {
