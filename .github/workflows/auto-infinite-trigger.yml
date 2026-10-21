@@ -1,0 +1,27 @@
+# 무한매수법 2.2 자동매매(auto_infinite_scheduler)는 인메모리 "17:00까지 sleep"
+# 타이머라, watcher-batch-trigger.yml과 똑같은 콜드슬립 위험을 안고 있다 - 컨테이너가
+# 16:59~17:xx 사이에 잠들었다 늦게 깨어나면 그 스레드가 "다음 17시"를 내일로 계산해
+# 버려서 그날 자동매매 제출이 통째로 스킵된다. 여기는 실제 돈이 걸린 기능이라 더
+# 엄격하게, 제출 시간대(17시대)와 실패확인 시간대(18시대)에 걸쳐 여러 번 호출한다.
+#
+# /api/cron/run-auto-infinite는 호출마다 현재 한국시간을 스스로 보고 "지금이 어느
+# 시간대인지" 판단하므로, 아래 스케줄이 정확히 몇 분 밀려도(GitHub Actions 스케줄은
+# 정시 실행을 보장하지 않는다 - 공지된 한계) 안전하다(auto_last_run_date/
+# auto_last_failure_notified_date 가드로 멱등적).
+name: Trigger Auto-Infinite scheduler
+
+on:
+  schedule:
+    - cron: "0,15,30,45 8 * * 1-5"  # 08:00~08:45 UTC = 한국시간 17:00~17:45, 평일만 (제출 시도)
+    - cron: "0,15,30,45 9 * * 1-5"  # 09:00~09:45 UTC = 한국시간 18:00~18:45, 평일만 (실패 확인)
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 무한매수 자동매매 트리거 호출 (콜드스타트 감안해 넉넉히 대기)
+        run: |
+          curl -sS --max-time 150 -o /dev/null -w "HTTP %{http_code} (%{time_total}s)\n" \
+            -X POST -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}" \
+            https://stock-tracker-5gy3.onrender.com/api/cron/run-auto-infinite

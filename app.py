@@ -2551,8 +2551,55 @@ def cron_run_daily_batch():
     return jsonify({"ok": True, "started": True}), 202
 
 
+@app.route("/api/cron/run-auto-infinite", methods=["POST"])
+@limiter.limit("30 per hour")
+def cron_run_auto_infinite():
+    """cron_run_daily_batch와 완전히 같은 이유로 존재한다(2026-10-22 추가) - 다만
+    여기는 실제 돈이 걸린 기능이라 콜드슬립에 더 취약하다: auto_infinite_scheduler
+    스레드는 "17:00까지 sleep"하는 인메모리 타이머인데, 컨테이너가 꺼졌다 16:59~
+    17:xx 사이에 뒤늦게 깨어나면 그 스레드가 "다음 17시"를 내일로 계산해버려서
+    그날 자동매매 제출이 통째로 스킵된다(실제로 모의투자가 이 문제로 와쳐 메일을
+    놓친 전례가 있다 - cron_run_daily_batch 도입 배경과 동일).
+
+    외부(GitHub Actions, .github/workflows/auto-infinite-trigger.yml)가 17:00~
+    18:45 KST 사이 여러 번 이 엔드포인트를 직접 호출한다 - 호출 자체가 Render를
+    깨우므로 콜드슬립 여부와 무관하다. 호출마다 "지금이 제출 시간대인지 실패확인
+    시간대인지"를 서버가 현재 한국시간으로 직접 판단하므로, 외부에서 정확한
+    타이밍을 맞출 필요 없이 그냥 여러 번 불러도 안전하다(auto_last_run_date/
+    auto_last_failure_notified_date 가드로 멱등적). 인메모리 스케줄러 스레드는
+    이중 안전망으로 그대로 둔다(로컬 개발 등 외부 크론이 없는 환경 대비)."""
+    from zoneinfo import ZoneInfo
+
+    secret = os.environ.get("CRON_SECRET")
+    if not secret or not hmac.compare_digest(request.headers.get("X-Cron-Secret", ""), secret):
+        return jsonify({"error": "인증 실패"}), 403
+
+    def _run():
+        with app.app_context():
+            try:
+                now = datetime.now(ZoneInfo("Asia/Seoul"))
+                if now.weekday() >= 5:  # 주말은 미국장도 없음
+                    return
+                today = now.strftime("%Y-%m-%d")
+                if now.hour < 18:
+                    _run_auto_infinite_submissions(today)
+                    _record_heartbeat("auto_infinite_scheduler")
+                else:
+                    _send_auto_infinite_failure_alerts(today)
+            except Exception as e:
+                app.logger.exception("외부 크론 무한매수 자동매매 처리 오류")
+                try:
+                    db.session.rollback()
+                    _record_heartbeat("auto_infinite_scheduler", error=e)
+                except Exception:
+                    pass
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "started": True}), 202
+
+
 # JSON API는 CSRF 토큰 대신 로그인 세션 + JSON Content-Type(교차 출처 요청 시
-# 브라우저 프리플라이트로 차단됨) 조합으로 보호하므로 폼 기반 CSRF 검사에서 제외합니다.
+# 브라우저 프리플라이트로 차단됨) 폼 기반 CSRF 검사에서 제외합니다.
 for _view in (
     save_key, delete_key, get_stock, get_quote, get_macro, get_lab_series,
     get_portfolio, add_portfolio, remove_portfolio, refresh_portfolio,
@@ -2572,6 +2619,7 @@ for _view in (
     kakao_test_message,
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
     admin_set_trade_alert_email, admin_test_trade_alert_email, cron_run_daily_batch,
+    cron_run_auto_infinite,
     persona_debate_start,
 ):
     csrf.exempt(_view)
