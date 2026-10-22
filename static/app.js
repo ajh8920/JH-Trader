@@ -347,6 +347,8 @@ const I18N = {
   totalSellQty: { en: 'Total Sell Qty', ko: '총 매도수량' },
   holdingQty: { en: 'Holding Qty', ko: '보유수량' },
   avgPrice: { en: 'Avg Price', ko: '평균단가' },
+  avgPriceShort: { en: 'Avg', ko: '평단' },
+  crashDipExtraLabel: { en: '+@ Crash-dip extra buys', ko: '+@ 폭락장 대비 추가매수' },
   buyAmount: { en: 'Buy Amount', ko: '총 매수금액' },
   sellAmount: { en: 'Sell Amount', ko: '총 매도금액' },
   unrealizedPL: { en: 'Unrealized P/L', ko: '평가손익' },
@@ -776,8 +778,6 @@ const I18N = {
   },
   backfillSubmit: { en: 'Add records', ko: '추가' },
   kakaoPreview: { en: 'Send Kakao preview', ko: '카카오 미리보기 발송' },
-  autoBlockedHint: { en: 'Disabled while fully automatic — the scheduler submits this at 17:00', ko: '완전 자동 제출 중에는 비활성화됩니다 - 17시에 스케줄러가 대신 제출합니다' },
-  autoSubmitPending: { en: 'Auto-submits at 17:00', ko: '17시 자동 제출' },
   alertEmailPlaceholder: { en: 'Alert email (optional)', ko: '알림 이메일(선택)' },
   alertEmailSave: { en: 'Save', ko: '저장' },
   multiCycleHint: {
@@ -4910,17 +4910,23 @@ function renderInfinitePositions(positions) {
       <div class="${recBoxCls}">
         <div class="live-rec-title"><i class="ti ti-bulb" aria-hidden="true"></i> <span>${t('infiniteBuyingGuide')}</span> <span class="cycle-pill">${p.version.toUpperCase()}</span></div>
         <div class="live-rec-orders">
-          ${rec.orders.map(o => `
+          ${renderGuideOrderGroups(rec.orders,
+            (o) => `
             <div class="live-rec-order-row">
               <div class="live-rec-pills">
-                <span class="pill ${o.action === 'sell' ? 'pill-sell' : 'pill-buy'}">${o.action === 'sell' ? t('sell') : t('buy')}</span>
                 <span class="pill pill-rec">${tv(o.orderType)}</span>
-                ${o.pct !== undefined ? `<span style="font-size:12px;color:var(--text-secondary);">${o.pct>=0?'+':''}${o.pct}%</span>` : ''}
+                ${o.pct === 0 ? `<span style="font-size:12px;color:var(--text-secondary);">${t('avgPriceShort')}</span>`
+                  : (o.pct !== undefined && o.pct !== null ? `<span style="font-size:12px;color:var(--text-secondary);">${o.pct>=0?'+':''}${o.pct}%</span>` : '')}
               </div>
               <div class="live-rec-order-value">
                 ${o.price !== null ? '$' + o.price.toFixed(2) : ''}${o.price !== null && o.qty !== null ? ' × ' : ''}${o.qty !== null ? o.qty + ' ' + t('sharesUnit') : ''}
               </div>
-            </div>`).join('')}
+            </div>`,
+            (o) => `
+            <div class="live-rec-extra-row">
+              <span class="pill pill-rec">${tv(o.orderType)}</span>
+              <span class="live-rec-extra-price">${o.price !== null ? '$' + o.price.toFixed(2) : ''}${o.price !== null && o.qty !== null ? ' × ' : ''}${o.qty !== null ? o.qty + ' ' + t('sharesUnit') : ''}</span>
+            </div>`)}
         </div>
         <div class="live-rec-note">${escapeHtml(rec.note)}</div>
       </div>
@@ -5136,7 +5142,9 @@ function renderAutoInfinitePositions(positions, account) {
       <div class="${recBoxCls}">
         <div class="live-rec-title"><i class="ti ti-bulb" aria-hidden="true"></i> <span>${t('infiniteBuyingGuide')}</span></div>
         <div class="live-rec-orders">
-          ${rec.orders.map((o, i) => autoInfiniteOrderRow(p, o, i)).join('')}
+          ${renderGuideOrderGroups(rec.orders,
+            (o, i) => autoInfiniteOrderRow(p, o, i),
+            (o, i) => autoInfiniteExtraOrderRow(p, o, i))}
         </div>
         <div class="live-rec-note">${escapeHtml(rec.note)}</div>
       </div>` : `
@@ -5174,6 +5182,38 @@ function renderAutoInfinitePositions(positions, account) {
   }).join('');
 }
 
+// 가이드 주문을 매수/매도 그룹으로 묶고, 그룹별로 "본 주문"(평단/목표% 등)과
+// "폭락장 대비 추가매수"(label에 Crash-Dip 포함, 최대 30단계까지 늘어날 수 있음)를
+// 나눠 렌더링한다(2026-10-22, 사용자 요청 - 한 줄씩 전부 펼치면 너무 길어서
+// 보기 불편하다는 지적). mainRowFn(order, idx)/extraRowFn(order, idx)는 호출부가
+// 넘긴다 - 실전현황 탭은 버튼이 없고, 무한매수 자동매매 탭은 제출 버튼이 있어
+// 서로 다른 행 마크업이 필요하기 때문.
+function isCrashDipExtraOrder(order) {
+  return !!(order.label && order.label.indexOf('Crash-Dip') !== -1);
+}
+
+function renderGuideOrderGroups(orders, mainRowFn, extraRowFn) {
+  const groups = [
+    { match: o => o.action !== 'sell', label: t('buy'), cls: 'buy' },
+    { match: o => o.action === 'sell', label: t('sell'), cls: 'sell' },
+  ];
+  return groups.map(g => {
+    const items = orders.filter(g.match);
+    if (!items.length) return '';
+    const main = items.filter(o => !isCrashDipExtraOrder(o));
+    const extra = items.filter(isCrashDipExtraOrder);
+    return `
+      <div class="live-rec-group">
+        <div class="live-rec-group-label ${g.cls}">${g.label}</div>
+        ${main.map((o, i) => mainRowFn(o, i)).join('')}
+        ${extra.length ? `
+          <div class="live-rec-extra-label">${t('crashDipExtraLabel')} (${extra.length})</div>
+          ${extra.map((o, i) => extraRowFn(o, i)).join('')}
+        ` : ''}
+      </div>`;
+  }).join('');
+}
+
 function autoInfiniteOrderRow(position, order, idx) {
   const orderType = (order.orderType || '').toLowerCase();
   const qty = order.qty;
@@ -5181,25 +5221,51 @@ function autoInfiniteOrderRow(position, order, idx) {
   // 완전 자동 제출이 켜진 포지션은 17~18시에 스케줄러가 이 가이드를 그대로
   // 제출한다 - 수동으로도 누를 수 있게 두면 "사람이 먼저 누르고, 그걸 모르는
   // 스케줄러가 같은 주문을 또 제출"하는 중복 주문 위험이 생긴다(2026-10-22,
-  // 사용자 지적). 자동이 켜진 동안은 버튼 자체를 비활성화한다.
+  // 사용자 지적). 자동이 켜진 동안은 버튼을 아예 숨긴다(이전엔 "17시 자동
+  // 제출"이라고 쓰인 비활성 버튼을 보여줬는데, 가이드를 간결하게 보자는
+  // 요청으로 자동일 때는 버튼 자체를 렌더링하지 않는다).
   const autoBlocked = position.autoTradingEnabled;
-  const submittable = !autoBlocked && qty && qty > 0 && (orderType === 'moc' || (price && price > 0));
+  const submittable = qty && qty > 0 && (orderType === 'moc' || (price && price > 0));
   const orderJson = encodeURIComponent(JSON.stringify({ action: order.action, orderType, qty, price, label: order.label }));
+  const pctLabel = order.pct === 0 ? t('avgPriceShort')
+    : (order.pct !== undefined && order.pct !== null ? `${order.pct>=0?'+':''}${order.pct}%` : '');
   return `
     <div class="live-rec-order-row">
       <div class="live-rec-pills">
-        <span class="pill ${order.action === 'sell' ? 'pill-sell' : 'pill-buy'}">${order.action === 'sell' ? t('sell') : t('buy')}</span>
         <span class="pill pill-rec">${order.orderType}</span>
-        ${order.pct !== undefined && order.pct !== null ? `<span style="font-size:12px;color:var(--text-secondary);">${order.pct>=0?'+':''}${order.pct}%</span>` : ''}
+        ${pctLabel ? `<span style="font-size:12px;color:var(--text-secondary);">${pctLabel}</span>` : ''}
       </div>
       <div class="live-rec-order-value">
         ${price ? '$' + price.toFixed(2) : t('marketPrice')}${price && qty ? ' × ' : ''}${qty ? qty + ' ' + t('sharesUnit') : ''}
       </div>
+      ${autoBlocked ? '' : `
       <button class="btn-secondary" style="padding:4px 10px;" ${submittable ? '' : 'disabled'}
-        title="${autoBlocked ? t('autoBlockedHint') : ''}"
         onclick="submitAutoInfiniteOrderFromGuide(${position.id}, decodeURIComponent('${orderJson}'), this)">
-        <i class="ti ti-send" aria-hidden="true"></i> <span>${autoBlocked ? t('autoSubmitPending') : t('submitOrder')}</span>
-      </button>
+        <i class="ti ti-send" aria-hidden="true"></i> <span>${t('submitOrder')}</span>
+      </button>`}
+    </div>`;
+}
+
+// 폭락장 대비 추가매수(최대 30단계)는 본 주문과 같은 크기로 보여주면 가이드가
+// 지나치게 길어져 - 가격×수량만 작은 글씨 한 줄로, 제출 버튼도 아이콘만 남긴다
+// (기능은 autoInfiniteOrderRow와 동일, 표시만 압축).
+function autoInfiniteExtraOrderRow(position, order, idx) {
+  const orderType = (order.orderType || '').toLowerCase();
+  const qty = order.qty;
+  const price = order.price;
+  const autoBlocked = position.autoTradingEnabled;
+  const submittable = qty && qty > 0 && (orderType === 'moc' || (price && price > 0));
+  const orderJson = encodeURIComponent(JSON.stringify({ action: order.action, orderType, qty, price, label: order.label }));
+  return `
+    <div class="live-rec-extra-row">
+      <span class="pill pill-rec">${order.orderType}</span>
+      <span class="live-rec-extra-price">${price ? '$' + price.toFixed(2) : t('marketPrice')}${price && qty ? ' × ' : ''}${qty ? qty + ' ' + t('sharesUnit') : ''}</span>
+      ${autoBlocked ? '' : `
+      <button class="btn-icon" ${submittable ? '' : 'disabled'}
+        title="${t('submitOrder')}"
+        onclick="submitAutoInfiniteOrderFromGuide(${position.id}, decodeURIComponent('${orderJson}'), this)">
+        <i class="ti ti-send" aria-hidden="true"></i>
+      </button>`}
     </div>`;
 }
 
