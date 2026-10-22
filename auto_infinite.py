@@ -232,15 +232,78 @@ def _notify_order_submitted(position, action, order_type, qty, price, state=None
         email_utils.send_email(position.alert_email, title, body, html=html)
 
 
-def submit_order(position, client, action, order_type, qty, price, label, dry_run=True):
+# 현재가 대비 지정가 괴리율 상한(2026-10-22 추가) - 지인 실사용 팁: "무매 앱에
+# 나온 금액이 T값 기준으로 계산되는데, T값이 높아지면(쿼터손절모드·폭락대비
+# 사다리 등) 그 가격이 현재가에서 너무 멀어져 증권사가 'LOC 주문을 현재가
+# 대비 일정% 이상 벗어난 가격으로는 못 걸게' 거부한다 - 그래서 걸 수 있는
+# 최대치로 대신 주문을 건다"는 실전 대응을 그대로 반영했다. 메리츠가 실제로
+# 쓰는 정확한 괴리율(%)은 공개 문서로 확인하지 못해(get_overseas_price 응답의
+# mxpr/llam은 미국 종목에는 0으로 내려와 참고 불가) 보수적으로 25%를 기본값
+# 삼는다 - 너무 타이트해서 못 거는 것보다, 거부당하는 게 로그(status="error")로
+# 남아 안전하게 나중에 조정할 수 있는 쪽이 낫다는 판단. 실제 거부 사례가
+# 쌓이면 이 값을 실측치로 교체해야 한다.
+MAX_PRICE_DEVIATION_PCT = 25.0
+
+
+def _clamp_price_to_broker_band(client, position, action, order_type, price, current_price=None):
+    """지정가/LOC 주문 가격이 현재가 대비 MAX_PRICE_DEVIATION_PCT를 넘게
+    벗어나 있으면, 증권사가 거부할 가능성이 높으므로 걸 수 있는 최대치(현재가
+    기준 한도)로 당겨서 반환한다. (조정됨 여부, 조정된 가격)을 돌려준다 -
+    시세 조회 자체가 실패하면 조정하지 않고 원래 가격을 그대로 쓴다(주문
+    제출 자체를 막지 않기 위함 - 실패하면 기존처럼 MeritzApiError로 남는다).
+
+    current_price를 호출부가 이미 알고 있으면(예: _run_auto_infinite_submissions가
+    가이드 전체를 계산할 때 한 번 조회해둔 값) 그대로 넘겨 받아 재조회하지
+    않는다 - 가이드 10건을 매번 각각 시세 조회하면 불필요하게 API 호출이 늘어난다."""
+    if order_type not in ("loc", "limit") or not price or price <= 0:
+        return False, price
+    if current_price is None:
+        try:
+            current_price = client.get_overseas_price(position.ticker, position.exchange)
+        except MeritzApiError:
+            return False, price
+    if not current_price or current_price <= 0:
+        return False, price
+
+    if action == "buy":
+        floor_price = round(current_price * (1 - MAX_PRICE_DEVIATION_PCT / 100), 4)
+        if price < floor_price:
+            return True, floor_price
+    else:
+        ceiling_price = round(current_price * (1 + MAX_PRICE_DEVIATION_PCT / 100), 4)
+        if price > ceiling_price:
+            return True, ceiling_price
+    return False, price
+
+
+def submit_order(position, client, action, order_type, qty, price, label, dry_run=True,
+                  current_price=None, skip_if_out_of_band=False):
     """주문 한 줄(가이드가 만든 것이든, 1일차처럼 사용자가 직접 입력한 것이든)을
     실제로 메리츠에 제출한다(dry_run=True면 API 호출 없이 미리보기만). 성공/실패
     모두 AutoInfiniteOrder에 기록한다(실패도 감사 로그로 남겨야 "왜 매수가 안
     됐는지" 나중에 추적 가능). cycle_no는 표시용으로 제출 시점 재생 결과에서
-    가져온다."""
+    가져온다. current_price는 _clamp_price_to_broker_band로 그대로 전달한다.
+
+    skip_if_out_of_band=True(폭락장 대비 추가매수 사다리 전용, 2026-10-22 추가) -
+    사다리는 한 번에 여러 레벨(최대 30개)을 동시에 제출하는데, 밴드 밖인 레벨을
+    전부 허용 한도가로 clamp하면 서로 다른 레벨들이 같은 가격 하나로 뭉쳐 중복
+    주문이 된다(실측: 현재가 $92 기준 25% 밴드 $69.10 아래 레벨 5개가 전부
+    $69.10 하나로 뭉침). 그래서 사다리 레벨은 clamp 대신 그날은 아예 건너뛴다 -
+    LOC는 하루짜리 주문이라 다음날 그날의 새 현재가로 다시 계산되므로, 밴드
+    안으로 들어오면 자연스럽게 다시 걸린다. 메인 주문(평단/목표%, 사다리가
+    아닌 단일 주문)은 원래대로 clamp를 쓴다(중복 위험이 없음)."""
     today = date.today().isoformat()
     state, _ = replay_position_state(position)
     cycle_no = state.cycle_no
+
+    clamped, adj_price = _clamp_price_to_broker_band(
+        client, position, action, order_type, price, current_price=current_price)
+    if clamped and skip_if_out_of_band:
+        return {"dryRun": dry_run, "skipped": True,
+                "reason": f"현재가 대비 {MAX_PRICE_DEVIATION_PCT}% 밴드 밖(${price:,.2f}) - 오늘은 건너뜀"}
+    if clamped:
+        label = f"{label} (현재가 제한으로 ${price:,.2f}→${adj_price:,.2f} 보정)"
+        price = adj_price
 
     try:
         result = client.place_overseas_order(

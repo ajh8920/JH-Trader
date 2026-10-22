@@ -5303,7 +5303,11 @@ async function submitAutoInfiniteOrderFromGuide(positionId, orderJsonStr, btnEl)
       action: order.action, orderType: order.orderType, qty: order.qty, price: order.price,
       label: order.label, dryRun: false,
     });
-    alert(result.order ? `주문이 제출되었습니다 (주문번호: ${result.order.brokerOrderNo || '-'})` : '주문이 제출되었습니다');
+    if (result.skipped) {
+      alert(`제출하지 않았습니다 - ${result.reason}`);
+    } else {
+      alert(result.order ? `주문이 제출되었습니다 (주문번호: ${result.order.brokerOrderNo || '-'})` : '주문이 제출되었습니다');
+    }
     await loadAutoInfinitePositions();
   } catch (e) {
     alert(`주문 제출 실패: ${e.message}`);

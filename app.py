@@ -2231,6 +2231,7 @@ def submit_auto_infinite_order(position_id):
         client = MeritzClient()
         result = auto_infinite.submit_order(
             position, client, action, order_type, qty, price, label, dry_run=dry_run,
+            skip_if_out_of_band="Crash-Dip" in label,
         )
     except MeritzApiError as e:
         return jsonify({"error": f"주문 제출 실패: {e}"}), 502
@@ -2949,10 +2950,13 @@ def _run_auto_infinite_submissions(today):
                         continue
                     if order_type in ("loc", "limit") and (not price or price <= 0):
                         continue
+                    is_crash_dip = "Crash-Dip" in (order.get("label") or "")
                     try:
                         auto_infinite.submit_order(
                             position, client, order["action"], order_type, qty, price,
                             f"자동매매({order.get('label', '')})", dry_run=False,
+                            current_price=status["currentPrice"],
+                            skip_if_out_of_band=is_crash_dip,
                         )
                     except MeritzApiError as e:
                         had_error = True
