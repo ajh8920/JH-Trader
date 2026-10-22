@@ -268,7 +268,12 @@ class MeritzClient:
             "oder_cls_code": order_cls["oder_cls_code"],
             "oder_cond_cls_code": order_cls["oder_cond_cls_code"],
             "odqt": qty,
-            "ovrs_stck_oder_prc": round(price, 4) if is_limit_family else 0,
+            # round(price, 4)였다가 2026-10-22 실제 제출에서 전부 거부되는 걸 발견 -
+            # 메리츠 해외주식 호가단위가 $0.01라 소수점 2자리를 넘는 가격은 전부
+            # rsp_cd 8337("호가 단위를 확인해주세요")로 거부된다(실측). 무한매수법
+            # 공식이 1/N 분할 등으로 계산 과정에서 소수점이 길어지는데, 그 값을
+            # 그대로 보내면 안 되고 여기서 최종적으로 2자리로 반올림해야 한다.
+            "ovrs_stck_oder_prc": round(price, 2) if is_limit_family else 0,
         }
         plan = {"side": side, "symbol": symbol, "exchange": exchange, "qty": qty,
                 "order_type": order_type, "price": price, "dry_run": dry_run}
