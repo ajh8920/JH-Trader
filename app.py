@@ -2227,6 +2227,19 @@ def submit_auto_infinite_order(position_id):
         if state.holding_qty > 0:
             return jsonify({"error": "완전 자동 제출이 켜진 포지션입니다 - 17시에 자동으로 제출됩니다(수동 제출 비활성화)"}), 409
 
+    # 같은 가이드 줄을 오늘 이미 보냈으면(체결 여부 무관) 다시 막는다(2026-10-22
+    # 추가 - 실사용 중 매도 1건이 중복 제출된 사고 발견). 프런트가 alreadySubmitted로
+    # 버튼을 숨기지만 그건 화면 새로고침 타이밍에 따라 놓칠 수 있어(제출 직후
+    # 리로드된 가이드가 아직 "제출됨"으로 안 바뀐 순간 재클릭 등) 서버에서도 확인한다.
+    if not dry_run and label:
+        today = datetime.today().strftime("%Y-%m-%d")
+        already = any(
+            label in (o.label or "") for o in position.orders
+            if o.trade_date == today and o.status in ("submitted", "filled")
+        )
+        if already:
+            return jsonify({"error": f"\"{label}\" 주문은 오늘 이미 제출됐습니다 - 중복 제출을 막기 위해 다시 보내지 않습니다"}), 409
+
     try:
         client = MeritzClient()
         result = auto_infinite.submit_order(

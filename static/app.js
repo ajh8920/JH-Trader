@@ -757,6 +757,7 @@ const I18N = {
   checkFills: { en: 'Check fills', ko: '체결 확인' },
   orderHistory: { en: 'Order history', ko: '주문 내역' },
   submitOrder: { en: 'Submit order', ko: '주문 제출' },
+  alreadySubmittedToday: { en: 'Submitted today', ko: '오늘 제출됨' },
   marketPrice: { en: 'Market price', ko: '시장가' },
   orderType: { en: 'Order type', ko: '주문구분' },
   statusLabel: { en: 'Status', ko: '상태' },
@@ -5238,11 +5239,12 @@ function autoInfiniteOrderRow(position, order, idx) {
       <div class="live-rec-order-value">
         ${price ? '$' + price.toFixed(2) : t('marketPrice')}${price && qty ? ' × ' : ''}${qty ? qty + ' ' + t('sharesUnit') : ''}
       </div>
-      ${autoBlocked ? '' : `
+      ${order.alreadySubmitted ? `<span class="pill" style="background:var(--bg-tertiary);color:var(--text-secondary);">${t('alreadySubmittedToday')}</span>`
+        : (autoBlocked ? '' : `
       <button class="btn-secondary" style="padding:4px 10px;" ${submittable ? '' : 'disabled'}
         onclick="submitAutoInfiniteOrderFromGuide(${position.id}, decodeURIComponent('${orderJson}'), this)">
         <i class="ti ti-send" aria-hidden="true"></i> <span>${t('submitOrder')}</span>
-      </button>`}
+      </button>`)}
     </div>`;
 }
 
@@ -5260,12 +5262,13 @@ function autoInfiniteExtraOrderRow(position, order, idx) {
     <div class="live-rec-extra-row">
       <span class="pill pill-rec">${order.orderType}</span>
       <span class="live-rec-extra-price">${price ? '$' + price.toFixed(2) : t('marketPrice')}${price && qty ? ' × ' : ''}${qty ? qty + ' ' + t('sharesUnit') : ''}</span>
-      ${autoBlocked ? '' : `
+      ${order.alreadySubmitted ? `<span class="pill" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:10px;">${t('alreadySubmittedToday')}</span>`
+        : (autoBlocked ? '' : `
       <button class="btn-icon" ${submittable ? '' : 'disabled'}
         title="${t('submitOrder')}"
         onclick="submitAutoInfiniteOrderFromGuide(${position.id}, decodeURIComponent('${orderJson}'), this)">
         <i class="ti ti-send" aria-hidden="true"></i>
-      </button>`}
+      </button>`)}
     </div>`;
 }
 

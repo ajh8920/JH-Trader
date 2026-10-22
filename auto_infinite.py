@@ -117,6 +117,29 @@ def replay_position_state(position):
     return state, len(filled)
 
 
+def _mark_already_submitted_today(position, recommendation):
+    """가이드 주문 중 오늘 이미 메리츠에 보낸(체결 여부 무관) 줄이 있으면
+    `alreadySubmitted: True`를 달아 프런트가 다시 제출 못 하게 막는다
+    (2026-10-22 추가 - 실사용 중 중복 매도 발견). replay_position_state는
+    status="filled"만 반영해 "제출됨(미체결)" 주문은 모르기 때문에, 체결 전
+    화면을 새로고침하면 방금 낸 주문과 똑같은 가이드 줄이 다시 "제출 가능"으로
+    보이는 게 근본 원인 - label(가이드 줄마다 고유: "Buy (Avg Price)"/
+    "Sell (Quarter 1/4)" 등)로 오늘자 주문을 대조한다. error/rejected/cancelled는
+    실제로 안 나갔거나 취소된 것이므로 재시도 가능하게 제외한다."""
+    today = date.today().isoformat()
+    sent_labels = [
+        o.label or "" for o in position.orders
+        if o.trade_date == today and o.status in ("submitted", "filled")
+    ]
+    for order in recommendation.get("orders", []):
+        label = order.get("label") or ""
+        # 수동 제출은 가이드 label을 그대로 저장하지만, 스케줄러는
+        # f"자동매매({label})"로 감싸서 저장한다(_run_auto_infinite_submissions) -
+        # 부분 포함으로 양쪽 다 잡는다.
+        if label and any(label in sent for sent in sent_labels):
+            order["alreadySubmitted"] = True
+
+
 def compute_live_status(position, client):
     """체결 이력 재생 + 실시간 시세로 포지션 현황과 오늘의 가이드를 계산한다.
     (매수 가능 현금은 이 포지션 자체의 재생된 가상 잔고를 쓴다 - 계좌 공용 현금이
@@ -130,6 +153,7 @@ def compute_live_status(position, client):
         pass
 
     recommendation = build_guide(state, current_price=current_price)
+    _mark_already_submitted_today(position, recommendation)
     holding_value = round(state.holding_qty * current_price, 2) if (current_price and state.holding_qty) else None
     unrealized = round(holding_value - state.holding_qty * state.avg_price, 2) if holding_value is not None else None
 
@@ -337,13 +361,29 @@ def submit_order(position, client, action, order_type, qty, price, label, dry_ru
 
 
 def refresh_fill_status(position, client):
-    """금일 주문체결내역 조회로 이 포지션의 "submitted" 주문들을 체결/거부/미체결로
-    갱신한다. 체결수량이 주문수량보다 적으면(부분체결) filled_qty만 반영하고
-    status는 체결수량>0이면 "filled", 0이면 "submitted"(아직 미체결) 그대로 둔다."""
+    """금일 주문체결내역 조회로 이 포지션의 "submitted" 주문들을 체결/거부/취소/
+    미체결로 갱신한다. 체결수량이 주문수량보다 적으면(부분체결) filled_qty만
+    반영하고 status는 체결수량>0이면 "filled", 0이면 "submitted"(아직 미체결)
+    그대로 둔다.
+
+    취소 인식(2026-10-22 추가, 실사용 중 중복매도 1건을 앱에서 직접 취소한 뒤
+    발견) - 메리츠는 취소를 원 주문 행 자체에 플래그로 남기지 않고, 별도
+    행(orgl_oder_no가 원 주문의 oder_no를 가리키고 cncl_cnfr_qty>0인 "취소
+    확인" 행)으로 내려준다(실측: oder_rctf_cncl_cls_code="2"). 이 별도 행을
+    못 알아보면 취소된 주문이 영원히 "submitted"(미체결 대기)로 남아 다음
+    replay_position_state 때 실제로는 없는 주문을 있는 것처럼 계산하게 된다."""
     pending = [o for o in position.orders if o.status == "submitted" and o.broker_order_no]
     if not pending:
         return 0
-    by_order_no = {str(row.get("oder_no")): row for row in client.get_overseas_orders_today()}
+    rows = client.get_overseas_orders_today()
+    by_order_no = {str(row.get("oder_no")): row for row in rows}
+    cancelled_qty_by_orgl = {}
+    for row in rows:
+        orgl = row.get("orgl_oder_no")
+        cncl_cnfr_qty = int(float(row.get("cncl_cnfr_qty") or 0))
+        if orgl and str(orgl) != "0" and cncl_cnfr_qty > 0:
+            cancelled_qty_by_orgl[str(orgl)] = cancelled_qty_by_orgl.get(str(orgl), 0) + cncl_cnfr_qty
+
     updated = 0
     for o in pending:
         row = by_order_no.get(o.broker_order_no)
@@ -352,12 +392,17 @@ def refresh_fill_status(position, client):
         cntg_qty = int(float(row.get("cntg_qty") or 0))
         ncnt_qty = int(float(row.get("ncnt_qty") or 0))
         rfus_reas = row.get("ovrs_stck_rfus_reas") or ""
+        cancelled_qty = cancelled_qty_by_orgl.get(o.broker_order_no, 0)
         if rfus_reas:
             o.status = "rejected"
         elif cntg_qty > 0 and ncnt_qty == 0:
             o.status = "filled"
             o.filled_qty = cntg_qty
             o.filled_price = float(row.get("cntg_crnc_prc") or 0) or o.price
+        elif cancelled_qty > 0 and cntg_qty == 0:
+            # 전량 취소(사람이 메리츠 앱에서 직접 취소한 경우 포함) - replay에서
+            # 완전히 빠지도록 filled이 아닌 별도 상태로 남긴다.
+            o.status = "cancelled"
         elif cntg_qty > 0:
             o.filled_qty = cntg_qty
             o.filled_price = float(row.get("cntg_crnc_prc") or 0) or o.price
