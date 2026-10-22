@@ -117,6 +117,48 @@ def replay_position_state(position):
     return state, len(filled)
 
 
+def build_filled_ledger(position):
+    """실제 체결(status="filled")된 주문만 시간순으로 재생해, 한 줄마다 그
+    체결 직후의 보유수량·평단가·사이클을 같이 보여주는 "실제 매수/매도 내역"
+    표를 만든다(2026-10-23 추가, 사용자 요청: "주문 내역과 반대로 실제로
+    매수된 내역을 볼 수 있는 기능"). list_auto_infinite_orders가 보여주는
+    "주문 내역"은 submitted/error/rejected/cancelled까지 전부 섞인 제출
+    로그라 "결국 무엇이 실제로 체결됐는지"를 한눈에 보기 어렵다 - 이 함수는
+    replay_position_state와 완전히 같은 재생 로직을 쓰되, 최종 상태 하나만
+    돌려주는 대신 매 체결마다의 스냅샷을 쌓아 돌려준다(로직이 갈라지면 두
+    화면의 숫자가 어긋나므로 반드시 같은 전이 규칙을 공유해야 한다)."""
+    state = PositionState(position.seed, position.splits, position.target_return_pct,
+                           compound_mid_cycle=False)
+    filled = sorted(
+        (o for o in position.orders if o.status == "filled"),
+        key=lambda o: (o.trade_date, o.id),
+    )
+    rows = []
+    for o in filled:
+        qty = o.filled_qty if o.filled_qty else o.qty
+        price = o.filled_price if o.filled_price else o.price
+        realized_pnl = None
+        # 이 거래가 "속한" 회차는 적용 전 cycle_no다 - apply_sell이 보유수량을
+        # 0으로 만들면 그 안에서 바로 cycle_no를 올려버려서, 적용 후 값을 쓰면
+        # "1회차를 마감시킨 매도"가 2회차로 표시되는 혼란이 생긴다.
+        cycle_no = state.cycle_no
+        if o.action == "buy":
+            if state.holding_qty == 0:
+                state.start_cycle()
+            state.apply_buy(price, qty)
+        else:
+            _, realized_pnl = state.apply_sell(price or 0.0, qty)
+        rows.append({
+            "orderId": o.id, "tradeDate": o.trade_date, "cycleNo": cycle_no,
+            "action": o.action, "qty": qty, "price": round(price, 2) if price else None,
+            "realizedPnl": round(realized_pnl, 2) if realized_pnl is not None else None,
+            "holdingQtyAfter": state.holding_qty,
+            "avgPriceAfter": round(state.avg_price, 4) if state.holding_qty else None,
+            "tValueAfter": round(state.t_value, 2),
+        })
+    return rows
+
+
 def _mark_already_submitted_today(position, recommendation):
     """가이드 주문 중 오늘 이미 메리츠에 보낸(체결 여부 무관) 줄이 있으면
     `alreadySubmitted: True`를 달아 프런트가 다시 제출 못 하게 막는다

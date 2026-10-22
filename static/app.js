@@ -755,6 +755,8 @@ const I18N = {
   },
   availableCashUsd: { en: 'Available USD cash', ko: '주문가능 예수금(USD)' },
   checkFills: { en: 'Check fills', ko: '체결 확인' },
+  fillHistory: { en: 'Fill history', ko: '실제 체결 내역' },
+  realizedPnl: { en: 'Realized P/L', ko: '실현손익' },
   orderHistory: { en: 'Order history', ko: '주문 내역' },
   submitOrder: { en: 'Submit order', ko: '주문 제출' },
   alreadySubmittedToday: { en: 'Submitted today', ko: '오늘 제출됨' },
@@ -5167,10 +5169,12 @@ function renderAutoInfinitePositions(positions, account) {
       <div class="add-form">
         <button class="btn-secondary" onclick="refreshAutoInfiniteFills(${p.id})"><i class="ti ti-refresh" aria-hidden="true"></i> <span>${t('checkFills')}</span></button>
         <button class="btn-secondary" onclick="toggleAutoInfiniteOrders(${p.id})"><i class="ti ti-list" aria-hidden="true"></i> <span>${t('orderHistory')}</span></button>
+        <button class="btn-secondary" onclick="toggleAutoInfiniteFills(${p.id})"><i class="ti ti-checklist" aria-hidden="true"></i> <span>${t('fillHistory')}</span></button>
         <button class="btn-secondary" onclick="toggleAutoInfiniteBackfill(${p.id})"><i class="ti ti-history" aria-hidden="true"></i> <span>${t('backfillTrades')}</span></button>
         <button class="btn-secondary" onclick="sendAutoInfiniteKakaoPreview(${p.id})"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> <span>${t('kakaoPreview')}</span></button>
       </div>
       <div id="autolive-orders-${p.id}" style="display:none;"></div>
+      <div id="autolive-fills-${p.id}" style="display:none;"></div>
       <div id="autolive-backfill-${p.id}" style="display:none;margin-top:8px;">
         <div class="info-box" style="margin-bottom:8px;">
           <i class="ti ti-info-circle" aria-hidden="true"></i>
@@ -5418,6 +5422,56 @@ async function showAutoInfiniteOrders(positionId) {
                 <td>${o.filledQty ?? o.qty}</td>
                 <td>${escapeHtml(o.status)}</td>
                 <td>${escapeHtml(o.brokerOrderNo || '-')}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><span>${e.message}</span></div>`;
+  }
+}
+
+async function toggleAutoInfiniteFills(positionId) {
+  const el = document.getElementById(`autolive-fills-${positionId}`);
+  if (!el) return;
+  if (el.style.display === 'none') {
+    await showAutoInfiniteFills(positionId);
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+// "주문 내역"(toggleAutoInfiniteOrders)과 반대로 - submitted/error/rejected/
+// cancelled까지 섞인 제출 로그가 아니라, 실제로 체결된 매수/매도만 체결 직후
+// 보유수량·평단가 스냅샷과 함께 보여준다(2026-10-23, 사용자 요청: "주문
+// 내역과 반대로 실제로 매수된 내역을 볼 수 있는 기능"). auto_infinite.
+// build_filled_ledger가 replay_position_state와 같은 재생 로직을 공유하므로
+// 여기 숫자와 포지션 카드 상단의 보유수량/평단가가 항상 일치한다.
+async function showAutoInfiniteFills(positionId) {
+  const el = document.getElementById(`autolive-fills-${positionId}`);
+  el.style.display = 'block';
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('loading')}</div>`;
+  try {
+    const fills = await api('GET', `/api/auto-infinite/positions/${positionId}/fills`);
+    if (!fills.length) {
+      el.innerHTML = `<div class="empty-state"><p>${t('noTradeHistory')}</p></div>`;
+      return;
+    }
+    el.innerHTML = `
+      <div class="pf-table-wrap">
+        <table class="pf-table">
+          <thead><tr><th>${t('date')}</th><th>${t('cycle')}</th><th>${t('type')}</th><th>${t('price')}</th><th>${t('qty')}</th><th>${t('realizedPnl')}</th><th>${t('holdingQty')}</th><th>${t('avgPrice')}</th></tr></thead>
+          <tbody>
+            ${fills.map(f => `
+              <tr>
+                <td>${f.tradeDate}</td>
+                <td>${f.cycleNo}</td>
+                <td><span class="${f.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${f.action === 'buy' ? t('buy') : t('sell')}</span></td>
+                <td>${f.price ? '$' + f.price.toFixed(2) : '-'}</td>
+                <td>${f.qty}</td>
+                <td>${f.realizedPnl !== null ? `<span class="${f.realizedPnl >= 0 ? 'positive' : 'negative'}">${f.realizedPnl >= 0 ? '+' : ''}$${f.realizedPnl.toFixed(2)}</span>` : '-'}</td>
+                <td>${f.holdingQtyAfter}</td>
+                <td>${f.avgPriceAfter ? '$' + f.avgPriceAfter.toFixed(2) : '-'}</td>
               </tr>`).join('')}
           </tbody>
         </table>

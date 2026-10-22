@@ -2183,6 +2183,20 @@ def list_auto_infinite_orders(position_id):
     return jsonify([o.to_dict() for o in reversed(position.orders)])
 
 
+@app.route("/api/auto-infinite/positions/<int:position_id>/fills", methods=["GET"])
+@admin_required
+def list_auto_infinite_fills(position_id):
+    """"주문 내역"(제출 로그, submitted/error/rejected/cancelled 전부 포함)과
+    반대로, 실제로 체결된 매수/매도만 시간순으로 보여준다(2026-10-23 추가,
+    사용자 요청). auto_infinite.build_filled_ledger 참고."""
+    from models import AutoInfinitePosition
+    import auto_infinite
+    position = AutoInfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+    return jsonify(list(reversed(auto_infinite.build_filled_ledger(position))))
+
+
 @app.route("/api/auto-infinite/positions/<int:position_id>/orders", methods=["POST"])
 @admin_required
 def submit_auto_infinite_order(position_id):
