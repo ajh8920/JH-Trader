@@ -68,13 +68,19 @@ def get_available_cash_usd(client):
     return 0.0
 
 
-def _broker_qty_for_ticker(client, ticker, exchange):
-    """실계좌에서 이 티커의 실제 총 보유수량을 조회한다(reconcile_holdings 전용)."""
+def _broker_holding_for_ticker(client, ticker, exchange):
+    """실계좌에서 이 티커의 실제 보유수량·평단가를 조회한다(reconcile_holdings
+    전용). 보유가 없으면 (0, None)."""
     order_vendor_id = OVERSEAS_EXCHANGES[exchange]["order"]
     for row in client.get_overseas_holdings():
         if row.get("ovrs_stck_symb_iscd") == ticker and row.get("ovrs_exch_vndr_idno") == order_vendor_id:
-            return int(float(row["rmnd_dqty"]))
-    return 0
+            return int(float(row["rmnd_dqty"])), float(row.get("avrg_unpr") or 0) or None
+    return 0, None
+
+
+def _broker_qty_for_ticker(client, ticker, exchange):
+    """실계좌에서 이 티커의 실제 총 보유수량을 조회한다(reconcile_holdings 전용)."""
+    return _broker_holding_for_ticker(client, ticker, exchange)[0]
 
 
 def replay_position_state(position):
@@ -247,11 +253,13 @@ def reconcile_holdings(client, positions):
     warnings = []
     for (ticker, exchange), group in by_ticker.items():
         ledger_total = 0
+        states = []
         for p in group:
             state, _ = replay_position_state(p)
+            states.append(state)
             ledger_total += state.holding_qty
         try:
-            broker_qty = _broker_qty_for_ticker(client, ticker, exchange)
+            broker_qty, broker_avg = _broker_holding_for_ticker(client, ticker, exchange)
         except MeritzApiError:
             continue
         if ledger_total != broker_qty:
@@ -260,6 +268,19 @@ def reconcile_holdings(client, positions):
                 f"메리츠 실계좌 보유량({broker_qty}주)과 다릅니다 - 계좌에서 수동 거래가 있었는지, "
                 f"또는 체결 확인이 누락된 주문이 있는지 확인하세요"
             )
+        elif len(group) == 1 and broker_avg and states[0].holding_qty > 0:
+            # 평단가 대조(2026-10-23 추가, 사용자 지적: "LOC 평단 매수 주문이
+            # 실제 평단이 아니다") - 수량은 맞아도 과거 백필 체결가에 작은
+            # 오차가 있으면 평단이 조금씩 어긋날 수 있다. 포지션이 티커당
+            # 1개일 때만 비교한다(2개 이상이면 브로커의 단일 평단과 1:1
+            # 대응이 안 돼 비교가 무의미함).
+            app_avg = states[0].avg_price
+            if abs(app_avg - broker_avg) > 0.01:
+                warnings.append(
+                    f"{ticker}: 앱이 계산한 평단가(${app_avg:,.2f})가 메리츠 실계좌 평단가"
+                    f"(${broker_avg:,.2f})와 다릅니다 - 과거에 수기로 입력한 체결가 중 하나가 "
+                    f"실제와 다를 수 있습니다(주문 내역을 확인해주세요)"
+                )
     return warnings
 
 
@@ -294,6 +315,38 @@ def _notify_order_submitted(position, action, order_type, qty, price, state=None
         import email_templates
         html, body = email_templates.build_auto_infinite_order_email(
             position, action, order_type, qty, price, state=state,
+        )
+        email_utils.send_email(position.alert_email, title, body, html=html)
+
+
+def _notify_orders_submitted_batch(position, submitted_orders):
+    """오늘 스케줄러가 제출한 주문 전체를 한 번에 모아 카카오+이메일로 알린다
+    (2026-10-23 추가, 사용자 요청: "매매 주문 메일링은 모든 매매내역을 취합하여
+    한번만 보내도록"). submitted_orders: [{"action","orderType","qty","price",
+    "label"}...] - _run_auto_infinite_submissions가 notify=False로 제출하며
+    쌓아둔 목록을 그대로 받는다. 수동 단건 제출(submit_auto_infinite_order
+    라우트)은 이 함수를 쓰지 않고 기존처럼 _notify_order_submitted로 즉시 알림
+    - 사용자가 그 자리에서 한 줄만 직접 눌러 보낸 거라 바로 확인받는 게 맞다."""
+    import kakao_notify
+
+    if not submitted_orders:
+        return
+    label_part = f" · {position.label}" if position.label else ""
+    title = f"[JH-Trader] {position.ticker} 자동매매 주문 제출 ({len(submitted_orders)}건)"
+
+    lines = [f"{position.ticker}{label_part} - 오늘 {len(submitted_orders)}건 제출"]
+    for o in submitted_orders:
+        action_ko = "매도" if o["action"] == "sell" else "매수"
+        price_text = f"${o['price']:,.2f}" if o.get("price") else "시장가(장마감)"
+        lines.append(f"{action_ko} {o['qty']}주 @ {price_text} ({o['orderType'].upper()})")
+    kakao_notify.notify(title, lines, url=f"{kakao_notify.APP_BASE_URL}/")
+
+    if position.alert_email:
+        import email_utils
+        import email_templates
+        state, _ = replay_position_state(position)
+        html, body = email_templates.build_auto_infinite_batch_order_email(
+            position, submitted_orders, state=state,
         )
         email_utils.send_email(position.alert_email, title, body, html=html)
 
@@ -343,7 +396,7 @@ def _clamp_price_to_broker_band(client, position, action, order_type, price, cur
 
 
 def submit_order(position, client, action, order_type, qty, price, label, dry_run=True,
-                  current_price=None, skip_if_out_of_band=False):
+                  current_price=None, skip_if_out_of_band=False, notify=True):
     """주문 한 줄(가이드가 만든 것이든, 1일차처럼 사용자가 직접 입력한 것이든)을
     실제로 메리츠에 제출한다(dry_run=True면 API 호출 없이 미리보기만). 성공/실패
     모두 AutoInfiniteOrder에 기록한다(실패도 감사 로그로 남겨야 "왜 매수가 안
@@ -357,7 +410,15 @@ def submit_order(position, client, action, order_type, qty, price, label, dry_ru
     $69.10 하나로 뭉침). 그래서 사다리 레벨은 clamp 대신 그날은 아예 건너뛴다 -
     LOC는 하루짜리 주문이라 다음날 그날의 새 현재가로 다시 계산되므로, 밴드
     안으로 들어오면 자연스럽게 다시 걸린다. 메인 주문(평단/목표%, 사다리가
-    아닌 단일 주문)은 원래대로 clamp를 쓴다(중복 위험이 없음)."""
+    아닌 단일 주문)은 원래대로 clamp를 쓴다(중복 위험이 없음).
+
+    notify=False(2026-10-23 추가, 사용자 요청: "매매 주문 메일링은 모든 매매내역을
+    취합하여 한번만 보내도록") - 스케줄러가 가이드 10건 가까이 한 번에 제출할 때
+    건마다 카카오+이메일이 따로 오면 알림이 연달아 쏟아진다. 스케줄러
+    (_run_auto_infinite_submissions)는 notify=False로 호출하고, 루프가 끝난 뒤
+    _notify_orders_submitted_batch()로 한 번만 모아 보낸다. 사용자가 가이드에서
+    직접 한 줄씩 수동 제출할 때(기본값 notify=True)는 그 자리에서 바로 알림이
+    오는 게 맞아 기존 동작을 유지한다."""
     today = date.today().isoformat()
     state, _ = replay_position_state(position)
     cycle_no = state.cycle_no
@@ -398,7 +459,8 @@ def submit_order(position, client, action, order_type, qty, price, label, dry_ru
     db.session.add(order)
     db.session.commit()
 
-    _notify_order_submitted(position, action, order_type, qty, price, state=state)
+    if notify:
+        _notify_order_submitted(position, action, order_type, qty, price, state=state)
     return {"dryRun": False, "order": order.to_dict()}
 
 

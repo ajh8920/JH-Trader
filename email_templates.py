@@ -252,6 +252,78 @@ def build_auto_infinite_order_email(position, action, order_type, qty, price, st
     return html, text
 
 
+def build_auto_infinite_batch_order_email(position, orders, state=None):
+    """auto_infinite.py._notify_orders_submitted_batch용 - 스케줄러가 한 번에
+    제출한 주문 전체(최대 10여 건)를 매수/매도로 묶어 한 통으로 보낸다
+    (2026-10-23 추가, 사용자 요청: "매매 주문 메일링은 모든 매매내역을 취합
+    하여 한번만 보내도록"). orders: [{"action","orderType","qty","price",
+    "label"}...]. 가이드 화면의 매수/매도 그룹 UI(static/app.js
+    renderGuideOrderGroups)와 같은 발상 - 한 건짜리 카드(build_auto_infinite_
+    order_email)를 여러 줄 표로 펼친 버전이다."""
+    buys = [o for o in orders if o["action"] != "sell"]
+    sells = [o for o in orders if o["action"] == "sell"]
+    label_suffix = f" · {position.label}" if position.label else ""
+
+    def _order_rows(group):
+        body = ""
+        for o in group:
+            price_text = f'${o["price"]:,.2f}' if o.get("price") else "시장가"
+            body += _table_row([_esc(o.get("label") or ""), f'{o["qty"]}주', price_text, o["orderType"].upper()])
+        return body
+
+    rows = [
+        f'<tr><td style="padding:20px;">'
+        f'<span style="font-size:16px;font-weight:800;color:{TEXT};">{_esc(position.ticker)}{_esc(label_suffix)}</span> '
+        f'<span style="font-size:13px;color:{MUTED};">오늘 {len(orders)}건 제출</span>'
+        f'</td></tr>',
+    ]
+    if buys:
+        rows.append(_section_title(f"매수 ({len(buys)})", BUY_COLOR))
+        rows.append(
+            f'<tr><td style="padding:0 20px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+            + _table_header(["종류", "수량", "가격", "구분"]) + _order_rows(buys) + '</table></td></tr>'
+        )
+    if sells:
+        rows.append(_section_title(f"매도 ({len(sells)})", SELL_COLOR))
+        rows.append(
+            f'<tr><td style="padding:0 20px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+            + _table_header(["종류", "수량", "가격", "구분"]) + _order_rows(sells) + '</table></td></tr>'
+        )
+
+    if state is not None:
+        cycle_day = getattr(state, "cycle_day", None)
+        cycle_text = f'{state.cycle_no}회차' + (f' · {cycle_day}일차' if cycle_day else '')
+        rows.append(_section_title("현재 포지션 현황", "#38bdf8"))
+        rows.append(
+            f'<tr><td style="padding:0 20px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+            + _table_row(["사이클", cycle_text])
+            + _table_row(["보유수량", f'{state.holding_qty}주'])
+            + _table_row(["평단가", f'${state.avg_price:,.2f}' if state.avg_price else "-"])
+            + _table_row(["T값", f'{state.t_value:.2f}' if getattr(state, "t_value", None) is not None else "-"])
+            + '</table></td></tr>'
+        )
+
+    html = wrap_email("JH-TRADER · 무한매수법", ACCENT, f"{position.ticker} 자동매매 주문 제출 ({len(orders)}건)",
+                       "오늘 제출된 주문을 모았습니다", rows)
+
+    text_lines = [f"{position.ticker}{label_suffix} - 오늘 {len(orders)}건 제출됐습니다.\n"]
+    if buys:
+        text_lines.append("[매수]")
+        text_lines += [
+            f"- {o.get('label','')}: {o['qty']}주 @ " + (f"${o['price']:,.2f}" if o.get("price") else "시장가")
+            for o in buys
+        ]
+    if sells:
+        text_lines.append("\n[매도]")
+        text_lines += [
+            f"- {o.get('label','')}: {o['qty']}주 @ " + (f"${o['price']:,.2f}" if o.get("price") else "시장가")
+            for o in sells
+        ]
+    text_lines.append("\n자세한 내용(체결 여부 포함)은 앱의 무한매수 탭에서 확인하세요.")
+    text = "\n".join(text_lines)
+    return html, text
+
+
 WARN_COLOR = "#f59e0b"
 
 

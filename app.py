@@ -2965,6 +2965,7 @@ def _run_auto_infinite_submissions(today):
         db.session.commit()
 
         had_error = False
+        submitted_orders = []  # 루프가 끝난 뒤 한 번에 모아 알리기 위해 쌓아둔다(2026-10-23)
         try:
             status = auto_infinite.compute_live_status(position, client)
             rec = status["recommendation"]
@@ -2979,12 +2980,18 @@ def _run_auto_infinite_submissions(today):
                         continue
                     is_crash_dip = "Crash-Dip" in (order.get("label") or "")
                     try:
-                        auto_infinite.submit_order(
+                        result = auto_infinite.submit_order(
                             position, client, order["action"], order_type, qty, price,
                             f"자동매매({order.get('label', '')})", dry_run=False,
                             current_price=status["currentPrice"],
                             skip_if_out_of_band=is_crash_dip,
+                            notify=False,
                         )
+                        if not result.get("skipped"):
+                            submitted_orders.append({
+                                "action": order["action"], "orderType": order_type,
+                                "qty": qty, "price": price, "label": order.get("label", ""),
+                            })
                     except MeritzApiError as e:
                         had_error = True
                         print(f"[무한매수 자동매매] 포지션 {position.id} 주문 실패: {e}", flush=True)
@@ -2995,6 +3002,12 @@ def _run_auto_infinite_submissions(today):
         position = AutoInfinitePosition.query.filter_by(id=position_id).first()
         position.auto_last_run_had_error = had_error
         db.session.commit()
+
+        if submitted_orders:
+            try:
+                auto_infinite._notify_orders_submitted_batch(position, submitted_orders)
+            except Exception as e:
+                print(f"[무한매수 자동매매] 포지션 {position.id} 알림 발송 오류: {e}", flush=True)
 
 
 def _refresh_all_auto_infinite_fills():
