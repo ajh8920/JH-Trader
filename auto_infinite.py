@@ -28,7 +28,7 @@ from datetime import date, datetime
 
 from infinite_buying import PositionState, build_guide
 from meritz_api import MeritzApiError, OVERSEAS_EXCHANGES
-from models import AutoInfiniteOrder, db
+from models import AutoInfiniteOrder, AutoInfinitePosition, db
 
 # 실측 확인(2026-10-21, check_meritz_overseas 스크립트) - SOXL/KORU는 메리츠 코드상
 # AMEX(아멕스, NYSE Arca 통합분류)로, TQQQ는 NASDAQ으로 조회/주문된다. 목록에
@@ -188,11 +188,35 @@ def _mark_already_submitted_today(position, recommendation):
             order["alreadySubmitted"] = True
 
 
+def _overlay_broker_avg_price(position, client, state):
+    """포지션이 이 (티커, 거래소)에 단 하나뿐이면, 평단가를 재생(replay) 계산
+    대신 메리츠 실계좌의 avrg_unpr로 덮어쓴다(2026-10-23 추가, 사용자 질문:
+    "현재 평단 정보를 api로 못가져오나요?"). 과거 수기 백필 체결가 하나하나의
+    정확도에 기대지 않고 항상 실제 평단과 일치시키는 게 목적 - 평단가가
+    틀리면 가이드의 모든 매수/매도 가격(avg_price 기반)이 같이 틀어지므로
+    단순 표시 문제가 아니다. 포지션이 2개 이상 공유하면(동시에 여러
+    사이클 운용) 브로커의 블렌디드 평단을 특정 포지션에 1:1로 못 당겨와
+    건너뛴다 - 그 경우 reconcile_holdings()의 평단 대조 경고로만 알린다.
+    보유수량이 서로 다르면(체결확인 지연 등) 신뢰할 수 없으니 역시 건너뛴다."""
+    try:
+        siblings = AutoInfinitePosition.query.filter_by(
+            ticker=position.ticker, exchange=position.exchange, is_active=True,
+        ).count()
+        if siblings != 1 or state.holding_qty <= 0:
+            return
+        broker_qty, broker_avg = _broker_holding_for_ticker(client, position.ticker, position.exchange)
+        if broker_qty == state.holding_qty and broker_avg:
+            state.avg_price = broker_avg
+    except MeritzApiError:
+        pass
+
+
 def compute_live_status(position, client):
     """체결 이력 재생 + 실시간 시세로 포지션 현황과 오늘의 가이드를 계산한다.
     (매수 가능 현금은 이 포지션 자체의 재생된 가상 잔고를 쓴다 - 계좌 공용 현금이
     아니다. 계좌 전체 잔고는 compute_account_overview()에서 별도로 보여준다.)"""
     state, filled_count = replay_position_state(position)
+    _overlay_broker_avg_price(position, client, state)
 
     current_price = None
     try:
