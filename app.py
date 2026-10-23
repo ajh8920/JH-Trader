@@ -3051,10 +3051,10 @@ def _refresh_all_auto_infinite_fills():
 
 def _send_auto_infinite_failure_alerts(today):
     """오늘 자동 제출이 실패(연결 실패 또는 일부 주문 거부)한 포지션이 있으면
-    카카오톡+이메일로 한 번만 알린다. 18:00에 호출되므로 그 전까지 재시도 중일
-    수 있는 상태는 아직 "실패 확정"으로 보지 않는다."""
+    이메일로 한 번만 알린다. 18:00에 호출되므로 그 전까지 재시도 중일 수 있는
+    상태는 아직 "실패 확정"으로 보지 않는다. 카카오 알림은 2026-10-23 사용자
+    요청으로 껐다(기능 자체(kakao_notify.py)는 남겨둠)."""
     from models import AutoInfinitePosition
-    import kakao_notify
     import email_utils
     import email_templates
 
@@ -3068,12 +3068,6 @@ def _send_auto_infinite_failure_alerts(today):
         reason = ("메리츠 연결 또는 처리 자체가 실패했습니다" if position.auto_last_run_date != today
                    else "일부 주문 제출이 실패했습니다")
         title = f"[JH-Trader] {position.ticker} 자동매매 실패"
-        kakao_notify.notify(
-            title,
-            [f"{position.ticker}{(' · ' + position.label) if position.label else ''} - {reason}",
-             "앱에서 주문 내역/연결 상태를 직접 확인해주세요."],
-            url=f"{kakao_notify.APP_BASE_URL}/",
-        )
         if position.alert_email:
             html, body = email_templates.build_auto_infinite_failure_email(position, reason)
             email_utils.send_email(position.alert_email, title, body, html=html)

@@ -315,24 +315,17 @@ def compute_account_overview(client, positions):
 
 
 def _notify_order_submitted(position, action, order_type, qty, price, state=None):
-    """실제(dry_run=False) 주문이 메리츠에 제출된 직후 카카오톡+이메일로 알린다 -
-    실제 돈이 나가는 이벤트라 즉시성이 중요하다(paper_trading.py의 일일 요약
-    알림과 달리 매 건마다 보낸다). 둘 다 발송 실패를 내부에서 삼키므로 여기서
-    예외 처리를 따로 할 필요가 없다 - 주문 자체는 이미 끝난 뒤라 알림 실패가
-    주문 결과에 영향을 주지 않는다. 카카오·이메일은 서로 독립된 채널이라
-    한쪽이 꺼져 있거나(연동 안 함/이메일 미설정) 실패해도 다른 쪽엔 영향 없다.
+    """실제(dry_run=False) 주문이 메리츠에 제출된 직후 이메일로 알린다 - 실제
+    돈이 나가는 이벤트라 즉시성이 중요하다(paper_trading.py의 일일 요약 알림과
+    달리 매 건마다 보낸다). 발송 실패를 내부에서 삼키므로 여기서 예외 처리를
+    따로 할 필요가 없다 - 주문 자체는 이미 끝난 뒤라 알림 실패가 주문 결과에
+    영향을 주지 않는다. 카카오 알림은 2026-10-23 사용자 요청으로 껐다(기능
+    자체(kakao_notify.py)는 남겨둠 - 다시 켜고 싶으면 알려달라고 할 것).
     state는 호출부(submit_order)가 주문 직전에 이미 replay_position_state로 계산해둔
     것을 그대로 재사용한다(API를 다시 부르지 않음)."""
-    import kakao_notify
-
     action_ko = "매도" if action == "sell" else "매수"
     price_text = f"${price:,.2f}" if price else "시장가(장마감)"
     title = f"[JH-Trader] {position.ticker} {action_ko} 주문 제출"
-    lines = [
-        f"{position.ticker}{(' · ' + position.label) if position.label else ''} - {action_ko} {qty}주",
-        f"주문구분: {order_type.upper()} / 가격: {price_text}",
-    ]
-    kakao_notify.notify(title, lines, url=f"{kakao_notify.APP_BASE_URL}/")
 
     if position.alert_email:
         import email_utils
@@ -344,26 +337,17 @@ def _notify_order_submitted(position, action, order_type, qty, price, state=None
 
 
 def _notify_orders_submitted_batch(position, submitted_orders):
-    """오늘 스케줄러가 제출한 주문 전체를 한 번에 모아 카카오+이메일로 알린다
+    """오늘 스케줄러가 제출한 주문 전체를 한 번에 모아 이메일로 알린다
     (2026-10-23 추가, 사용자 요청: "매매 주문 메일링은 모든 매매내역을 취합하여
     한번만 보내도록"). submitted_orders: [{"action","orderType","qty","price",
     "label"}...] - _run_auto_infinite_submissions가 notify=False로 제출하며
     쌓아둔 목록을 그대로 받는다. 수동 단건 제출(submit_auto_infinite_order
     라우트)은 이 함수를 쓰지 않고 기존처럼 _notify_order_submitted로 즉시 알림
-    - 사용자가 그 자리에서 한 줄만 직접 눌러 보낸 거라 바로 확인받는 게 맞다."""
-    import kakao_notify
-
+    - 사용자가 그 자리에서 한 줄만 직접 눌러 보낸 거라 바로 확인받는 게 맞다.
+    카카오 알림은 2026-10-23 사용자 요청으로 껐다(기능 자체는 남겨둠)."""
     if not submitted_orders:
         return
-    label_part = f" · {position.label}" if position.label else ""
     title = f"[JH-Trader] {position.ticker} 자동매매 주문 제출 ({len(submitted_orders)}건)"
-
-    lines = [f"{position.ticker}{label_part} - 오늘 {len(submitted_orders)}건 제출"]
-    for o in submitted_orders:
-        action_ko = "매도" if o["action"] == "sell" else "매수"
-        price_text = f"${o['price']:,.2f}" if o.get("price") else "시장가(장마감)"
-        lines.append(f"{action_ko} {o['qty']}주 @ {price_text} ({o['orderType'].upper()})")
-    kakao_notify.notify(title, lines, url=f"{kakao_notify.APP_BASE_URL}/")
 
     if position.alert_email:
         import email_utils
