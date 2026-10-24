@@ -277,13 +277,11 @@ def reconcile_holdings(client, positions):
     warnings = []
     for (ticker, exchange), group in by_ticker.items():
         ledger_total = 0
-        states = []
         for p in group:
             state, _ = replay_position_state(p)
-            states.append(state)
             ledger_total += state.holding_qty
         try:
-            broker_qty, broker_avg = _broker_holding_for_ticker(client, ticker, exchange)
+            broker_qty = _broker_qty_for_ticker(client, ticker, exchange)
         except MeritzApiError:
             continue
         if ledger_total != broker_qty:
@@ -292,19 +290,16 @@ def reconcile_holdings(client, positions):
                 f"메리츠 실계좌 보유량({broker_qty}주)과 다릅니다 - 계좌에서 수동 거래가 있었는지, "
                 f"또는 체결 확인이 누락된 주문이 있는지 확인하세요"
             )
-        elif len(group) == 1 and broker_avg and states[0].holding_qty > 0:
-            # 평단가 대조(2026-10-23 추가, 사용자 지적: "LOC 평단 매수 주문이
-            # 실제 평단이 아니다") - 수량은 맞아도 과거 백필 체결가에 작은
-            # 오차가 있으면 평단이 조금씩 어긋날 수 있다. 포지션이 티커당
-            # 1개일 때만 비교한다(2개 이상이면 브로커의 단일 평단과 1:1
-            # 대응이 안 돼 비교가 무의미함).
-            app_avg = states[0].avg_price
-            if abs(app_avg - broker_avg) > 0.01:
-                warnings.append(
-                    f"{ticker}: 앱이 계산한 평단가(${app_avg:,.2f})가 메리츠 실계좌 평단가"
-                    f"(${broker_avg:,.2f})와 다릅니다 - 과거에 수기로 입력한 체결가 중 하나가 "
-                    f"실제와 다를 수 있습니다(주문 내역을 확인해주세요)"
-                )
+        # 평단가 대조는 더 이상 여기서 경고하지 않는다(2026-10-24) - 포지션이
+        # 티커당 1개뿐인 흔한 경우는 compute_live_status의
+        # _overlay_broker_avg_price가 화면에 보여줄 평단가를 이미 실계좌
+        # 값으로 덮어써서 표시값 자체는 항상 정확하다. 그런데도 여기서 "재생
+        # (replay) 계산값이 다르다"고 계속 경고하면, 정작 화면엔 맞는 숫자가
+        # 떠 있는데 바로 위에 "다릅니다" 경고가 떠서 사용자가 혼란스러워했다
+        # (실사용 피드백). 과거 백필 체결가 오차 자체는 사이클/T값 계산에는
+        # 영향이 없고(avg_price에 의존하지 않음) 평단가는 이미 보정되므로,
+        # 수량 불일치(ledger_total != broker_qty, 위 분기)만 실질적인 문제로
+        # 남아 그대로 경고한다.
     return warnings
 
 
