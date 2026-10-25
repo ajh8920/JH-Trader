@@ -2265,6 +2265,136 @@ def submit_auto_infinite_order(position_id):
     return jsonify(sanitize_json(result))
 
 
+# ── VR(Value Rebalancing, TQQQ 전용) 구글시트 연동 예약주문 (2026-10-25 추가) ──
+# auto-infinite(SOXL 무한매수)와 완전히 별개의 전략·계좌(MERITZ_VR_*)·시트
+# 기반이다. admin_required로 막는 이유는 무한매수 라우트들과 같다(실제 돈이
+# 오가는 개인 계좌 기능). UI 탭은 아직 없다 - 사용자 승인 후 이 API를 직접
+# 호출해 제출하고, 체결 후 취소는 cron_run_auto_infinite의 06~08시(KST)
+# 구간에서 _check_vr_reserved_cancellations()가 자동으로 처리한다.
+
+def _submit_vr_ladder(dry_run=True):
+    """vr_sheet_orders.read_order_ladder()로 "주문" 탭의 매수/매도 사다리를
+    읽어 메리츠 VR 전용 계좌로 해외주식 예약주문을 제출한다. 성공한 실제
+    제출(dry_run=False) 건만 VrReservedOrder에 남겨 체결 후 취소 체크가
+    추적할 수 있게 한다."""
+    from models import VrReservedOrder
+    from meritz_api import MeritzClient, MeritzApiError
+    import vr_sheet_orders
+
+    ladder = vr_sheet_orders.read_order_ladder()
+    if not ladder["startDate"] or not ladder["endDate"]:
+        raise RuntimeError("시트에서 예약 시작일/종료일을 읽지 못했습니다 - 제출 중단")
+    client = MeritzClient(env_prefix="MERITZ_VR")
+    results = []
+    for action, orders in (("buy", ladder["buys"]), ("sell", ladder["sells"])):
+        for o in orders:
+            try:
+                res = client.place_overseas_reserved_order(
+                    vr_sheet_orders.TICKER, vr_sheet_orders.EXCHANGE, o["qty"], action, o["price"],
+                    ladder["startDate"], ladder["endDate"], price_type="limit", dry_run=dry_run,
+                )
+                results.append({"action": action, "qty": o["qty"], "price": o["price"],
+                                 "ok": True, "result": res})
+                if not dry_run and res.get("oderRsevMstNo"):
+                    db.session.add(VrReservedOrder(
+                        action=action, qty=o["qty"], price=o["price"],
+                        start_date=ladder["startDate"], end_date=ladder["endDate"],
+                        oder_rsev_mst_no=str(res["oderRsevMstNo"]),
+                        oder_rsev_mst_date=res["oderRsevMstDate"],
+                    ))
+            except MeritzApiError as e:
+                results.append({"action": action, "qty": o["qty"], "price": o["price"],
+                                 "ok": False, "error": str(e)})
+    if not dry_run:
+        db.session.commit()
+    return {"cycleLabel": ladder["cycleLabel"], "startDate": ladder["startDate"],
+            "endDate": ladder["endDate"], "orders": results}
+
+
+def _check_vr_reserved_cancellations():
+    """체결이 끝났는데도 메리츠 쪽에서 아직 살아있는(취소되지 않은) VR
+    예약주문을 찾아 취소한다. "기간잔량" 방식은 1주가 체결돼도 예약기간이
+    끝날 때까지 자동으로 완전히 끝나지 않을 수 있어(2026-10-25 사용자 지적:
+    "한번 매매가 이뤄진 금액으로 다시 재매매 되지 않기 위함"), 체결 확인 후
+    명시적으로 취소해야 한다. cron_run_auto_infinite의 06~08시(KST) 구간에서
+    _refresh_all_auto_infinite_fills와 같이 돈다 - 둘 다 미국장 마감 후
+    체결 결과를 확인하는 시점이 같기 때문이다."""
+    from models import VrReservedOrder
+    from meritz_api import MeritzClient, MeritzApiError
+
+    pending = VrReservedOrder.query.filter_by(cancelled=False).all()
+    if not pending:
+        return
+    try:
+        client = MeritzClient(env_prefix="MERITZ_VR")
+    except MeritzApiError as e:
+        print(f"[VR 취소체크] 메리츠 연결 실패: {e}", flush=True)
+        return
+
+    by_period = {}
+    for entry in pending:
+        by_period.setdefault((entry.start_date, entry.end_date), []).append(entry)
+    side_code = {"buy": "2", "sell": "1"}  # 조회 응답의 seln_byov_clcd(매도1/매수2)
+
+    for (start_date, end_date), entries in by_period.items():
+        try:
+            rows = client.get_overseas_reserved_orders(start_date, end_date)
+        except MeritzApiError as e:
+            print(f"[VR 취소체크] 예약주문 조회 실패: {e}", flush=True)
+            continue
+        for entry in entries:
+            match = next((
+                r for r in rows
+                if r.get("seln_byov_clcd") == side_code[entry.action]
+                and abs(float(r.get("ovrs_stck_oder_prc") or 0) - entry.price) < 0.005
+                and int(float(r.get("rsev_qty") or 0)) == entry.qty
+            ), None)
+            if not match:
+                continue
+            if match.get("rsev_cncl_yn") == "Y":  # 이미 취소된 건(수동 취소 포함)
+                entry.cancelled = True
+                continue
+            acml = int(float(match.get("acml_cntg_qty") or 0))
+            rsev_qty = int(float(match.get("rsev_qty") or 0))
+            if acml < rsev_qty:
+                continue  # 아직 미체결 - 다음 번 체크에서 다시 본다
+            try:
+                client.cancel_overseas_reserved_order(
+                    entry.oder_rsev_mst_date, entry.oder_rsev_mst_no, dry_run=False)
+                entry.cancelled = True
+                print(f"[VR 취소체크] {entry.action} {entry.qty}주 @ ${entry.price:.2f} 체결 확인 후 취소 완료", flush=True)
+            except MeritzApiError as e:
+                print(f"[VR 취소체크] 주문 {entry.id} 취소 실패: {e}", flush=True)
+    db.session.commit()
+
+
+@app.route("/api/vr/preview-ladder", methods=["GET"])
+@admin_required
+def vr_preview_ladder():
+    import vr_sheet_orders
+
+    try:
+        ladder = vr_sheet_orders.read_order_ladder()
+    except Exception as e:
+        return jsonify({"error": f"시트 읽기 실패: {e}"}), 502
+    return jsonify(sanitize_json(ladder))
+
+
+@app.route("/api/vr/submit-ladder", methods=["POST"])
+@admin_required
+def vr_submit_ladder():
+    from meritz_api import MeritzApiError
+
+    dry_run = bool((request.json or {}).get("dryRun", True))
+    try:
+        result = _submit_vr_ladder(dry_run=dry_run)
+    except MeritzApiError as e:
+        return jsonify({"error": f"VR 예약주문 제출 실패: {e}"}), 502
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(sanitize_json(result))
+
+
 @app.route("/api/auto-infinite/positions/<int:position_id>/refresh-fills", methods=["POST"])
 @admin_required
 def refresh_auto_infinite_fills(position_id):
@@ -2614,6 +2744,12 @@ def cron_run_auto_infinite():
                 if 6 <= now.hour < 8:
                     _refresh_all_auto_infinite_fills()
                     _record_heartbeat("auto_infinite_fill_refresh")
+                    try:
+                        _check_vr_reserved_cancellations()
+                        _record_heartbeat("vr_reserved_order_cancel_check")
+                    except Exception as e:
+                        db.session.rollback()
+                        _record_heartbeat("vr_reserved_order_cancel_check", error=e)
                     return
                 if now.weekday() >= 5:  # 주말은 미국장도 없음
                     return
@@ -2652,6 +2788,7 @@ for _view in (
     list_auto_infinite_orders, submit_auto_infinite_order, refresh_auto_infinite_fills,
     backfill_auto_infinite_trades, set_auto_infinite_trading_enabled, kakao_preview_auto_infinite,
     set_auto_infinite_alert_email,
+    vr_submit_ladder,
     kakao_test_message,
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
     admin_set_trade_alert_email, admin_test_trade_alert_email, cron_run_daily_batch,
@@ -2698,6 +2835,7 @@ OPS_COMPONENT_EXPECTED_INTERVAL_SECONDS = {
     "paper_trading_scheduler": 30 * 3600,
     "auto_infinite_scheduler": 30 * 3600,
     "auto_infinite_fill_refresh": 30 * 3600,
+    "vr_reserved_order_cancel_check": 30 * 3600,
 }
 
 

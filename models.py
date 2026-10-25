@@ -216,6 +216,40 @@ class AutoInfiniteOrder(db.Model):
         }
 
 
+class VrReservedOrder(db.Model):
+    """VR(Value Rebalancing, TQQQ 전용) 전략이 메리츠 VR 계좌로 제출한 해외주식
+    예약주문 1건의 기록(2026-10-25 추가). "기간잔량" 방식 예약주문은 1주가
+    체결돼도 메리츠 쪽에서 그 줄을 자동으로 완전히 끝내지 않고 예약기간이
+    끝날 때까지 남아있을 수 있어(사용자 지적: "한번 매매가 이뤄진 금액으로
+    다시 재매매 되지 않기 위함"), 체결 확인 후 명시적으로 취소 API를 불러야
+    한다 - 그 취소 호출에 필요한 oder_rsev_mst_no/date는 제출 응답에만
+    실려오고 조회 API 응답에는 없어(공식 문서 확인) 여기 저장해 둬야 한다.
+
+    cancelled=False인 행만 cron_run_auto_infinite의 06~08시(KST) 구간에서
+    get_overseas_reserved_orders로 체결 여부를 재확인하고, 체결 완료된 건만
+    cancel_overseas_reserved_order로 취소한 뒤 True로 바꾼다."""
+
+    __tablename__ = "vr_reserved_orders"
+
+    id = db.Column(db.Integer, primary_key=True)
+    action = db.Column(db.String(4), nullable=False)  # "buy" | "sell"
+    qty = db.Column(db.Integer, nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    start_date = db.Column(db.String(8), nullable=False)  # 예약 시작일 YYYYMMDD
+    end_date = db.Column(db.String(8), nullable=False)    # 예약 종료일 YYYYMMDD
+    oder_rsev_mst_no = db.Column(db.String(20), nullable=False)
+    oder_rsev_mst_date = db.Column(db.String(8), nullable=False)
+    cancelled = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "action": self.action, "qty": self.qty, "price": self.price,
+            "startDate": self.start_date, "endDate": self.end_date,
+            "cancelled": self.cancelled, "createdAt": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class KakaoToken(db.Model):
     """카카오톡 "나에게 보내기" API(kakao_notify.py)용 OAuth 토큰 저장소. 단일 행만
     쓴다(purpose="default" 고정) - 이 앱 소유자 한 명의 카카오 계정에만 연동한다.
