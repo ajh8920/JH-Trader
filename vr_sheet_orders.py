@@ -115,6 +115,38 @@ def read_active_cycle():
     return None
 
 
+def read_top_summary():
+    """"적립식" 탭 4~5행(머리말+현재값)을 그대로 짝지어 돌려준다(2026-10-26
+    추가 - VR 탭 현황 표시용). 컬럼 인덱스를 하드코딩하지 않고 헤더-값을
+    순서대로 zip해서, 템플릿이 칼럼을 추가/순서변경해도 안 깨진다. 반환:
+    [{"label":"Ticker","value":"TQQQ"}, {"label":"잔고 수량","value":"38"}, ...]."""
+    sh = _open_spreadsheet()
+    ws = sh.worksheet(TRACKING_SHEET_NAME)
+    headers = ws.get("B4:R4")
+    values = ws.get("B5:R5")
+    headers = headers[0] if headers else []
+    values = values[0] if values else []
+    return [{"label": h, "value": (values[i] if i < len(values) else "")} for i, h in enumerate(headers)]
+
+
+def read_active_cycle_detail():
+    """"적립식" 탭 8행(머리말)과 Done="N"인 첫 행(현재 사이클)을 짝지어
+    돌려준다(2026-10-26 추가 - VR 탭 현황 표시용, read_top_summary와 같은
+    이유로 헤더-값 zip 방식). read_active_cycle()은 스케줄링(날짜 비교)
+    전용이라 가공된 날짜만 주는데, 이건 화면 표시용이라 V Target/Pool/P&L
+    등 전체 행을 그대로 준다. 활성 행이 없으면 None."""
+    sh = _open_spreadsheet()
+    ws = sh.worksheet(TRACKING_SHEET_NAME)
+    headers = ws.get("B8:R8")
+    headers = headers[0] if headers else []
+    rows = ws.get("B9:R269")
+    for row in rows:
+        done = row[0].strip() if len(row) > 0 else ""  # B열(Done)이 이 슬라이스의 0번째
+        if done == "N":
+            return [{"label": h, "value": (row[i] if i < len(row) else "")} for i, h in enumerate(headers)]
+    return None
+
+
 def preview_orders():
     """실제 제출 전 검토용 - 사다리를 읽기만 하고 아무것도 제출하지 않는다."""
     ladder = read_order_ladder()

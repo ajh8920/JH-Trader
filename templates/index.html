@@ -72,6 +72,7 @@
       <button class="tab active" data-tab="macro" onclick="switchTab('macro')" role="tab"><i class="ti ti-world" aria-hidden="true"></i> <span data-i18n="tabMacro">Macro</span></button>
       {% if show_all_tabs %}
       <button class="tab" data-tab="autolive" onclick="switchTab('autolive')" role="tab"><i class="ti ti-robot-face" aria-hidden="true"></i> <span data-i18n="tabAutoLive">Auto Trading</span></button>
+      <button class="tab" data-tab="vr" onclick="switchTab('vr')" role="tab"><i class="ti ti-scale" aria-hidden="true"></i> <span data-i18n="tabVr">VR</span></button>
       {% endif %}
       <button class="tab" data-tab="papertrade" onclick="switchTab('papertrade')" role="tab"><i class="ti ti-robot" aria-hidden="true"></i> <span data-i18n="tabPaperTrading">Paper Trading</span></button>
       {% if show_all_tabs %}
@@ -269,6 +270,18 @@
           </div>
         </div>
         <div id="autolive-positions"></div>
+      </section>
+
+      <!-- VR(Value Rebalancing, TQQQ) 현황 -->
+      <section id="sec-vr" class="section">
+        <div class="info-box" style="margin-bottom:12px;">
+          <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+          <span data-i18n="vrWarning">Connects to a separate real Meritz account for TQQQ. The reserved order ladder is submitted automatically on each cycle's start date (17-18 KST) and filled reservations are auto-cancelled (06-08 KST) - nothing here needs a manual click.</span>
+        </div>
+        <div class="add-form" style="margin-bottom:12px;">
+          <button class="btn-secondary" onclick="loadVrStatus()"><i class="ti ti-refresh" aria-hidden="true"></i> <span data-i18n="refresh">Refresh</span></button>
+        </div>
+        <div id="vr-content"></div>
       </section>
 
       <!-- 실험실: 여러 종목/지수 비교 + 조건 구간 하이라이트 -->

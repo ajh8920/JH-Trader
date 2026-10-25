@@ -753,6 +753,18 @@ const I18N = {
     en: 'This connects to your real Meritz Securities account. Orders are only submitted when you click "Submit order" below — nothing is sent automatically. 2.2 version only (40 splits, no mid-cycle compounding).',
     ko: '실제 메리츠증권 계좌와 연결됩니다. 아래 "주문 제출" 버튼을 직접 눌러야만 주문이 나가며, 자동으로 제출되는 주문은 없습니다. 2.2버전만 지원합니다(40분할, 중간 복리 없음).',
   },
+  tabVr: { en: 'VR', ko: 'VR' },
+  vrWarning: {
+    en: 'Connects to a separate real Meritz account for TQQQ. The reserved order ladder is submitted automatically on each cycle\'s start date (17-18 KST) and filled reservations are auto-cancelled (06-08 KST) - nothing here needs a manual click.',
+    ko: 'TQQQ 전용의 별도 실계좌와 연결됩니다. 사이클 시작일 17~18시(KST)에 예약주문 사다리가 자동 제출되고, 체결된 건은 06~08시(KST)에 자동 취소됩니다 - 여기서 따로 클릭할 건 없습니다.',
+  },
+  vrCurrentCycle: { en: 'Current cycle', ko: '현재 사이클' },
+  vrSummary: { en: 'Account summary', ko: '계좌 요약' },
+  vrLadder: { en: 'Order ladder', ko: '예약주문 사다리' },
+  vrReservedOrders: { en: 'Submitted reserved orders', ko: '제출된 예약주문' },
+  vrNoReservedOrders: { en: 'No orders submitted yet for this cycle.', ko: '아직 이번 사이클에 제출된 주문이 없습니다.' },
+  vrCancelled: { en: 'Cancelled', ko: '취소됨' },
+  vrPending: { en: 'Pending', ko: '대기중' },
   availableCashUsd: { en: 'Available USD cash', ko: '주문가능 예수금(USD)' },
   checkFills: { en: 'Check fills', ko: '체결 확인' },
   fillHistory: { en: 'Fill history', ko: '실제 체결 내역' },
@@ -957,6 +969,7 @@ function switchTab(name) {
   if (name === 'backtest') initBacktestDates();
   if (name === 'live') loadInfinitePositions();
   if (name === 'autolive') loadAutoInfinitePositions();
+  if (name === 'vr') loadVrStatus();
   if (name === 'lab') initLabTab();
   if (name === 'krswing') initKrSwingDates();
   if (name === 'krquant') initKrQuantTab();
@@ -5185,6 +5198,90 @@ function renderAutoInfinitePositions(positions, account) {
       </div>
     </div>`;
   }).join('');
+}
+
+// ─── VR(Value Rebalancing, TQQQ) 현황 ────────────────────────────────────────
+
+async function loadVrStatus() {
+  const el = document.getElementById('vr-content');
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('loading')}</div>`;
+  try {
+    const data = await api('GET', '/api/vr/status');
+    renderVrStatus(data);
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
+  }
+}
+
+function vrLabelValueGrid(pairs) {
+  if (!pairs || !pairs.length) return `<div class="empty-state"><p>-</p></div>`;
+  return `<div class="bt-summary-grid live-info-grid">
+    ${pairs.map(p => `<div class="meta-item"><div class="meta-label">${escapeHtml(p.label)}</div><div class="meta-value">${escapeHtml(p.value)}</div></div>`).join('')}
+  </div>`;
+}
+
+function renderVrStatus(data) {
+  const el = document.getElementById('vr-content');
+  const ladder = data.ladder || { buys: [], sells: [] };
+  const orders = data.reservedOrders || [];
+
+  const ladderRows = group => group.length
+    ? `<div style="max-height:360px;overflow-y:auto;">
+        <table role="table" style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tbody>
+            ${group.map(o => `
+              <tr>
+                <td style="padding:4px 8px;color:var(--text-secondary);white-space:nowrap;">$${o.price.toFixed(2)}</td>
+                <td style="padding:4px 8px;white-space:nowrap;">${o.qty}주</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`
+    : `<div class="empty-state"><p>-</p></div>`;
+
+  const ordersTable = orders.length ? `
+    <table role="table" style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 8px;color:var(--text-secondary);">${t('qty')}</th>
+        <th style="text-align:left;padding:6px 8px;color:var(--text-secondary);">${t('price')}</th>
+        <th style="text-align:left;padding:6px 8px;color:var(--text-secondary);"></th>
+      </tr></thead>
+      <tbody>
+        ${orders.map(o => `
+          <tr>
+            <td style="padding:6px 8px;">${o.action === 'buy' ? t('buy') : t('sell')} · ${o.qty}</td>
+            <td style="padding:6px 8px;">$${Number(o.price).toFixed(2)}</td>
+            <td style="padding:6px 8px;">${o.cancelled ? `<span class="cycle-pill">${t('vrCancelled')}</span>` : `<span class="cycle-pill" style="background:var(--green-bg);color:var(--green);">${t('vrPending')}</span>`}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>` : `<div class="empty-state"><p>${t('vrNoReservedOrders')}</p></div>`;
+
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:12px;">
+      <div class="live-section-label">${t('vrSummary')}</div>
+      ${vrLabelValueGrid(data.summary)}
+    </div>
+    <div class="card" style="margin-bottom:12px;">
+      <div class="live-section-label">${t('vrCurrentCycle')}</div>
+      ${vrLabelValueGrid(data.cycle)}
+    </div>
+    <div class="card" style="margin-bottom:12px;">
+      <div class="live-section-label">${t('vrLadder')}</div>
+      <div class="bt-summary-grid live-info-grid" style="grid-template-columns:1fr 1fr;">
+        <div>
+          <div class="meta-label" style="margin-bottom:6px;color:var(--green);">${t('buy')} (${ladder.buys.length})</div>
+          ${ladderRows(ladder.buys)}
+        </div>
+        <div>
+          <div class="meta-label" style="margin-bottom:6px;color:var(--red);">${t('sell')} (${ladder.sells.length})</div>
+          ${ladderRows(ladder.sells)}
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="live-section-label">${t('vrReservedOrders')}</div>
+      ${ordersTable}
+    </div>`;
 }
 
 // 가이드 주문을 매수/매도 그룹으로 묶고, 그룹별로 "본 주문"(평단/목표% 등)과

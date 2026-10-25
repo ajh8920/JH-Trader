@@ -2450,6 +2450,29 @@ def vr_preview_ladder():
     return jsonify(sanitize_json(ladder))
 
 
+@app.route("/api/vr/status", methods=["GET"])
+@admin_required
+def vr_status():
+    """VR 탭(2026-10-26 추가, 사용자 요청: "vr 탭을 만들어 VR 현황을 볼수있도록")용
+    - 시트의 현재 상태(상단 요약/활성 사이클/사다리)와, 서버가 실제로 제출한
+    예약주문 기록(VrReservedOrder)을 한 번에 묶어 돌려준다."""
+    from models import VrReservedOrder
+    import vr_sheet_orders
+
+    try:
+        summary = vr_sheet_orders.read_top_summary()
+        cycle = vr_sheet_orders.read_active_cycle_detail()
+        ladder = vr_sheet_orders.read_order_ladder()
+    except Exception as e:
+        return jsonify({"error": f"시트 읽기 실패: {e}"}), 502
+
+    orders = VrReservedOrder.query.order_by(VrReservedOrder.created_at.desc()).limit(100).all()
+    return jsonify(sanitize_json({
+        "summary": summary, "cycle": cycle, "ladder": ladder,
+        "reservedOrders": [o.to_dict() for o in orders],
+    }))
+
+
 @app.route("/api/vr/submit-ladder", methods=["POST"])
 @admin_required
 def vr_submit_ladder():
