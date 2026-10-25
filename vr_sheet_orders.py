@@ -90,6 +90,31 @@ def read_order_ladder():
             "startDate": start_date, "endDate": end_date}
 
 
+def read_active_cycle():
+    """"적립식" 탭 9행부터 Done(B열)="N"인 첫 행(현재 진행 중인 사이클)의
+    Week/Start/End를 읽는다(2026-10-26 추가 - 사이클 자동 제출/입금 알림
+    스케줄링용). read_order_ladder()의 startDate는 "주문" 탭 수식이 항상
+    NOW()를 쓰기 때문에(제출 시점이 언제든 그날부터 예약하라는 의도) "오늘이
+    이 사이클의 진짜 시작일인가"를 판단하는 데 못 쓴다 - 그래서 "적립식" 탭의
+    D열(Start) 원본 날짜를 여기서 직접 읽는다.
+
+    반환: {"week":"4주차","startDate":"20261021","endDate":"20261103"} 또는
+    활성 행이 없으면 None."""
+    sh = _open_spreadsheet()
+    ws = sh.worksheet(TRACKING_SHEET_NAME)
+    values = ws.get("A9:E269")
+    for row in values:
+        done = row[1].strip() if len(row) > 1 else ""
+        if done == "N":
+            week = row[2].strip() if len(row) > 2 else ""
+            start_date = row[3].strip().replace("-", "") if len(row) > 3 else ""
+            end_date = row[4].strip().replace("-", "") if len(row) > 4 else ""
+            if not start_date or not end_date:
+                return None
+            return {"week": week, "startDate": start_date, "endDate": end_date}
+    return None
+
+
 def preview_orders():
     """실제 제출 전 검토용 - 사다리를 읽기만 하고 아무것도 제출하지 않는다."""
     ladder = read_order_ladder()

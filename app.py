@@ -2368,6 +2368,76 @@ def _check_vr_reserved_cancellations():
     db.session.commit()
 
 
+def _check_vr_cycle_submission(today_str):
+    """"적립식" 탭의 활성 사이클(Done=N) 시작일이 오늘이면 그 사이클의 사다리를
+    자동으로 VR 계좌에 제출한다(2026-10-26 사용자 요청: "활성화된 row의 start
+    날 오후 5~6시 사이에 주문탭의 주문을 등록"). cron_run_auto_infinite의
+    17~18시(KST) 구간에서 무한매수 제출과 같이 돈다.
+
+    같은 사이클(종료일 기준)로 이미 VrReservedOrder가 있으면 재제출하지
+    않는다 - end_date는 2주 간격으로 항상 고유해 사이클 식별자로 충분하고,
+    read_order_ladder()의 startDate(항상 NOW())보다 안정적이다."""
+    from models import VrReservedOrder
+    import vr_sheet_orders
+    import email_utils
+    import email_templates
+
+    cycle = vr_sheet_orders.read_active_cycle()
+    today_compact = today_str.replace("-", "")
+    if not cycle or cycle["startDate"] != today_compact:
+        return
+    already = VrReservedOrder.query.filter_by(end_date=cycle["endDate"]).first()
+    if already:
+        return
+
+    result = _submit_vr_ladder(dry_run=False)
+    ok_count = sum(1 for o in result["orders"] if o["ok"])
+    fail_count = len(result["orders"]) - ok_count
+    print(f"[VR 자동제출] {cycle['week']} 사다리 제출: 성공 {ok_count} / 실패 {fail_count}", flush=True)
+    html, body = email_templates.build_vr_submission_email(result)
+    email_utils.send_email("anjh120577@gmail.com", f"[JH-Trader] VR {cycle['week']} 예약주문 제출 완료", body, html=html)
+
+
+def _check_vr_deposit_reminder(today_str):
+    """"적립식" 탭의 활성 사이클 시작일이 "어제"면(=새 사이클이 막 시작됐으면)
+    VR 계좌 입금을 알린다(2026-10-26 사용자 요청: "end의 바로 다음날 오전
+    6시쯤... 15만원을 입금해 주세요 메일링"). cron_run_auto_infinite의
+    06~08시(KST) 구간에서 무한매수 체결확인·VR 취소체크와 같이 돈다.
+
+    하루 한 번만 보내도록 OpsHeartbeat("vr_deposit_reminder")의 마지막 성공
+    시각(KST 날짜)으로 중복을 막는다 - 06~08시 구간에 외부 크론이 여러 번
+    호출할 수 있어서다(cron_run_auto_infinite 자체 설명 참고)."""
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    from models import OpsHeartbeat
+    import vr_sheet_orders
+    import email_utils
+    import email_templates
+
+    cycle = vr_sheet_orders.read_active_cycle()
+    if not cycle:
+        return
+    yesterday = (datetime.strptime(today_str, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y%m%d")
+    if cycle["startDate"] != yesterday:
+        return
+
+    # 실제 발송 여부(하루 한 번)는 "vr_deposit_reminder"와 별도 컴포넌트로 추적한다
+    # - "vr_deposit_reminder"는 cron 래퍼가 매 틱(06~08시)마다 "점검은 했다"는
+    # 뜻으로 기록하므로(auto_infinite_fill_refresh와 같은 패턴), 실제 발송은
+    # 사이클당 한 번뿐이라 같은 이름을 공유하면 ops 대시보드의 "최근 정상" 간격
+    # 판정이 어긋난다.
+    row = OpsHeartbeat.query.filter_by(component="vr_deposit_reminder_sent").first()
+    if row and row.last_success_at:
+        last_kst_date = row.last_success_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(
+            ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d")
+        if last_kst_date == today_str:
+            return
+
+    html, body = email_templates.build_vr_deposit_reminder_email(cycle)
+    email_utils.send_email("anjh120577@gmail.com", "[JH-Trader] VR 입금 안내 - 새로운 주차가 시작됩니다", body, html=html)
+    _record_heartbeat("vr_deposit_reminder_sent")
+
+
 @app.route("/api/vr/preview-ladder", methods=["GET"])
 @admin_required
 def vr_preview_ladder():
@@ -2750,12 +2820,24 @@ def cron_run_auto_infinite():
                     except Exception as e:
                         db.session.rollback()
                         _record_heartbeat("vr_reserved_order_cancel_check", error=e)
+                    try:
+                        _check_vr_deposit_reminder(today)
+                        _record_heartbeat("vr_deposit_reminder")
+                    except Exception as e:
+                        db.session.rollback()
+                        _record_heartbeat("vr_deposit_reminder", error=e)
                     return
                 if now.weekday() >= 5:  # 주말은 미국장도 없음
                     return
                 if 17 <= now.hour < 18:
                     _run_auto_infinite_submissions(today)
                     _record_heartbeat("auto_infinite_scheduler")
+                    try:
+                        _check_vr_cycle_submission(today)
+                        _record_heartbeat("vr_cycle_submission")
+                    except Exception as e:
+                        db.session.rollback()
+                        _record_heartbeat("vr_cycle_submission", error=e)
                 elif now.hour >= 18:
                     _send_auto_infinite_failure_alerts(today)
             except Exception as e:
@@ -2836,6 +2918,8 @@ OPS_COMPONENT_EXPECTED_INTERVAL_SECONDS = {
     "auto_infinite_scheduler": 30 * 3600,
     "auto_infinite_fill_refresh": 30 * 3600,
     "vr_reserved_order_cancel_check": 30 * 3600,
+    "vr_cycle_submission": 30 * 3600,
+    "vr_deposit_reminder": 30 * 3600,
 }
 
 

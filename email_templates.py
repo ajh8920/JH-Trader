@@ -345,3 +345,81 @@ def build_auto_infinite_failure_email(position, reason):
         f"앱의 무한매수 탭에서 주문 내역/연결 상태를 직접 확인해주세요."
     )
     return html, text
+
+
+def build_vr_submission_email(submission):
+    """app.py._check_vr_cycle_submission용 - 적립식 탭의 새 사이클 시작일에
+    사다리(매수/매도)를 자동 제출한 직후 한 통으로 보낸다(2026-10-26 사용자
+    요청: 무한매수와 동일하게 "제출 완료" 알림). submission:
+    {"cycleLabel","startDate","endDate","orders":[{"action","qty","price",
+    "ok","result"/"error"}...]} - app.py._submit_vr_ladder()의 반환값 그대로."""
+    orders = submission["orders"]
+    ok_orders = [o for o in orders if o["ok"]]
+    fail_orders = [o for o in orders if not o["ok"]]
+    buys = [o for o in ok_orders if o["action"] == "buy"]
+    sells = [o for o in ok_orders if o["action"] == "sell"]
+
+    def _order_rows(group):
+        body = ""
+        for o in group:
+            body += _table_row([f'${o["price"]:,.2f}', f'{o["qty"]}주'])
+        return body
+
+    rows = [
+        f'<tr><td style="padding:20px;">'
+        f'<span style="font-size:16px;font-weight:800;color:{TEXT};">TQQQ VR · {_esc(submission["cycleLabel"])}</span> '
+        f'<span style="font-size:13px;color:{MUTED};">예약기간 {submission["startDate"]}~{submission["endDate"]}</span>'
+        f'</td></tr>',
+    ]
+    if buys:
+        rows.append(_section_title(f"매수 예약 ({len(buys)})", BUY_COLOR))
+        rows.append(
+            f'<tr><td style="padding:0 20px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+            + _table_header(["단가", "수량"]) + _order_rows(buys) + '</table></td></tr>'
+        )
+    if sells:
+        rows.append(_section_title(f"매도 예약 ({len(sells)})", SELL_COLOR))
+        rows.append(
+            f'<tr><td style="padding:0 20px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+            + _table_header(["단가", "수량"]) + _order_rows(sells) + '</table></td></tr>'
+        )
+    if fail_orders:
+        rows.append(_section_title(f"제출 실패 ({len(fail_orders)})", WARN_COLOR))
+        rows.append(
+            f'<tr><td style="padding:0 20px 16px;font-size:13px;color:{TEXT};line-height:1.6;">'
+            + "<br>".join(_esc(f'{o["action"]} {o["qty"]}주 @ ${o["price"]:,.2f} - {o.get("error","")}') for o in fail_orders)
+            + '</td></tr>'
+        )
+
+    html = wrap_email("JH-TRADER · VR", ACCENT, f"VR {submission['cycleLabel']} 예약주문 제출 ({len(ok_orders)}건)",
+                       "새 사이클 사다리를 자동 제출했습니다", rows)
+    text_lines = [f"VR TQQQ {submission['cycleLabel']} - 매수 {len(buys)}건/매도 {len(sells)}건 제출 완료"]
+    if fail_orders:
+        text_lines.append(f"실패 {len(fail_orders)}건 - 앱에서 확인 필요")
+    text_lines.append("자세한 내용은 메리츠 앱 또는 구글시트 '주문' 탭에서 확인하세요.")
+    return html, "\n".join(text_lines)
+
+
+def build_vr_deposit_reminder_email(next_cycle):
+    """app.py._check_vr_deposit_reminder용 - 사이클 종료일 다음날 아침, 다음
+    사이클 시작 전에 VR 계좌에 적립금을 입금해달라고 알린다(2026-10-26 사용자
+    요청 문구: "새로운 주차가 시작됩니다! VR계좌에 15만원을 입금해 주세요!").
+    next_cycle: {"week","startDate","endDate"} - vr_sheet_orders.read_active_
+    cycle()의 반환값(종료일이 막 지나 활성화된 다음 사이클)."""
+    rows = [
+        f'<tr><td style="padding:20px;">'
+        f'<span style="font-size:17px;font-weight:800;color:{TEXT};">새로운 주차가 시작됩니다!</span>'
+        f'</td></tr>',
+        f'<tr><td style="padding:0 20px 20px;font-size:14px;color:{TEXT};line-height:1.7;">'
+        f'VR계좌에 15만원을 입금해 주세요!<br><br>'
+        f'<span style="color:{MUTED};">{_esc(next_cycle.get("week",""))} · '
+        f'{_esc(next_cycle.get("startDate",""))}~{_esc(next_cycle.get("endDate",""))}</span>'
+        f'</td></tr>',
+    ]
+    html = wrap_email("JH-TRADER · VR", ACCENT, "VR 입금 안내",
+                       "새 사이클이 시작되기 전에 적립금을 입금해주세요", rows)
+    text = (
+        "새로운 주차가 시작됩니다! VR계좌에 15만원을 입금해 주세요!\n\n"
+        f"{next_cycle.get('week','')} · {next_cycle.get('startDate','')}~{next_cycle.get('endDate','')}"
+    )
+    return html, text
