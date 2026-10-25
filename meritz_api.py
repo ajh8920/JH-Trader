@@ -82,22 +82,29 @@ def _mac_address() -> str:
 
 
 class MeritzCredentials:
-    def __init__(self):
-        self.app_key = os.environ.get("MERITZ_APP_KEY")
-        self.app_secret = os.environ.get("MERITZ_APP_SECRET")
-        self.account_no = os.environ.get("MERITZ_ACCOUNT_NO")
+    """env_prefix(기본 "MERITZ")로 어느 계좌의 키를 읽을지 고른다 - 메리츠
+    Open API는 APP_KEY 하나당 계좌 하나만 연결되는 구조라(공식 문서: "접근
+    토큰에 매핑된 계좌"), 계좌를 여러 개 쓰려면 계좌마다 별도로 발급받은
+    APP_KEY/APP_SECRET이 필요하다(2026-10-25 확인 - VR(TQQQ) 전용 계좌
+    추가하며 발견). 예: env_prefix="MERITZ_VR" -> MERITZ_VR_APP_KEY 등을 읽음."""
+
+    def __init__(self, env_prefix="MERITZ"):
+        self.app_key = os.environ.get(f"{env_prefix}_APP_KEY")
+        self.app_secret = os.environ.get(f"{env_prefix}_APP_SECRET")
+        self.account_no = os.environ.get(f"{env_prefix}_ACCOUNT_NO")
         if not (self.app_key and self.app_secret and self.account_no):
             raise MeritzApiError(
-                ".env에 MERITZ_APP_KEY/MERITZ_APP_SECRET/MERITZ_ACCOUNT_NO가 "
-                "전부 설정돼야 합니다")
+                f".env에 {env_prefix}_APP_KEY/{env_prefix}_APP_SECRET/"
+                f"{env_prefix}_ACCOUNT_NO가 전부 설정돼야 합니다")
 
 
 class MeritzClient:
     """모의투자가 없어 이 클라이언트를 만드는 순간부터 실제 계좌를 쓴다는
-    점을 호출부가 항상 의식해야 한다."""
+    점을 호출부가 항상 의식해야 한다. env_prefix는 MeritzCredentials로
+    그대로 전달한다(여러 계좌 지원, 위 설명 참고)."""
 
-    def __init__(self, timeout=15):
-        self.creds = MeritzCredentials()
+    def __init__(self, timeout=15, env_prefix="MERITZ"):
+        self.creds = MeritzCredentials(env_prefix=env_prefix)
         self.timeout = timeout
         self._lock = threading.Lock()
         self._token = None
@@ -292,3 +299,112 @@ class MeritzClient:
             raise MeritzApiError(f"해외주식 주문 실패: {resp.status_code} {body}")
         return {**plan, "executed": True, "raw": body,
                 "orderNo": (body.get("data") or {}).get("oder_no")}
+
+    # ── 해외주식 예약주문(VR 전략 연동용, 2026-10-25 추가) ─────────────────────
+    # place_overseas_order()는 당일 장중에만 유효한 일반 주문이다 - VR 전략처럼
+    # "오늘부터 N일간, 가격이 닿으면 체결"되는 사다리 주문은 별도의 예약주문
+    # API(공식 catalog.json 확인, tr_id=obtro_oder_112a)를 써야 한다.
+    RESERVED_PRICE_TYPES = {
+        "limit": "1", "market": "2", "loo": "4", "loc": "5",
+        "moo": "6", "moc": "7",
+    }
+    # 예약방식(oder_rsev_cls_code) - VR 사다리는 "기간잔량"(기간 내 미체결 수량이
+    # 계속 유효, 체결되면 그 줄만 소진) 방식을 쓴다 - 시트 원문의 "지정가 잔량
+    # 주문"과 정확히 일치.
+    RESERVED_METHOD_PERIOD_REMAINING = "2"
+
+    def place_overseas_reserved_order(self, symbol: str, exchange: str, qty: int, side: str,
+                                       price: float, start_date: str, end_date: str,
+                                       price_type: str = "limit",
+                                       method_code: str = RESERVED_METHOD_PERIOD_REMAINING,
+                                       order_hour_code: str = "0",
+                                       dry_run: bool = True):
+        """해외주식 예약주문 등록(/trading/v1/overseas/reserved-orders/{buy|sell}).
+        symbol/exchange/qty/side: place_overseas_order()와 동일. price_type:
+        RESERVED_PRICE_TYPES의 키(기본 "limit"=지정가). start_date/end_date:
+        "YYYYMMDD" 8자리(시트의 예약 시작일/종료일). order_hour_code
+        (oder_rsev_hour_clcd): "0"장개시/"1"장마감10분전/"2"장마감30분전/
+        "3"장개시30분후 - 매수는 공식 문서상 필수라 기본값 "0"을 쓴다(매도는
+        선택이지만 동일하게 보내 일관성을 둠). dry_run=True(기본값)면 실제
+        API 호출을 하지 않는다."""
+        if side not in ("buy", "sell"):
+            raise ValueError('side는 "buy" 또는 "sell"이어야 합니다')
+        if price_type not in self.RESERVED_PRICE_TYPES:
+            raise ValueError(f'price_type은 {list(self.RESERVED_PRICE_TYPES)} 중 하나여야 합니다')
+        if qty <= 0:
+            raise ValueError("qty는 1 이상이어야 합니다")
+        if len(start_date) != 8 or len(end_date) != 8:
+            raise ValueError('start_date/end_date는 "YYYYMMDD" 8자리여야 합니다')
+
+        order_body = {
+            "ovrs_stck_symb_iscd": symbol,
+            "ovrs_exch_vndr_idno": OVERSEAS_EXCHANGES[exchange]["order"],
+            "rsev_aspr_tpcd": self.RESERVED_PRICE_TYPES[price_type],
+            "odqt": qty,
+            # place_overseas_order()와 같은 이유(실측 거부 사례) - 호가단위 $0.01
+            # 초과분은 전부 2자리로 반올림해서 보낸다.
+            "ovrs_stck_oder_prc": round(price, 2),
+            "oder_rsev_cls_code": method_code,
+            "oder_rsev_hour_clcd": order_hour_code,
+            "oder_sta_date": start_date,
+            "oder_fin_date": end_date,
+        }
+        plan = {"side": side, "symbol": symbol, "exchange": exchange, "qty": qty,
+                "price": price, "start_date": start_date, "end_date": end_date, "dry_run": dry_run}
+        if dry_run:
+            return {**plan, "executed": False,
+                    "message": "dry_run=True - 실제 주문 미실행(검증 모드)"}
+
+        path = f"/trading/v1/overseas/reserved-orders/{side}"
+        resp = requests.post(f"{_BASE_URL}{path}", headers=self._headers(),
+                              data=json.dumps(order_body), timeout=self.timeout)
+        body = resp.json()
+        if resp.status_code != 200:
+            raise MeritzApiError(f"해외주식 예약주문 실패: {resp.status_code} {body}")
+        data = body.get("data") or {}
+        # 취소(cancel_overseas_reserved_order)에 필요한 두 값을 여기서 바로
+        # 돌려준다 - 응답에 oder_rsev_mst_no는 포함되지만(공식 문서 확인)
+        # oder_rsev_mst_date(예약 접수 일자)는 포함되지 않아, 접수 시점인
+        # "지금"을 그대로 기록해 둔다(제출과 접수가 같은 날인 API 호출이라
+        # 오차가 없다).
+        return {**plan, "executed": True, "raw": body,
+                "oderRsevMstNo": data.get("oder_rsev_mst_no"),
+                "oderRsevMstDate": time.strftime("%Y%m%d")}
+
+    def get_overseas_reserved_orders(self, start_date: str, end_date: str, cntg_cls_code="0"):
+        """예약주문 조회(/trading/v1/overseas/reserved-orders, GET). start_date/
+        end_date: "YYYYMMDD". 제출된 예약주문 목록과 상태를 확인할 때 쓴다.
+        각 행의 acml_cntg_qty(누적체결수량)를 rsev_qty(예약수량)와 비교하면
+        체결 완료 여부를, cncl_able_yn/rsev_cncl_yn으로 취소 가능/이미 취소
+        여부를 알 수 있다(공식 문서 확인, 2026-10-25)."""
+        body = self._get("/trading/v1/overseas/reserved-orders",
+                          {"iqry_sta_date": start_date, "iqry_fin_date": end_date,
+                           "seln_byov_clcd": "0"})
+        return body.get("data") or []
+
+    def cancel_overseas_reserved_order(self, oder_rsev_mst_date: str, oder_rsev_mst_no,
+                                        dry_run: bool = True):
+        """해외주식 예약주문 취소(/trading/v1/overseas/reserved-orders/cancel,
+        tr_id=obtro_oder_113a, 공식 문서 확인 2026-10-25).
+
+        "기간잔량"(RESERVED_METHOD_PERIOD_REMAINING) 방식 예약주문은 1주가
+        체결돼도 메리츠 쪽에서 그 줄을 자동으로 완전히 끝내지 않고 예약기간이
+        끝날 때까지 남아있을 수 있다(사용자 지적: "한번 매매가 이뤄진 금액으로
+        다시 재매매 되지 않기 위함" - 체결된 가격에서 또 체결될 위험). 체결
+        확인 후에는 이 함수로 반드시 명시적으로 취소해야 한다.
+
+        oder_rsev_mst_date/oder_rsev_mst_no: place_overseas_reserved_order()의
+        반환값(oderRsevMstDate/oderRsevMstNo)을 그대로 넘긴다."""
+        plan = {"oderRsevMstDate": oder_rsev_mst_date, "oderRsevMstNo": str(oder_rsev_mst_no)}
+        if dry_run:
+            return {**plan, "executed": False,
+                    "message": "dry_run=True - 실제 취소 미실행(검증 모드)"}
+        cancel_body = {"oder_rsev_mst_date": oder_rsev_mst_date,
+                        "oder_rsev_mst_no": str(oder_rsev_mst_no)}
+        resp = requests.post(f"{_BASE_URL}/trading/v1/overseas/reserved-orders/cancel",
+                              headers=self._headers(), data=json.dumps(cancel_body),
+                              timeout=self.timeout)
+        body = resp.json()
+        if resp.status_code != 200:
+            raise MeritzApiError(f"해외주식 예약주문 취소 실패: {resp.status_code} {body}")
+        return {**plan, "executed": True, "raw": body}
