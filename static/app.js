@@ -765,6 +765,10 @@ const I18N = {
   vrNoReservedOrders: { en: 'No orders submitted yet for this cycle.', ko: '아직 이번 사이클에 제출된 주문이 없습니다.' },
   vrCancelled: { en: 'Cancelled', ko: '취소됨' },
   vrPending: { en: 'Pending', ko: '대기중' },
+  vrMoreSuffix: { en: ' more', ko: '건 더' },
+  vrNextAutoSubmit: { en: 'Next auto-submit', ko: '다음 자동제출' },
+  vrAutoSubmitSuffix: { en: 'auto-submit', ko: '자동 제출 예정' },
+  vrRangeNote: { en: 'Current value vs. V range —', ko: '평가금이 V 범위 기준 —' },
   availableCashUsd: { en: 'Available USD cash', ko: '주문가능 예수금(USD)' },
   checkFills: { en: 'Check fills', ko: '체결 확인' },
   fillHistory: { en: 'Fill history', ko: '실제 체결 내역' },
@@ -5213,74 +5217,139 @@ async function loadVrStatus() {
   }
 }
 
-function vrLabelValueGrid(pairs) {
-  if (!pairs || !pairs.length) return `<div class="empty-state"><p>-</p></div>`;
-  return `<div class="bt-summary-grid live-info-grid">
-    ${pairs.map(p => `<div class="meta-item"><div class="meta-label">${escapeHtml(p.label)}</div><div class="meta-value">${escapeHtml(p.value)}</div></div>`).join('')}
+function vrFindLabel(pairs, label) {
+  const hit = (pairs || []).find(p => p.label === label);
+  return hit ? hit.value : '';
+}
+
+function vrParseNum(str) {
+  if (str === null || str === undefined || str === '') return NaN;
+  return parseFloat(String(str).replace(/[$,%\s]/g, ''));
+}
+
+function vrStatTile(label, valueHtml) {
+  return `<div style="padding:20px;border-radius:14px;background:var(--bg-secondary);border:1px solid var(--border);">
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">${escapeHtml(label)}</div>
+    <div style="font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;">${valueHtml}</div>
   </div>`;
 }
 
 function renderVrStatus(data) {
   const el = document.getElementById('vr-content');
+  const summary = data.summary || [];
+  const cycle = data.cycle || [];
   const ladder = data.ladder || { buys: [], sells: [] };
   const orders = data.reservedOrders || [];
 
-  const ladderRows = group => group.length
-    ? `<div style="max-height:360px;overflow-y:auto;">
-        <table role="table" style="width:100%;border-collapse:collapse;font-size:13px;">
-          <tbody>
-            ${group.map(o => `
-              <tr>
-                <td style="padding:4px 8px;color:var(--text-secondary);white-space:nowrap;">$${o.price.toFixed(2)}</td>
-                <td style="padding:4px 8px;white-space:nowrap;">${o.qty}주</td>
-              </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`
-    : `<div class="empty-state"><p>-</p></div>`;
+  const holdingQty = vrFindLabel(summary, '잔고 수량');
+  const value = vrFindLabel(summary, '평가금');
+  const pnl = vrFindLabel(summary, 'P&L');
+  const pnlPct = vrFindLabel(summary, 'P&L %');
+  const pool = vrFindLabel(summary, 'Pool');
+  const pnlNum = vrParseNum(pnl);
+  const pnlCls = isFinite(pnlNum) && pnlNum < 0 ? 'negative' : 'positive';
+  const pnlSign = isFinite(pnlNum) && pnlNum >= 0 ? '+' : '';
 
-  const ordersTable = orders.length ? `
-    <table role="table" style="width:100%;border-collapse:collapse;font-size:13px;">
-      <thead><tr>
-        <th style="text-align:left;padding:6px 8px;color:var(--text-secondary);">${t('qty')}</th>
-        <th style="text-align:left;padding:6px 8px;color:var(--text-secondary);">${t('price')}</th>
-        <th style="text-align:left;padding:6px 8px;color:var(--text-secondary);"></th>
-      </tr></thead>
-      <tbody>
-        ${orders.map(o => `
-          <tr>
-            <td style="padding:6px 8px;">${o.action === 'buy' ? t('buy') : t('sell')} · ${o.qty}</td>
-            <td style="padding:6px 8px;">$${Number(o.price).toFixed(2)}</td>
-            <td style="padding:6px 8px;">${o.cancelled ? `<span class="cycle-pill">${t('vrCancelled')}</span>` : `<span class="cycle-pill" style="background:var(--green-bg);color:var(--green);">${t('vrPending')}</span>`}</td>
-          </tr>`).join('')}
-      </tbody>
-    </table>` : `<div class="empty-state"><p>${t('vrNoReservedOrders')}</p></div>`;
+  const vTarget = vrFindLabel(cycle, 'V Target');
+  const vMin = vrFindLabel(cycle, 'V min');
+  const vMax = vrFindLabel(cycle, 'V max');
+  const closeValue = vrFindLabel(cycle, '마감 평가금') || value;
+  const neededAction = vrFindLabel(cycle, '필요 거래') || vrFindLabel(summary, '필요 거래');
+  const cycleStart = vrFindLabel(cycle, 'Start');
+  const cycleEnd = vrFindLabel(cycle, 'End');
+  const week = vrFindLabel(cycle, 'Week') || vrFindLabel(summary, '현재 주차');
+
+  const vMinNum = vrParseNum(vMin), vMaxNum = vrParseNum(vMax), closeNum = vrParseNum(closeValue);
+  let posPct = 50;
+  if (isFinite(vMinNum) && isFinite(vMaxNum) && vMaxNum > vMinNum && isFinite(closeNum)) {
+    posPct = Math.max(0, Math.min(100, ((closeNum - vMinNum) / (vMaxNum - vMinNum)) * 100));
+  }
+
+  const ladderPreview = (group, limit) => {
+    if (!group.length) return `<div style="font-size:13px;color:var(--text-muted);">-</div>`;
+    const shown = group.slice(0, limit);
+    const rest = group.length - shown.length;
+    return `<div style="display:flex;flex-direction:column;gap:6px;">
+      ${shown.map(o => `<div style="display:flex;justify-content:space-between;font-size:13px;"><span style="font-variant-numeric:tabular-nums;">$${o.price.toFixed(2)}</span><span style="color:var(--text-secondary);">${o.qty}주</span></div>`).join('')}
+      ${rest > 0 ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">+ ${rest}${t('vrMoreSuffix')}</div>` : ''}
+    </div>`;
+  };
+
+  const ordersPanel = orders.length ? `
+    <div style="max-height:220px;overflow-y:auto;">
+      <table role="table" style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tbody>
+          ${orders.map(o => `
+            <tr>
+              <td style="padding:5px 4px;white-space:nowrap;">${o.action === 'buy' ? t('buy') : t('sell')} · ${o.qty}주</td>
+              <td style="padding:5px 4px;white-space:nowrap;font-variant-numeric:tabular-nums;">$${Number(o.price).toFixed(2)}</td>
+              <td style="padding:5px 4px;text-align:right;">${o.cancelled
+                ? `<span class="cycle-pill">${t('vrCancelled')}</span>`
+                : `<span class="cycle-pill" style="background:var(--green-bg);color:var(--green);">${t('vrPending')}</span>`}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:24px 10px;text-align:center;">
+      <div style="font-size:13px;color:var(--text-secondary);">${t('vrNoReservedOrders')}</div>
+      ${cycleStart ? `<div style="font-size:12px;color:var(--text-muted);">${escapeHtml(cycleStart)} 17:00~18:00(KST) ${t('vrAutoSubmitSuffix')}</div>` : ''}
+    </div>`;
 
   el.innerHTML = `
-    <div class="card" style="margin-bottom:12px;">
-      <div class="live-section-label">${t('vrSummary')}</div>
-      ${vrLabelValueGrid(data.summary)}
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+      <div style="font-size:13px;color:var(--text-secondary);">${escapeHtml(week)} · ${escapeHtml(cycleStart)} ~ ${escapeHtml(cycleEnd)}</div>
+      <span style="font-size:12px;font-weight:600;padding:5px 12px;border-radius:999px;background:var(--green-bg);color:var(--green);">${t('vrNextAutoSubmit')} ${escapeHtml(cycleStart)} 17:00</span>
     </div>
-    <div class="card" style="margin-bottom:12px;">
-      <div class="live-section-label">${t('vrCurrentCycle')}</div>
-      ${vrLabelValueGrid(data.cycle)}
+
+    <div class="bt-summary-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:14px;">
+      ${vrStatTile('잔고 수량', `${escapeHtml(holdingQty)}<span style="font-size:14px;font-weight:500;color:var(--text-muted);">주</span>`)}
+      ${vrStatTile('평가금', `$${escapeHtml(String(value).replace(/^\$/, ''))}`)}
+      ${vrStatTile('P&L', `<span class="${pnlCls}">${pnlSign}$${escapeHtml(String(pnl).replace(/^[+-]?\$?/, ''))} <span style="font-size:14px;">(${escapeHtml(pnlPct)})</span></span>`)}
+      ${vrStatTile('Pool', `$${escapeHtml(String(pool).replace(/^\$/, ''))}`)}
     </div>
-    <div class="card" style="margin-bottom:12px;">
-      <div class="live-section-label">${t('vrLadder')}</div>
-      <div class="bt-summary-grid live-info-grid" style="grid-template-columns:1fr 1fr;">
-        <div>
-          <div class="meta-label" style="margin-bottom:6px;color:var(--green);">${t('buy')} (${ladder.buys.length})</div>
-          ${ladderRows(ladder.buys)}
-        </div>
-        <div>
-          <div class="meta-label" style="margin-bottom:6px;color:var(--red);">${t('sell')} (${ladder.sells.length})</div>
-          ${ladderRows(ladder.sells)}
+
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:10px;">
+        <span>V min ${escapeHtml(vMin)}</span>
+        <span style="color:var(--text);font-weight:600;">V Target ${escapeHtml(vTarget)}</span>
+        <span>V max ${escapeHtml(vMax)}</span>
+      </div>
+      <div style="position:relative;height:8px;border-radius:999px;background:var(--bg-tertiary);overflow:hidden;">
+        <div style="position:absolute;left:0;top:0;bottom:0;width:${posPct}%;background:linear-gradient(90deg, var(--blue-bg), var(--blue));"></div>
+        <div style="position:absolute;left:${posPct}%;top:-3px;width:2px;height:14px;background:var(--text);"></div>
+      </div>
+      <div style="margin-top:10px;font-size:13px;color:var(--text-secondary);">${t('vrRangeNote')} <strong style="color:var(--text);">${escapeHtml(neededAction || 'Hold')}</strong></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:14px;margin-bottom:14px;">
+      <div class="card">
+        <div class="live-section-label">${t('vrLadder')}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+          <div>
+            <div style="font-size:12px;font-weight:600;color:var(--green);margin-bottom:8px;">${t('buy')} (${ladder.buys.length})</div>
+            ${ladderPreview(ladder.buys, 5)}
+          </div>
+          <div>
+            <div style="font-size:12px;font-weight:600;color:var(--red);margin-bottom:8px;">${t('sell')} (${ladder.sells.length})</div>
+            ${ladderPreview(ladder.sells, 5)}
+          </div>
         </div>
       </div>
+      <div class="card">
+        <div class="live-section-label">${t('vrReservedOrders')}</div>
+        ${ordersPanel}
+      </div>
     </div>
+
     <div class="card">
-      <div class="live-section-label">${t('vrReservedOrders')}</div>
-      ${ordersTable}
+      <div class="live-section-label">${t('vrSummary')}</div>
+      <div class="bt-summary-grid live-info-grid">
+        <div class="meta-item"><div class="meta-label">시작일</div><div class="meta-value">${escapeHtml(vrFindLabel(summary, '시작일'))}</div></div>
+        <div class="meta-item"><div class="meta-label">초기 투입금</div><div class="meta-value">${escapeHtml(vrFindLabel(summary, '초기 투입금'))}</div></div>
+        <div class="meta-item"><div class="meta-label">적립금</div><div class="meta-value">${escapeHtml(vrFindLabel(summary, '적립금'))}</div></div>
+        <div class="meta-item"><div class="meta-label">누적 거래액</div><div class="meta-value">${escapeHtml(vrFindLabel(summary, '누적 거래액'))}</div></div>
+        <div class="meta-item"><div class="meta-label">진행률</div><div class="meta-value">${escapeHtml(vrFindLabel(summary, '진행률'))}</div></div>
+      </div>
     </div>`;
 }
 
