@@ -2183,6 +2183,24 @@ def list_auto_infinite_orders(position_id):
     return jsonify([o.to_dict() for o in reversed(position.orders)])
 
 
+@app.route("/api/auto-infinite/orders/<int:order_id>/raw", methods=["GET"])
+@admin_required
+def auto_infinite_order_raw(order_id):
+    """거부(rejected)/오류(error) 주문의 raw_response(메리츠 응답 원문, 거부
+    사유 ovrs_stck_rfus_reas 포함)를 바로 보는 디버그용 라우트(2026-10-27
+    추가 - "거부당했는데 왜 확인하지 않았나" 조사 중 raw_response가 to_dict()에
+    빠져 있어 조회 수단이 없다는 걸 발견해 만듦)."""
+    from models import AutoInfiniteOrder, AutoInfinitePosition
+
+    order = AutoInfiniteOrder.query.get(order_id)
+    if not order:
+        return jsonify({"error": "주문을 찾을 수 없습니다"}), 404
+    position = AutoInfinitePosition.query.filter_by(id=order.position_id, user_id=current_user.id).first()
+    if not position:
+        return jsonify({"error": "주문을 찾을 수 없습니다"}), 404
+    return jsonify({"order": order.to_dict(), "rawResponse": order.raw_response})
+
+
 @app.route("/api/auto-infinite/positions/<int:position_id>/fills", methods=["GET"])
 @admin_required
 def list_auto_infinite_fills(position_id):
