@@ -358,13 +358,16 @@ def _notify_orders_submitted_batch(position, submitted_orders):
 # 나온 금액이 T값 기준으로 계산되는데, T값이 높아지면(쿼터손절모드·폭락대비
 # 사다리 등) 그 가격이 현재가에서 너무 멀어져 증권사가 'LOC 주문을 현재가
 # 대비 일정% 이상 벗어난 가격으로는 못 걸게' 거부한다 - 그래서 걸 수 있는
-# 최대치로 대신 주문을 건다"는 실전 대응을 그대로 반영했다. 메리츠가 실제로
-# 쓰는 정확한 괴리율(%)은 공개 문서로 확인하지 못해(get_overseas_price 응답의
-# mxpr/llam은 미국 종목에는 0으로 내려와 참고 불가) 보수적으로 25%를 기본값
-# 삼는다 - 너무 타이트해서 못 거는 것보다, 거부당하는 게 로그(status="error")로
-# 남아 안전하게 나중에 조정할 수 있는 쪽이 낫다는 판단. 실제 거부 사례가
-# 쌓이면 이 값을 실측치로 교체해야 한다.
-MAX_PRICE_DEVIATION_PCT = 25.0
+# 최대치로 대신 주문을 건다"는 실전 대응을 그대로 반영했다.
+#
+# 2026-10-27 실측치로 교체 - 처음엔 공개 문서로 정확한 괴리율을 확인하지
+# 못해 보수적으로 25%를 썼는데, 그 25%가 메리츠의 실제 한도보다 느슨해서
+# "Buy (Threshold)" 주문이 10/23·10/26 두 번 거부당했다(메리츠 거부사유
+# 원문: "LimitPrice {101.65 > 23.32% Limit 20.00% thru nbbo}" - 즉 NBBO
+# 대비 20.00%가 메리츠의 실제 하드 리밋). 20%에 딱 맞추면 우리가 주문을
+# 계산한 시점과 메리츠가 밤새 NBBO로 재검사하는 시점 사이에 가격이 조금만
+# 움직여도 다시 걸릴 수 있어, 18%로 여유를 둔다.
+MAX_PRICE_DEVIATION_PCT = 18.0
 
 
 def _clamp_price_to_broker_band(client, position, action, order_type, price, current_price=None):
@@ -387,14 +390,18 @@ def _clamp_price_to_broker_band(client, position, action, order_type, price, cur
     if not current_price or current_price <= 0:
         return False, price
 
-    if action == "buy":
-        floor_price = round(current_price * (1 - MAX_PRICE_DEVIATION_PCT / 100), 4)
-        if price < floor_price:
-            return True, floor_price
-    else:
-        ceiling_price = round(current_price * (1 + MAX_PRICE_DEVIATION_PCT / 100), 4)
-        if price > ceiling_price:
-            return True, ceiling_price
+    # 2026-10-27 수정 - 원래는 "매수는 너무 쌀 때만, 매도는 너무 비쌀 때만"
+    # 한쪽만 막았는데, 실제 거부 사례(메리츠 원문: "LimitPrice {101.65 > 23.32%
+    # Limit 20.00% thru nbbo}")를 보면 메리츠의 호가 제한은 매수/매도 구분 없이
+    # NBBO 기준 양방향으로 걸린다 - "임계값 매수"(Buy Threshold)처럼 현재가보다
+    # 훨씬 높은 가격으로 거는 매수 주문(돌파 매수)이 바로 이 상한에 걸려
+    # 거부됐다. 그래서 매수/매도 둘 다 상/하한을 같이 확인한다.
+    floor_price = round(current_price * (1 - MAX_PRICE_DEVIATION_PCT / 100), 4)
+    ceiling_price = round(current_price * (1 + MAX_PRICE_DEVIATION_PCT / 100), 4)
+    if price < floor_price:
+        return True, floor_price
+    if price > ceiling_price:
+        return True, ceiling_price
     return False, price
 
 
