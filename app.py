@@ -2518,7 +2518,7 @@ def refresh_auto_infinite_fills(position_id):
         return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
     try:
         client = MeritzClient()
-        updated = auto_infinite.refresh_fill_status(position, client)
+        updated, _newly_rejected = auto_infinite.refresh_fill_status(position, client)
         status = auto_infinite.compute_live_status(position, client)
     except MeritzApiError as e:
         return jsonify({"error": f"체결 확인 실패: {e}"}), 502
@@ -3362,9 +3362,26 @@ def _refresh_all_auto_infinite_fills():
         return
     for position in positions:
         try:
-            updated = auto_infinite.refresh_fill_status(position, client)
+            updated, newly_rejected = auto_infinite.refresh_fill_status(position, client)
             if updated:
                 print(f"[무한매수 체결확인] 포지션 {position.id}({position.ticker}) {updated}건 갱신", flush=True)
+            if newly_rejected:
+                # 2026-10-27 추가 - 제출 시점(17시)엔 통과했다가 메리츠가 밤새
+                # 호가 재검사해서 거부한 주문은 지금까지 아무 알림도 없이
+                # 조용히 "rejected"로만 남았다(사용자가 메리츠 앱을 직접 열어
+                # 봐야만 알 수 있었음). 발견 즉시 메일로 알린다.
+                print(f"[무한매수 체결확인] 포지션 {position.id} 거부 {len(newly_rejected)}건 발견", flush=True)
+                if position.alert_email:
+                    import email_utils
+                    import email_templates
+                    reason = "\n".join(
+                        f'{o.label}({o.order_type.upper()} ${o.price:,.2f}): {reas}'
+                        for o, reas in newly_rejected
+                    )
+                    html, body = email_templates.build_auto_infinite_failure_email(
+                        position, f"체결확인 중 주문 거부를 발견했습니다 -\n{reason}")
+                    email_utils.send_email(position.alert_email,
+                                            f"[JH-Trader] {position.ticker} 주문 거부 발견", body, html=html)
         except MeritzApiError as e:
             print(f"[무한매수 체결확인] 포지션 {position.id} 조회 실패: {e}", flush=True)
         except Exception as e:

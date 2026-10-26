@@ -485,10 +485,18 @@ def refresh_fill_status(position, client):
     행(orgl_oder_no가 원 주문의 oder_no를 가리키고 cncl_cnfr_qty>0인 "취소
     확인" 행)으로 내려준다(실측: oder_rctf_cncl_cls_code="2"). 이 별도 행을
     못 알아보면 취소된 주문이 영원히 "submitted"(미체결 대기)로 남아 다음
-    replay_position_state 때 실제로는 없는 주문을 있는 것처럼 계산하게 된다."""
+    replay_position_state 때 실제로는 없는 주문을 있는 것처럼 계산하게 된다.
+
+    반환값은 (갱신건수, 새로 거부된 주문 리스트)다(2026-10-27 추가) - 제출
+    시점(17시)엔 멀쩡히 접수됐다가 메리츠가 밤새 호가 재검사해서 거부하는
+    경우(실측 사례: "Buy (Threshold)" 주문이 NBBO 대비 20% 호가제한에 걸려
+    거부)가 있는데, 지금까지는 이 거부가 다음날 체결확인(06~08시)에서야
+    드러나는데도 그 시점에 알림이 전혀 안 나가서 사용자가 직접 메리츠 앱을
+    보기 전까진 아무도 몰랐다. 호출부가 이 리스트로 바로 알림을 보낼 수
+    있게 한다."""
     pending = [o for o in position.orders if o.status == "submitted" and o.broker_order_no]
     if not pending:
-        return 0
+        return 0, []
     rows = client.get_overseas_orders_today()
     by_order_no = {str(row.get("oder_no")): row for row in rows}
     cancelled_qty_by_orgl = {}
@@ -499,6 +507,7 @@ def refresh_fill_status(position, client):
             cancelled_qty_by_orgl[str(orgl)] = cancelled_qty_by_orgl.get(str(orgl), 0) + cncl_cnfr_qty
 
     updated = 0
+    newly_rejected = []
     for o in pending:
         row = by_order_no.get(o.broker_order_no)
         if not row:
@@ -509,6 +518,7 @@ def refresh_fill_status(position, client):
         cancelled_qty = cancelled_qty_by_orgl.get(o.broker_order_no, 0)
         if rfus_reas:
             o.status = "rejected"
+            newly_rejected.append((o, rfus_reas))
         elif cntg_qty > 0 and ncnt_qty == 0:
             o.status = "filled"
             o.filled_qty = cntg_qty
@@ -523,4 +533,4 @@ def refresh_fill_status(position, client):
         o.raw_response = json.dumps(row, ensure_ascii=False)
         updated += 1
     db.session.commit()
-    return updated
+    return updated, newly_rejected
