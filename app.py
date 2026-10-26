@@ -2893,6 +2893,66 @@ def cron_run_auto_infinite():
     return jsonify({"ok": True, "started": True}), 202
 
 
+@app.route("/api/admin/debug/recent-issues", methods=["GET"])
+@limiter.limit("120 per hour")
+def admin_debug_recent_issues():
+    """Claude가 로그인 세션 없이(curl로 직접) 최근 실패/거부/에러를 한 번에
+    조회하는 자가진단용 엔드포인트(2026-10-27 추가, 사용자 요청: "앞으로
+    저한테 물어보지 말고 log를 구축하여 직접 그 파일을 읽어서 대응하도록").
+
+    계기: 무한매수 LOC 매수 주문 1건이 호가 거부됐는데, 이 거부는 제출 당일
+    (17시) 바로 드러나는 게 아니라 다음날 체결확인(06~08시)에서야
+    raw_response에 담겨 저장되고, 그 raw_response는 to_dict()에도 빠져 있어
+    브라우저로 사용자가 JSON을 복사해 붙여넣어줘야만 원인을 알 수 있었다.
+    이 엔드포인트는 그 전체 과정 없이 CRON_SECRET만으로 바로 조회한다.
+
+    cron_run_auto_infinite와 같은 인증 방식(X-Cron-Secret 헤더) - 로그인
+    세션이 없는 외부(여기서는 Claude 본인) 호출이라 관리자 쿠키 대신 공유
+    비밀을 쓴다. 읽기 전용이라 CRON_SECRET이 노출돼도 주문/자금 이동은
+    불가능하다(RULES.md R10 - 비밀은 .env/Render 환경변수로만).
+
+    ?days=N(기본 3)으로 조회 기간을 넓힐 수 있다."""
+    secret = os.environ.get("CRON_SECRET")
+    if not secret or not hmac.compare_digest(request.headers.get("X-Cron-Secret", ""), secret):
+        return jsonify({"error": "인증 실패"}), 403
+
+    from models import AutoInfiniteOrder, OpsHeartbeat, VrReservedOrder
+
+    try:
+        days = max(1, min(30, int(request.args.get("days", 3))))
+    except (TypeError, ValueError):
+        days = 3
+    since = datetime.utcnow() - timedelta(days=days)
+
+    bad_orders = AutoInfiniteOrder.query.filter(
+        AutoInfiniteOrder.status.in_(["rejected", "error"]),
+        AutoInfiniteOrder.created_at >= since,
+    ).order_by(AutoInfiniteOrder.created_at.desc()).limit(100).all()
+
+    heartbeat_errors = OpsHeartbeat.query.filter(
+        OpsHeartbeat.last_error_at.isnot(None), OpsHeartbeat.last_error_at >= since,
+    ).order_by(OpsHeartbeat.last_error_at.desc()).all()
+
+    vr_cancelled = VrReservedOrder.query.filter(
+        VrReservedOrder.cancelled.is_(True), VrReservedOrder.created_at >= since,
+    ).order_by(VrReservedOrder.created_at.desc()).limit(50).all()
+
+    return jsonify(sanitize_json({
+        "sinceUtc": since.isoformat(),
+        "autoInfiniteBadOrders": [
+            {**o.to_dict(), "positionId": o.position_id, "rawResponse": o.raw_response}
+            for o in bad_orders
+        ],
+        "opsHeartbeatErrors": [
+            {"component": h.component, "lastError": h.last_error,
+             "lastErrorAt": h.last_error_at.isoformat() if h.last_error_at else None,
+             "errorCount": h.error_count}
+            for h in heartbeat_errors
+        ],
+        "vrCancelledOrders": [o.to_dict() for o in vr_cancelled],
+    }))
+
+
 # JSON API는 CSRF 토큰 대신 로그인 세션 + JSON Content-Type(교차 출처 요청 시
 # 브라우저 프리플라이트로 차단됨) 폼 기반 CSRF 검사에서 제외합니다.
 for _view in (
