@@ -365,23 +365,33 @@ def build_vr_submission_email(submission):
             body += _table_row([f'${o["price"]:,.2f}', f'{o["qty"]}주'])
         return body
 
+    def _order_col(label, color, group, position):
+        inner = (
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+            + _table_header(["단가", "수량"]) + _order_rows(group) + '</table>'
+            if group else f'<div style="font-size:12px;color:{MUTED};">없음</div>'
+        )
+        style = "padding-right:10px;" if position == "left" else f"padding-left:10px;border-left:1px solid {CARD_BORDER};"
+        return (
+            f'<td width="50%" valign="top" style="{style}">'
+            f'<div style="font-size:12px;font-weight:700;color:{color};margin-bottom:6px;">{_esc(label)} ({len(group)})</div>'
+            + inner + '</td>'
+        )
+
     rows = [
         f'<tr><td style="padding:20px;">'
         f'<span style="font-size:16px;font-weight:800;color:{TEXT};">TQQQ VR · {_esc(submission["cycleLabel"])}</span> '
         f'<span style="font-size:13px;color:{MUTED};">예약기간 {submission["startDate"]}~{submission["endDate"]}</span>'
         f'</td></tr>',
     ]
-    if buys:
-        rows.append(_section_title(f"매수 예약 ({len(buys)})", BUY_COLOR))
+    if buys or sells:
+        rows.append(_section_title("예약 주문 (매수 / 매도)"))
         rows.append(
-            f'<tr><td style="padding:0 20px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
-            + _table_header(["단가", "수량"]) + _order_rows(buys) + '</table></td></tr>'
-        )
-    if sells:
-        rows.append(_section_title(f"매도 예약 ({len(sells)})", SELL_COLOR))
-        rows.append(
-            f'<tr><td style="padding:0 20px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
-            + _table_header(["단가", "수량"]) + _order_rows(sells) + '</table></td></tr>'
+            f'<tr><td style="padding:0 20px 16px;">'
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
+            + _order_col("매수", BUY_COLOR, buys, "left")
+            + _order_col("매도", SELL_COLOR, sells, "right")
+            + '</tr></table></td></tr>'
         )
     if fail_orders:
         rows.append(_section_title(f"제출 실패 ({len(fail_orders)})", WARN_COLOR))

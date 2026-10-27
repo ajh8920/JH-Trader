@@ -572,6 +572,30 @@ input[type="date"]:hover { border-color: var(--border-strong); }
 
 .live-info-grid { grid-template-columns: repeat(3, 1fr); }
 
+/* VR(Value Rebalancing) 탭 - renderVrStatus()에서 쓰는 클래스들. 처음엔 그리드
+   컬럼 수/폰트 크기를 전부 인라인 style로 박아뒀는데, 인라인 style은 미디어쿼리로
+   덮어쓸 수 없어 모바일에서 숫자가 화면 밖으로 잘려나가는 문제가 있었다
+   (2026-10-27). 반응형 제어는 전부 여기 CSS 쪽에서 한다. */
+.vr-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin-bottom: 14px; }
+.vr-stat-tile { padding: 20px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border); min-width: 0; }
+.vr-stat-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vr-stat-value { font-size: clamp(16px, 4.2vw, 26px); font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.vr-main-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; margin-bottom: 14px; }
+.vr-ladder-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; min-width: 0; }
+.vr-ladder-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.vr-ladder-price { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .vr-main-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 620px) {
+  .vr-stat-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .vr-stat-tile { padding: 14px; }
+  .vr-ladder-cols { gap: 10px; }
+}
+@media (max-width: 380px) {
+  .vr-stat-grid { grid-template-columns: 1fr; }
+}
+
 /* Toast */
 .toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 20px; border-radius: var(--radius-md); font-size: 14px; z-index: 9999; animation: fadeup 0.2s ease; }
 @keyframes fadeup { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }

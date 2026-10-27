@@ -5228,9 +5228,9 @@ function vrParseNum(str) {
 }
 
 function vrStatTile(label, valueHtml) {
-  return `<div style="padding:20px;border-radius:14px;background:var(--bg-secondary);border:1px solid var(--border);">
-    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">${escapeHtml(label)}</div>
-    <div style="font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;">${valueHtml}</div>
+  return `<div class="vr-stat-tile">
+    <div class="vr-stat-label">${escapeHtml(label)}</div>
+    <div class="vr-stat-value">${valueHtml}</div>
   </div>`;
 }
 
@@ -5270,7 +5270,7 @@ function renderVrStatus(data) {
     const shown = group.slice(0, limit);
     const rest = group.length - shown.length;
     return `<div style="display:flex;flex-direction:column;gap:6px;">
-      ${shown.map(o => `<div style="display:flex;justify-content:space-between;font-size:13px;"><span style="font-variant-numeric:tabular-nums;">$${o.price.toFixed(2)}</span><span style="color:var(--text-secondary);">${o.qty}주</span></div>`).join('')}
+      ${shown.map(o => `<div class="vr-ladder-row"><span class="vr-ladder-price">$${o.price.toFixed(2)}</span><span style="color:var(--text-secondary);">${o.qty}주</span></div>`).join('')}
       ${rest > 0 ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">+ ${rest}${t('vrMoreSuffix')}</div>` : ''}
     </div>`;
   };
@@ -5301,7 +5301,7 @@ function renderVrStatus(data) {
       <span style="font-size:12px;font-weight:600;padding:5px 12px;border-radius:999px;background:var(--green-bg);color:var(--green);">${t('vrNextAutoSubmit')} ${escapeHtml(cycleStart)} 17:00</span>
     </div>
 
-    <div class="bt-summary-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:14px;">
+    <div class="vr-stat-grid">
       ${vrStatTile('잔고 수량', `${escapeHtml(holdingQty)}<span style="font-size:14px;font-weight:500;color:var(--text-muted);">주</span>`)}
       ${vrStatTile('평가금', `$${escapeHtml(String(value).replace(/^\$/, ''))}`)}
       ${vrStatTile('P&L', `<span class="${pnlCls}">${pnlSign}$${escapeHtml(String(pnl).replace(/^[+-]?\$?/, ''))} <span style="font-size:14px;">(${escapeHtml(pnlPct)})</span></span>`)}
@@ -5309,7 +5309,7 @@ function renderVrStatus(data) {
     </div>
 
     <div class="card" style="margin-bottom:14px;">
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:10px;">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;font-size:12px;color:var(--text-secondary);margin-bottom:10px;">
         <span>V min ${escapeHtml(vMin)}</span>
         <span style="color:var(--text);font-weight:600;">V Target ${escapeHtml(vTarget)}</span>
         <span>V max ${escapeHtml(vMax)}</span>
@@ -5321,10 +5321,10 @@ function renderVrStatus(data) {
       <div style="margin-top:10px;font-size:13px;color:var(--text-secondary);">${t('vrRangeNote')} <strong style="color:var(--text);">${escapeHtml(neededAction || 'Hold')}</strong></div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:14px;margin-bottom:14px;">
+    <div class="vr-main-grid">
       <div class="card">
         <div class="live-section-label">${t('vrLadder')}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+        <div class="vr-ladder-cols">
           <div>
             <div style="font-size:12px;font-weight:600;color:var(--green);margin-bottom:8px;">${t('buy')} (${ladder.buys.length})</div>
             ${ladderPreview(ladder.buys, 5)}
