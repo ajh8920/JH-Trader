@@ -165,6 +165,54 @@ def build_filled_ledger(position):
     return rows
 
 
+def list_closed_cycles(position):
+    """이 포지션에서 전량매도로 완결된 사이클만 뽑아 사이클별 요약(매입/매도
+    총액·실현손익·수익률·기간)을 돌려준다(2026-10-29 추가, 사용자 요청: 다른
+    무한매수 리포트 앱처럼 "종료된 사이클 히스토리"를 보고 싶다는 요청 - 무한매수
+    탭 안에 히스토리 소분류 탭으로 추가).
+
+    build_filled_ledger가 체결 하나하나를 재생하며 매긴 cycleNo로 그룹을 묶는다.
+    cycle_no는 apply_sell이 보유수량을 0으로 만드는 순간 그 자리에서 +1 되므로
+    (PositionState.apply_sell), 현재 진행 중인(아직 전량매도 안 된) 마지막 사이클을
+    제외한 모든 cycle_no는 이미 전량매도로 끝난 것이 보장된다 - 별도의 "완료"
+    플래그나 DB 컬럼 없이 기존 체결 기록만으로 히스토리를 계산할 수 있는 이유다."""
+    state, _ = replay_position_state(position)
+    current_cycle_no = state.cycle_no
+    position_open = state.holding_qty > 0
+    rows = build_filled_ledger(position)
+
+    by_cycle = {}
+    for r in rows:
+        by_cycle.setdefault(r["cycleNo"], []).append(r)
+
+    cycles = []
+    for cycle_no, crows in sorted(by_cycle.items()):
+        is_last = cycle_no == current_cycle_no
+        if is_last and position_open:
+            continue  # 아직 전량매도 안 된 진행 중인 사이클 - 히스토리 대상 아님
+        buys = [r for r in crows if r["action"] == "buy"]
+        sells = [r for r in crows if r["action"] == "sell"]
+        if not sells:
+            continue  # 매도 기록이 없으면(데이터 이상) 완료로 보지 않는다
+        buy_total = sum(r["price"] * r["qty"] for r in buys if r["price"])
+        sell_total = sum(r["price"] * r["qty"] for r in sells if r["price"])
+        pnl = sum(r["realizedPnl"] or 0 for r in sells)
+        cycles.append({
+            "positionId": position.id,
+            "ticker": position.ticker,
+            "label": position.label or "",
+            "cycleNo": cycle_no,
+            "startDate": buys[0]["tradeDate"] if buys else crows[0]["tradeDate"],
+            "endDate": sells[-1]["tradeDate"],
+            "buyTotal": round(buy_total, 2),
+            "sellTotal": round(sell_total, 2),
+            "pnl": round(pnl, 2),
+            "pnlPct": round(pnl / buy_total * 100, 2) if buy_total else None,
+            "seedPnlPct": round(pnl / position.seed * 100, 2) if position.seed else None,
+        })
+    return cycles
+
+
 def _mark_already_submitted_today(position, recommendation):
     """가이드 주문 중 오늘 이미 메리츠에 보낸(체결 여부 무관) 줄이 있으면
     `alreadySubmitted: True`를 달아 프런트가 다시 제출 못 하게 막는다

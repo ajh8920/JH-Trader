@@ -238,38 +238,70 @@
 
       <!-- 무한매수법 2.2버전 실매매 자동화(메리츠증권 해외주식 연동) -->
       <section id="sec-autolive" class="section">
-        <div class="info-box" style="margin-bottom:12px;">
-          <i class="ti ti-alert-triangle" aria-hidden="true"></i>
-          <span data-i18n="autoLiveWarning">This connects to your real Meritz Securities account. Orders are only submitted when you click "Submit order" below — nothing is sent automatically. 2.2 version only (40 splits, no mid-cycle compounding).</span>
+        <div class="subtab-bar" style="margin-bottom:14px;">
+          <button class="subtab active" data-subtab="active" onclick="switchAutoliveSubtab('active')"><span data-i18n="autoliveSubtabActive">진행중</span></button>
+          <button class="subtab" data-subtab="history" onclick="switchAutoliveSubtab('history')"><span data-i18n="autoliveSubtabHistory">히스토리</span></button>
         </div>
-        <div class="card">
-          <div class="bt-form-grid">
-            <div class="bt-field">
-              <label for="ail-ticker" data-i18n="tickerLabel">Ticker</label>
-              <input type="text" id="ail-ticker" placeholder="SOXL" />
+
+        <div id="autolive-panel-active">
+          <div class="info-box" style="margin-bottom:12px;">
+            <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+            <span data-i18n="autoLiveWarning">This connects to your real Meritz Securities account. Orders are only submitted when you click "Submit order" below — nothing is sent automatically. 2.2 version only (40 splits, no mid-cycle compounding).</span>
+          </div>
+          <div class="card">
+            <div class="bt-form-grid">
+              <div class="bt-field">
+                <label for="ail-ticker" data-i18n="tickerLabel">Ticker</label>
+                <input type="text" id="ail-ticker" placeholder="SOXL" />
+              </div>
+              <div class="bt-field">
+                <label for="ail-label" data-i18n="positionLabelOptional">Label (optional)</label>
+                <input type="text" id="ail-label" placeholder="예: SOXL #1" />
+              </div>
+              <div class="bt-field">
+                <label for="ail-target" data-i18n="targetReturnPctLabel">Target return (%)</label>
+                <input type="number" id="ail-target" step="0.1" value="12" />
+              </div>
+              <div class="bt-field">
+                <label for="ail-seed" data-i18n="capitalUsdLabel">Capital ($)</label>
+                <input type="number" id="ail-seed" placeholder="10000" step="0.01" value="10000" />
+              </div>
             </div>
-            <div class="bt-field">
-              <label for="ail-label" data-i18n="positionLabelOptional">Label (optional)</label>
-              <input type="text" id="ail-label" placeholder="예: SOXL #1" />
-            </div>
-            <div class="bt-field">
-              <label for="ail-target" data-i18n="targetReturnPctLabel">Target return (%)</label>
-              <input type="number" id="ail-target" step="0.1" value="12" />
-            </div>
-            <div class="bt-field">
-              <label for="ail-seed" data-i18n="capitalUsdLabel">Capital ($)</label>
-              <input type="number" id="ail-seed" placeholder="10000" step="0.01" value="10000" />
+            <button class="btn-primary" style="margin-top:12px;" onclick="addAutoInfinitePosition()">
+              <i class="ti ti-plus" aria-hidden="true"></i> <span data-i18n="startNewPosition">Start new position</span>
+            </button>
+            <div class="info-box" style="margin-top:12px;">
+              <i class="ti ti-info-circle" aria-hidden="true"></i>
+              <span data-i18n="multiCycleHint">You can start more than one position for the same ticker at once (e.g. running two independent SOXL cycles in parallel) — give each a different label to tell them apart.</span>
             </div>
           </div>
-          <button class="btn-primary" style="margin-top:12px;" onclick="addAutoInfinitePosition()">
-            <i class="ti ti-plus" aria-hidden="true"></i> <span data-i18n="startNewPosition">Start new position</span>
-          </button>
-          <div class="info-box" style="margin-top:12px;">
-            <i class="ti ti-info-circle" aria-hidden="true"></i>
-            <span data-i18n="multiCycleHint">You can start more than one position for the same ticker at once (e.g. running two independent SOXL cycles in parallel) — give each a different label to tell them apart.</span>
-          </div>
+          <div id="autolive-positions"></div>
         </div>
-        <div id="autolive-positions"></div>
+
+        <div id="autolive-panel-history" style="display:none;">
+          <div class="card" style="margin-bottom:14px;">
+            <div class="rpt-controls">
+              <div class="rpt-currency-toggle">
+                <button class="rpt-currency-btn active" data-currency="USD" onclick="setAutoliveHistoryCurrency('USD')">USD</button>
+                <button class="rpt-currency-btn" data-currency="KRW" onclick="setAutoliveHistoryCurrency('KRW')">KRW</button>
+              </div>
+              <select id="ailh-period" onchange="onAutoliveHistoryPeriodChange()">
+                <option value="thisMonth" data-i18n="rptThisMonth">이번 달</option>
+                <option value="lastMonth" data-i18n="rptLastMonth">지난 달</option>
+                <option value="last3m" data-i18n="rptLast3Months">최근 3개월</option>
+                <option value="all" data-i18n="rptAllTime">전체 기간</option>
+                <option value="custom" data-i18n="rptCustomRange">직접 설정</option>
+              </select>
+              <div id="ailh-custom-range" style="display:none;gap:8px;align-items:center;">
+                <input type="date" id="ailh-from" onchange="renderAutoliveHistory()" />
+                <span style="color:var(--text-muted);">~</span>
+                <input type="date" id="ailh-to" onchange="renderAutoliveHistory()" />
+              </div>
+              <button class="btn-secondary" onclick="loadAutoInfiniteHistory()"><i class="ti ti-refresh" aria-hidden="true"></i> <span data-i18n="refresh">Refresh</span></button>
+            </div>
+          </div>
+          <div id="autolive-history-content"></div>
+        </div>
       </section>
 
       <!-- VR(Value Rebalancing, TQQQ) 현황 -->

@@ -769,6 +769,28 @@ const I18N = {
   vrNextAutoSubmit: { en: 'Next auto-submit', ko: '다음 자동제출' },
   vrAutoSubmitSuffix: { en: 'auto-submit', ko: '자동 제출 예정' },
   vrRangeNote: { en: 'Current value vs. V range —', ko: '평가금이 V 범위 기준 —' },
+  autoliveSubtabActive: { en: 'Active', ko: '진행중' },
+  autoliveSubtabHistory: { en: 'History', ko: '히스토리' },
+  rptThisMonth: { en: 'This month', ko: '이번 달' },
+  rptLastMonth: { en: 'Last month', ko: '지난 달' },
+  rptLast3Months: { en: 'Last 3 months', ko: '최근 3개월' },
+  rptAllTime: { en: 'All time', ko: '전체 기간' },
+  rptCustomRange: { en: 'Custom range', ko: '직접 설정' },
+  rptTotalPnl: { en: 'Realized P/L', ko: '수익 인증' },
+  rptBuyTotal: { en: 'Total bought', ko: '매입 금액' },
+  rptSellTotal: { en: 'Total sold', ko: '매도 금액' },
+  rptCompletedCycles: { en: 'Completed cycles', ko: '완료 사이클' },
+  rptBestTicker: { en: 'Best ticker', ko: '베스트 종목' },
+  rptTopPnl: { en: 'Top P/L', ko: 'Top 수익' },
+  rptTopPnlPct: { en: 'Top return %', ko: 'Top 수익률' },
+  rptMostCycles: { en: 'Most cycles', ko: '최다 사이클 종목' },
+  rptPnlByTicker: { en: 'P/L by ticker', ko: '종목별 손익' },
+  rptCycleDuration: { en: 'Cycle duration', ko: '사이클 소요기간' },
+  rptOldestFirst: { en: 'Oldest first', ko: '오래된순' },
+  rptNewestFirst: { en: 'Newest first', ko: '최신순' },
+  rptNoHistory: { en: 'No completed cycles in this period yet.', ko: '이 기간에 완료된 사이클이 아직 없습니다.' },
+  rptSeedPnlSuffix: { en: 'vs. seed', ko: '시드 대비 수익률' },
+  rptCycleCountSuffix: { en: ' cycles', ko: '건' },
   availableCashUsd: { en: 'Available USD cash', ko: '주문가능 예수금(USD)' },
   checkFills: { en: 'Check fills', ko: '체결 확인' },
   fillHistory: { en: 'Fill history', ko: '실제 체결 내역' },
@@ -5202,6 +5224,256 @@ function renderAutoInfinitePositions(positions, account) {
       </div>
     </div>`;
   }).join('');
+}
+
+// ─── 무한매수 탭 "히스토리" 소분류 탭 - 완결된(전량매도) 사이클 리포트 ──────────
+// /api/auto-infinite/history는 전량매도로 끝난 사이클만 돌려준다(진행 중 포지션과
+// 분리). 기간/통화 필터는 서버를 다시 부르지 않고 한 번 받아온 원본(autoliveHistoryCycles)을
+// 클라이언트에서 그때그때 걸러 다시 그린다 - 보통 몇십~몇백 건 수준이라 매번
+// 왕복할 필요가 없다(2026-10-29 추가).
+let autoliveHistoryCycles = null;
+let autoliveHistoryUsdKrw = null;
+let autoliveHistoryCurrency = 'USD';
+let autoliveHistorySortAsc = false;
+let autoliveTickerChart = null;
+let autoliveDurationChart = null;
+
+function switchAutoliveSubtab(name) {
+  document.querySelectorAll('#sec-autolive .subtab').forEach(b => b.classList.toggle('active', b.dataset.subtab === name));
+  document.getElementById('autolive-panel-active').style.display = name === 'active' ? '' : 'none';
+  document.getElementById('autolive-panel-history').style.display = name === 'history' ? '' : 'none';
+  if (name === 'history' && autoliveHistoryCycles === null) loadAutoInfiniteHistory();
+}
+
+async function loadAutoInfiniteHistory() {
+  const el = document.getElementById('autolive-history-content');
+  el.innerHTML = `<div class="loading-msg"><i class="ti ti-loader-2" aria-hidden="true"></i>${t('loading')}</div>`;
+  try {
+    const data = await api('GET', '/api/auto-infinite/history');
+    autoliveHistoryCycles = data.cycles || [];
+    autoliveHistoryUsdKrw = data.usdKrwRate || null;
+    renderAutoliveHistory();
+  } catch (e) {
+    el.innerHTML = `<div class="error-msg"><i class="ti ti-alert-circle" aria-hidden="true"></i><span>${escapeHtml(e.message)}</span></div>`;
+  }
+}
+
+function setAutoliveHistoryCurrency(cur) {
+  autoliveHistoryCurrency = cur;
+  document.querySelectorAll('.rpt-currency-btn').forEach(b => b.classList.toggle('active', b.dataset.currency === cur));
+  renderAutoliveHistory();
+}
+
+function onAutoliveHistoryPeriodChange() {
+  const period = document.getElementById('ailh-period').value;
+  document.getElementById('ailh-custom-range').style.display = period === 'custom' ? 'flex' : 'none';
+  renderAutoliveHistory();
+}
+
+function autoliveHistoryFilteredCycles() {
+  if (!autoliveHistoryCycles) return [];
+  const period = document.getElementById('ailh-period')?.value || 'thisMonth';
+  const now = new Date();
+  let from = null, to = null;
+  if (period === 'thisMonth') {
+    from = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (period === 'lastMonth') {
+    from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    to = new Date(now.getFullYear(), now.getMonth(), 0);
+  } else if (period === 'last3m') {
+    from = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  } else if (period === 'custom') {
+    const fromStr = document.getElementById('ailh-from')?.value;
+    const toStr = document.getElementById('ailh-to')?.value;
+    if (fromStr) from = new Date(fromStr);
+    if (toStr) to = new Date(toStr);
+  }
+  return autoliveHistoryCycles.filter(c => {
+    const end = new Date(c.endDate);
+    if (from && end < from) return false;
+    if (to && end > to) return false;
+    return true;
+  });
+}
+
+function autoliveHistoryFmtMoney(usd) {
+  const abs = Math.abs(usd);
+  if (autoliveHistoryCurrency === 'KRW' && autoliveHistoryUsdKrw) {
+    return `₩${Math.round(abs * autoliveHistoryUsdKrw).toLocaleString()}`;
+  }
+  return `$${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function autoliveHistoryFmtSigned(usd) {
+  return (usd < 0 ? '-' : '+') + autoliveHistoryFmtMoney(usd);
+}
+
+function autoliveHistoryDurationBucket(days) {
+  if (days < 20) return '<20일';
+  if (days < 40) return '20-40일';
+  if (days < 60) return '40-60일';
+  if (days < 90) return '60-90일';
+  return '90+일';
+}
+
+function renderAutoliveHistory() {
+  const el = document.getElementById('autolive-history-content');
+  if (!el || !autoliveHistoryCycles) return;
+  const cycles = autoliveHistoryFilteredCycles();
+
+  if (!cycles.length) {
+    el.innerHTML = `<div class="card"><div class="rpt-empty">${t('rptNoHistory')}</div></div>`;
+    return;
+  }
+
+  const buyTotal = cycles.reduce((s, c) => s + c.buyTotal, 0);
+  const sellTotal = cycles.reduce((s, c) => s + c.sellTotal, 0);
+  const pnl = cycles.reduce((s, c) => s + c.pnl, 0);
+  const pnlPct = buyTotal ? (pnl / buyTotal * 100) : 0;
+  const pnlCls = pnl >= 0 ? 'positive' : 'negative';
+
+  const byTickerPnl = {};
+  const byTickerCount = {};
+  cycles.forEach(c => {
+    byTickerPnl[c.ticker] = (byTickerPnl[c.ticker] || 0) + c.pnl;
+    byTickerCount[c.ticker] = (byTickerCount[c.ticker] || 0) + 1;
+  });
+  const bestTicker = Object.entries(byTickerPnl).sort((a, b) => b[1] - a[1])[0];
+  const topPnlCycle = cycles.slice().sort((a, b) => b.pnl - a.pnl)[0];
+  const topPctCycle = cycles.slice().sort((a, b) => (b.pnlPct ?? -Infinity) - (a.pnlPct ?? -Infinity))[0];
+  const mostCyclesTicker = Object.entries(byTickerCount).sort((a, b) => b[1] - a[1])[0];
+
+  el.innerHTML = `
+    <div class="rpt-hero">
+      <div class="rpt-hero-label">${t('rptTotalPnl')}</div>
+      <div class="rpt-hero-value ${pnlCls}">${autoliveHistoryFmtSigned(pnl)}</div>
+      <div class="rpt-hero-pct ${pnlCls}">${pnl >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%</div>
+    </div>
+
+    <div class="rpt-stat-grid">
+      <div class="rpt-stat-tile"><div class="rpt-stat-label">${t('rptBuyTotal')}</div><div class="rpt-stat-value">${autoliveHistoryFmtMoney(buyTotal)}</div></div>
+      <div class="rpt-stat-tile"><div class="rpt-stat-label">${t('rptSellTotal')}</div><div class="rpt-stat-value">${autoliveHistoryFmtMoney(sellTotal)}</div></div>
+      <div class="rpt-stat-tile"><div class="rpt-stat-label">${t('rptCompletedCycles')}</div><div class="rpt-stat-value">${cycles.length}</div></div>
+      <div class="rpt-stat-tile"><div class="rpt-stat-label">${t('rptBestTicker')}</div><div class="rpt-stat-value">${escapeHtml(bestTicker ? bestTicker[0] : '-')}</div></div>
+    </div>
+
+    <div class="rpt-rank-grid">
+      <div class="rpt-rank-tile"><div class="rpt-rank-label"><i class="ti ti-trophy" aria-hidden="true"></i> ${t('rptTopPnl')}</div><div class="rpt-rank-value">${escapeHtml(topPnlCycle.ticker)}</div></div>
+      <div class="rpt-rank-tile"><div class="rpt-rank-label"><i class="ti ti-trending-up" aria-hidden="true"></i> ${t('rptTopPnlPct')}</div><div class="rpt-rank-value">${escapeHtml(topPctCycle.ticker)}</div></div>
+      <div class="rpt-rank-tile"><div class="rpt-rank-label"><i class="ti ti-repeat" aria-hidden="true"></i> ${t('rptMostCycles')}</div><div class="rpt-rank-value">${escapeHtml(mostCyclesTicker ? mostCyclesTicker[0] : '-')}</div></div>
+    </div>
+
+    <div class="card rpt-chart-card">
+      <div class="rpt-chart-title">${t('rptPnlByTicker')}</div>
+      <div class="rpt-chart-wrap" style="height:${Math.max(120, Object.keys(byTickerPnl).length * 42 + 20)}px;">
+        <canvas id="autolive-ticker-chart"></canvas>
+      </div>
+    </div>
+
+    <div class="card rpt-chart-card">
+      <div class="rpt-chart-title">${t('rptCycleDuration')}</div>
+      <div class="rpt-chart-wrap" style="height:220px;">
+        <canvas id="autolive-duration-chart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="rpt-sort-row">
+        <span>${cycles.length}${t('rptCycleCountSuffix')}</span>
+        <button class="btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="toggleAutoliveHistorySort()">
+          <i class="ti ti-arrows-sort" aria-hidden="true"></i> ${autoliveHistorySortAsc ? t('rptOldestFirst') : t('rptNewestFirst')}
+        </button>
+      </div>
+      <div class="rpt-cycle-list" id="autolive-cycle-list"></div>
+    </div>`;
+
+  renderAutoliveHistoryCycleList(cycles);
+  drawAutoliveTickerChart(byTickerPnl);
+  drawAutoliveDurationChart(cycles);
+}
+
+function renderAutoliveHistoryCycleList(cycles) {
+  const listEl = document.getElementById('autolive-cycle-list');
+  if (!listEl) return;
+  const sorted = cycles.slice().sort((a, b) => autoliveHistorySortAsc
+    ? a.endDate.localeCompare(b.endDate)
+    : b.endDate.localeCompare(a.endDate));
+  listEl.innerHTML = sorted.map(c => {
+    const pnlCls = c.pnl >= 0 ? 'positive' : 'negative';
+    const pnlPctText = `${(c.pnlPct ?? 0) >= 0 ? '+' : ''}${(c.pnlPct ?? 0).toFixed(1)}%`;
+    const seedPctText = `${(c.seedPnlPct ?? 0) >= 0 ? '+' : ''}${(c.seedPnlPct ?? 0).toFixed(1)}%`;
+    return `<div class="rpt-cycle-card">
+      <div class="rpt-cycle-left">
+        <div class="rpt-cycle-ticker">${escapeHtml(c.ticker)}${c.label ? ` <span style="font-size:12px;font-weight:500;color:var(--text-muted);">(${escapeHtml(c.label)})</span>` : ''} <span class="cycle-pill">Ver 2.2</span></div>
+        <div class="rpt-cycle-dates">${escapeHtml(c.startDate)} ~ ${escapeHtml(c.endDate)}</div>
+      </div>
+      <div class="rpt-cycle-right">
+        <div class="rpt-cycle-pnl ${pnlCls}">${autoliveHistoryFmtSigned(c.pnl)} <span style="font-size:13px;">(${pnlPctText})</span></div>
+        <div class="rpt-cycle-sub">${t('rptSeedPnlSuffix')}: ${seedPctText}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleAutoliveHistorySort() {
+  autoliveHistorySortAsc = !autoliveHistorySortAsc;
+  renderAutoliveHistoryCycleList(autoliveHistoryFilteredCycles());
+  const btn = document.querySelector('#autolive-history-content .rpt-sort-row button');
+  if (btn) btn.innerHTML = `<i class="ti ti-arrows-sort" aria-hidden="true"></i> ${autoliveHistorySortAsc ? t('rptOldestFirst') : t('rptNewestFirst')}`;
+}
+
+function drawAutoliveTickerChart(byTickerPnl) {
+  const canvas = document.getElementById('autolive-ticker-chart');
+  if (!canvas) return;
+  if (autoliveTickerChart) autoliveTickerChart.destroy();
+  const entries = Object.entries(byTickerPnl).sort((a, b) => b[1] - a[1]);
+  autoliveTickerChart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: entries.map(e => e[0]),
+      datasets: [{
+        data: entries.map(e => e[1]),
+        backgroundColor: entries.map(e => e[1] >= 0 ? 'rgba(74,222,128,0.65)' : 'rgba(251,113,133,0.65)'),
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ' ' + autoliveHistoryFmtSigned(ctx.parsed.x) } },
+      },
+      scales: {
+        x: { ticks: { callback: v => (v >= 0 ? '+' : '') + v }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        y: { grid: { display: false } },
+      },
+    },
+  });
+}
+
+function drawAutoliveDurationChart(cycles) {
+  const canvas = document.getElementById('autolive-duration-chart');
+  if (!canvas) return;
+  if (autoliveDurationChart) autoliveDurationChart.destroy();
+  const buckets = ['<20일', '20-40일', '40-60일', '60-90일', '90+일'];
+  const counts = buckets.map(() => 0);
+  cycles.forEach(c => {
+    const days = Math.max(0, Math.round((new Date(c.endDate) - new Date(c.startDate)) / 86400000));
+    counts[buckets.indexOf(autoliveHistoryDurationBucket(days))]++;
+  });
+  autoliveDurationChart = new Chart(canvas, {
+    type: 'bar',
+    data: { labels: buckets, datasets: [{ data: counts, backgroundColor: 'rgba(87,83,232,0.55)', borderRadius: 4 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(128,128,128,0.1)' } },
+        x: { grid: { display: false } },
+      },
+    },
+  });
 }
 
 // ─── VR(Value Rebalancing, TQQQ) 현황 ────────────────────────────────────────

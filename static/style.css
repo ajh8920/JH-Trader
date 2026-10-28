@@ -596,6 +596,56 @@ input[type="date"]:hover { border-color: var(--border-strong); }
   .vr-stat-grid { grid-template-columns: 1fr; }
 }
 
+/* 탭 내부 소분류 탭(세그먼트 컨트롤) - 무한매수 탭의 진행중/히스토리 전환에서
+   처음 도입(2026-10-29). 다른 탭에서도 재사용 가능하도록 범용 이름으로 둔다. */
+.subtab-bar { display: inline-flex; padding: 4px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border); gap: 2px; }
+.subtab { padding: 8px 18px; border-radius: 9px; border: none; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; }
+.subtab.active { background: var(--bg); color: var(--text); box-shadow: var(--shadow); }
+
+/* 무한매수 탭 "히스토리" - 완결된 사이클 리포트(renderAutoliveHistory 등, app.js) */
+.rpt-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.rpt-controls select { padding: 8px 12px; border-radius: 9px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text); font-size: 13px; }
+.rpt-controls input[type="date"] { padding: 7px 10px; border-radius: 9px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text); font-size: 13px; }
+.rpt-currency-toggle { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--bg-tertiary); border: 1px solid var(--border-strong); }
+.rpt-currency-btn { padding: 6px 14px; border-radius: 7px; border: none; background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 700; cursor: pointer; }
+.rpt-currency-btn.active { background: var(--bg); color: var(--text); box-shadow: var(--shadow); }
+
+.rpt-hero { padding: 28px 20px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border); text-align: center; margin-bottom: 14px; }
+.rpt-hero-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; }
+.rpt-hero-value { font-size: clamp(26px, 7vw, 42px); font-weight: 800; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.rpt-hero-pct { font-size: 18px; font-weight: 700; margin-top: 4px; }
+
+.rpt-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 14px; }
+.rpt-stat-tile { padding: 16px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border); min-width: 0; text-align: center; }
+.rpt-stat-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rpt-stat-value { font-size: clamp(14px, 3.6vw, 19px); font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+.rpt-rank-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-bottom: 14px; }
+.rpt-rank-tile { padding: 16px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border); text-align: center; min-width: 0; }
+.rpt-rank-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; }
+.rpt-rank-value { font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+
+.rpt-chart-card { margin-bottom: 14px; }
+.rpt-chart-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; }
+.rpt-chart-wrap { position: relative; width: 100%; }
+
+.rpt-sort-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 12px; color: var(--text-secondary); }
+.rpt-cycle-list { display: flex; flex-direction: column; gap: 8px; }
+.rpt-cycle-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border); }
+.rpt-cycle-left { min-width: 0; }
+.rpt-cycle-ticker { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rpt-cycle-dates { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.rpt-cycle-right { text-align: right; }
+.rpt-cycle-pnl { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rpt-cycle-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.rpt-empty { padding: 40px 20px; text-align: center; color: var(--text-secondary); font-size: 13px; }
+
+@media (max-width: 620px) {
+  .rpt-stat-grid { grid-template-columns: 1fr 1fr; }
+  .rpt-rank-grid { grid-template-columns: 1fr; }
+  .rpt-cycle-right { text-align: left; }
+}
+
 /* Toast */
 .toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 20px; border-radius: var(--radius-md); font-size: 14px; z-index: 9999; animation: fadeup 0.2s ease; }
 @keyframes fadeup { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }

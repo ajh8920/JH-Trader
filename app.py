@@ -2120,6 +2120,51 @@ def list_auto_infinite_positions():
     return jsonify(sanitize_json({"positions": results, "account": account}))
 
 
+_usdkrw_cache = {"rate": None, "at": 0.0}
+USDKRW_CACHE_TTL_SECONDS = 1800
+
+
+def _fetch_usdkrw_rate():
+    """히스토리 탭의 원화 환산 토글용 환율 - 실시간 정밀도가 필요 없는 리포트
+    화면이라 매크로 탭(90초 캐시)보다 훨씬 긴 30분 캐시를 쓴다."""
+    now = time.time()
+    if _usdkrw_cache["rate"] is not None and (now - _usdkrw_cache["at"]) < USDKRW_CACHE_TTL_SECONDS:
+        return _usdkrw_cache["rate"]
+    try:
+        import yfinance as yf
+        df = yf.download("KRW=X", period="5d", interval="1d", progress=False, auto_adjust=False, timeout=8)
+        if df is not None and not df.empty:
+            if hasattr(df.columns, "get_level_values") and df.columns.nlevels > 1:
+                df.columns = df.columns.get_level_values(0)
+            df = df.dropna(subset=["Close"])
+            if not df.empty:
+                rate = round(float(df["Close"].iloc[-1]), 2)
+                _usdkrw_cache["rate"] = rate
+                _usdkrw_cache["at"] = now
+                return rate
+    except Exception:
+        pass
+    return _usdkrw_cache["rate"]
+
+
+@app.route("/api/auto-infinite/history", methods=["GET"])
+@admin_required
+def auto_infinite_history():
+    """무한매수 탭의 "히스토리" 소분류 탭용 - 전량매도로 완결된 사이클만 모아
+    보여준다(2026-10-29 추가). 진행 중인 포지션 목록(/positions)과 달리 메리츠
+    실계좌 연결이 필요 없다 - 과거 체결 기록만으로 계산하는 리포트라, 브로커
+    API가 죽어있어도 히스토리는 늘 볼 수 있다."""
+    from models import AutoInfinitePosition
+    import auto_infinite
+
+    positions = AutoInfinitePosition.query.filter_by(user_id=current_user.id).all()
+    cycles = []
+    for p in positions:
+        cycles.extend(auto_infinite.list_closed_cycles(p))
+    cycles.sort(key=lambda c: c["endDate"])
+    return jsonify(sanitize_json({"cycles": cycles, "usdKrwRate": _fetch_usdkrw_rate()}))
+
+
 @app.route("/api/auto-infinite/positions", methods=["POST"])
 @admin_required
 def add_auto_infinite_position():
