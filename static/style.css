@@ -631,7 +631,10 @@ input[type="date"]:hover { border-color: var(--border-strong); }
 
 .rpt-sort-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 12px; color: var(--text-secondary); }
 .rpt-cycle-list { display: flex; flex-direction: column; gap: 8px; }
-.rpt-cycle-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border); }
+.rpt-cycle-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border); cursor: pointer; }
+.rpt-cycle-card.expanded { border-radius: 12px 12px 0 0; border-bottom-color: transparent; }
+.rpt-cycle-chevron { font-size: 13px; color: var(--text-muted); transition: transform 0.15s ease; display: inline-block; vertical-align: middle; }
+.rpt-cycle-detail { border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; background: var(--bg); }
 .rpt-cycle-left { min-width: 0; }
 .rpt-cycle-ticker { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .rpt-cycle-dates { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
@@ -644,6 +647,12 @@ input[type="date"]:hover { border-color: var(--border-strong); }
   .rpt-stat-grid { grid-template-columns: 1fr 1fr; }
   .rpt-rank-grid { grid-template-columns: 1fr; }
   .rpt-cycle-right { text-align: left; }
+  /* 사이클 상세의 거래내역 표는 .pf-table을 재사용하는데, 그 테이블의 공용
+     모바일 규칙(5번째 열 숨김 - 다른 화면에선 "수량")이 여기서는 가장 중요한
+     "실현손익" 열을 숨겨버린다. 이 안에서만 우선순위를 높여 덜 중요한
+     "보유수량" 열을 대신 숨긴다(전량매도로 끝난 사이클이라 대부분 0이다). */
+  .rpt-cycle-detail .pf-table th:nth-child(5), .rpt-cycle-detail .pf-table td:nth-child(5) { display: table-cell; }
+  .rpt-cycle-detail .pf-table th:nth-child(6), .rpt-cycle-detail .pf-table td:nth-child(6) { display: none; }
 }
 
 /* Toast */

@@ -175,7 +175,12 @@ def list_closed_cycles(position):
     cycle_no는 apply_sell이 보유수량을 0으로 만드는 순간 그 자리에서 +1 되므로
     (PositionState.apply_sell), 현재 진행 중인(아직 전량매도 안 된) 마지막 사이클을
     제외한 모든 cycle_no는 이미 전량매도로 끝난 것이 보장된다 - 별도의 "완료"
-    플래그나 DB 컬럼 없이 기존 체결 기록만으로 히스토리를 계산할 수 있는 이유다."""
+    플래그나 DB 컬럼 없이 기존 체결 기록만으로 히스토리를 계산할 수 있는 이유다.
+
+    사이클별 체결 목록(trades)도 build_filled_ledger가 만든 행을 그대로 담아
+    돌려준다(2026-10-29 추가, 사용자 요청: 히스토리에서 사이클을 클릭하면
+    상세 거래내역이 보이게) - showAutoInfiniteFills가 쓰는 "실제 체결 내역"
+    표와 완전히 같은 필드 모양이라 프런트에서 같은 렌더링 코드를 재사용한다."""
     state, _ = replay_position_state(position)
     current_cycle_no = state.cycle_no
     position_open = state.holding_qty > 0
@@ -204,11 +209,15 @@ def list_closed_cycles(position):
             "cycleNo": cycle_no,
             "startDate": buys[0]["tradeDate"] if buys else crows[0]["tradeDate"],
             "endDate": sells[-1]["tradeDate"],
+            "seed": position.seed,
+            "splits": position.splits,
+            "targetReturnPct": position.target_return_pct,
             "buyTotal": round(buy_total, 2),
             "sellTotal": round(sell_total, 2),
             "pnl": round(pnl, 2),
             "pnlPct": round(pnl / buy_total * 100, 2) if buy_total else None,
             "seedPnlPct": round(pnl / position.seed * 100, 2) if position.seed else None,
+            "trades": crows,
         })
     return cycles
 

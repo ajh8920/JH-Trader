@@ -791,6 +791,10 @@ const I18N = {
   rptNoHistory: { en: 'No completed cycles in this period yet.', ko: '이 기간에 완료된 사이클이 아직 없습니다.' },
   rptSeedPnlSuffix: { en: 'vs. seed', ko: '시드 대비 수익률' },
   rptCycleCountSuffix: { en: ' cycles', ko: '건' },
+  rptCycleBasicInfo: { en: 'Basic info', ko: '기본 정보' },
+  rptReturnPct: { en: 'Return', ko: '수익률' },
+  rptSplits: { en: 'Splits', ko: '분할 수' },
+  rptTradeHistory: { en: 'Trade history', ko: '거래 내역' },
   availableCashUsd: { en: 'Available USD cash', ko: '주문가능 예수금(USD)' },
   checkFills: { en: 'Check fills', ko: '체결 확인' },
   fillHistory: { en: 'Fill history', ko: '실제 체결 내역' },
@@ -5399,20 +5403,75 @@ function renderAutoliveHistoryCycleList(cycles) {
     ? a.endDate.localeCompare(b.endDate)
     : b.endDate.localeCompare(a.endDate));
   listEl.innerHTML = sorted.map(c => {
+    const key = `${c.positionId}-${c.cycleNo}`;
     const pnlCls = c.pnl >= 0 ? 'positive' : 'negative';
     const pnlPctText = `${(c.pnlPct ?? 0) >= 0 ? '+' : ''}${(c.pnlPct ?? 0).toFixed(1)}%`;
     const seedPctText = `${(c.seedPnlPct ?? 0) >= 0 ? '+' : ''}${(c.seedPnlPct ?? 0).toFixed(1)}%`;
-    return `<div class="rpt-cycle-card">
-      <div class="rpt-cycle-left">
-        <div class="rpt-cycle-ticker">${escapeHtml(c.ticker)}${c.label ? ` <span style="font-size:12px;font-weight:500;color:var(--text-muted);">(${escapeHtml(c.label)})</span>` : ''} <span class="cycle-pill">Ver 2.2</span></div>
-        <div class="rpt-cycle-dates">${escapeHtml(c.startDate)} ~ ${escapeHtml(c.endDate)}</div>
+    return `<div>
+      <div class="rpt-cycle-card" id="ailh-card-${key}" onclick="toggleAutoliveCycleDetail('${key}')">
+        <div class="rpt-cycle-left">
+          <div class="rpt-cycle-ticker">${escapeHtml(c.ticker)}${c.label ? ` <span style="font-size:12px;font-weight:500;color:var(--text-muted);">(${escapeHtml(c.label)})</span>` : ''} <span class="cycle-pill">Ver 2.2</span> <i class="ti ti-chevron-down rpt-cycle-chevron" id="ailh-chevron-${key}" aria-hidden="true"></i></div>
+          <div class="rpt-cycle-dates">${escapeHtml(c.startDate)} ~ ${escapeHtml(c.endDate)}</div>
+        </div>
+        <div class="rpt-cycle-right">
+          <div class="rpt-cycle-pnl ${pnlCls}">${autoliveHistoryFmtSigned(c.pnl)} <span style="font-size:13px;">(${pnlPctText})</span></div>
+          <div class="rpt-cycle-sub">${t('rptSeedPnlSuffix')}: ${seedPctText}</div>
+        </div>
       </div>
-      <div class="rpt-cycle-right">
-        <div class="rpt-cycle-pnl ${pnlCls}">${autoliveHistoryFmtSigned(c.pnl)} <span style="font-size:13px;">(${pnlPctText})</span></div>
-        <div class="rpt-cycle-sub">${t('rptSeedPnlSuffix')}: ${seedPctText}</div>
+      <div class="rpt-cycle-detail" id="ailh-detail-${key}" style="display:none;">
+        ${renderAutoliveCycleDetailHtml(c)}
       </div>
     </div>`;
   }).join('');
+}
+
+function toggleAutoliveCycleDetail(key) {
+  const detailEl = document.getElementById(`ailh-detail-${key}`);
+  const cardEl = document.getElementById(`ailh-card-${key}`);
+  const chevronEl = document.getElementById(`ailh-chevron-${key}`);
+  if (!detailEl) return;
+  const opening = detailEl.style.display === 'none';
+  detailEl.style.display = opening ? 'block' : 'none';
+  if (cardEl) cardEl.classList.toggle('expanded', opening);
+  if (chevronEl) chevronEl.style.transform = opening ? 'rotate(180deg)' : '';
+}
+
+function renderAutoliveCycleDetailHtml(c) {
+  const pnlCls = c.pnl >= 0 ? 'positive' : 'negative';
+  const seedPnlCls = (c.seedPnlPct ?? 0) >= 0 ? 'positive' : 'negative';
+  const trades = c.trades || [];
+  return `
+    <div style="padding:14px 16px 4px;">
+      <div class="rpt-chart-title">${t('rptCycleBasicInfo')}</div>
+      <div class="rpt-stat-grid" style="margin-bottom:14px;">
+        <div class="rpt-stat-tile"><div class="rpt-stat-label">${t('capitalUsdLabel')}</div><div class="rpt-stat-value">${autoliveHistoryFmtMoney(c.seed)}</div></div>
+        <div class="rpt-stat-tile"><div class="rpt-stat-label">${t('rptBuyTotal')}</div><div class="rpt-stat-value">${autoliveHistoryFmtMoney(c.buyTotal)}</div></div>
+        <div class="rpt-stat-tile"><div class="rpt-stat-label">${t('rptSellTotal')}</div><div class="rpt-stat-value">${autoliveHistoryFmtMoney(c.sellTotal)}</div></div>
+        <div class="rpt-stat-tile"><div class="rpt-stat-label">${t('realizedPnl')}</div><div class="rpt-stat-value ${pnlCls}">${autoliveHistoryFmtSigned(c.pnl)}</div></div>
+        <div class="rpt-stat-tile"><div class="rpt-stat-label">${t('rptReturnPct')}</div><div class="rpt-stat-value ${pnlCls}">${(c.pnlPct ?? 0) >= 0 ? '+' : ''}${(c.pnlPct ?? 0).toFixed(1)}%</div></div>
+        <div class="rpt-stat-tile"><div class="rpt-stat-label">${t('rptSeedPnlSuffix')}</div><div class="rpt-stat-value ${seedPnlCls}">${(c.seedPnlPct ?? 0) >= 0 ? '+' : ''}${(c.seedPnlPct ?? 0).toFixed(1)}%</div></div>
+        <div class="rpt-stat-tile"><div class="rpt-stat-label">${t('targetReturnPctLabel')}</div><div class="rpt-stat-value">${c.targetReturnPct}%</div></div>
+        <div class="rpt-stat-tile"><div class="rpt-stat-label">${t('rptSplits')}</div><div class="rpt-stat-value">${c.splits}</div></div>
+      </div>
+      <div class="rpt-chart-title">${t('rptTradeHistory')}</div>
+      <div class="pf-table-wrap">
+        <table class="pf-table">
+          <thead><tr><th>${t('date')}</th><th>${t('type')}</th><th>${t('price')}</th><th>${t('qty')}</th><th>${t('realizedPnl')}</th><th>${t('holdingQty')}</th><th>${t('avgPrice')}</th></tr></thead>
+          <tbody>
+            ${trades.map(f => `
+              <tr>
+                <td>${escapeHtml(f.tradeDate)}</td>
+                <td><span class="${f.action === 'buy' ? 'negative' : 'positive'}" style="font-weight:600;">${f.action === 'buy' ? t('buy') : t('sell')}</span></td>
+                <td>${f.price != null ? '$' + f.price.toFixed(2) : '-'}</td>
+                <td>${f.qty}</td>
+                <td>${f.realizedPnl !== null ? `<span class="${f.realizedPnl >= 0 ? 'positive' : 'negative'}">${f.realizedPnl >= 0 ? '+' : ''}$${f.realizedPnl.toFixed(2)}</span>` : '-'}</td>
+                <td>${f.holdingQtyAfter}</td>
+                <td>${f.avgPriceAfter ? '$' + f.avgPriceAfter.toFixed(2) : '-'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 function toggleAutoliveHistorySort() {
