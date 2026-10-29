@@ -91,7 +91,18 @@ def replay_position_state(position):
     정보가 추가되었음 함") - 현재 사이클(아직 전량매도 안 된 회차)의 첫 매수
     체결일부터 오늘까지 경과한 "달력일" 수다. 거래일 캘린더 데이터가 없어
     영업일 기준으로는 못 세고(CLAUDE.md missing_filters와 같은 종류의 한계),
-    달력일로 센다 - 원문의 "n일차"도 보통 주말 포함 경과일 감각으로 쓰인다."""
+    달력일로 센다 - 원문의 "n일차"도 보통 주말 포함 경과일 감각으로 쓰인다.
+
+    start_cycle(cash_override=position.seed)(2026-10-29 추가, 사용자 요청: "이 무한매수는
+    단리로 가도록 하세요") - PositionState.start_cycle()의 기본 동작은 새 사이클의
+    1회 분할매수금(cycle_seed) 기준을 그 시점의 cash(=시드+그동안 누적 실현손익)로
+    잡아 사이클이 끝날 때마다 번 돈이 다음 사이클 분할금액에 자동으로 반영되는
+    "복리" 방식이다. 이 실매매 포지션은 그 대신 매 사이클 분할금액을 항상 원래
+    시드(position.seed) 고정 기준으로 계산하는 "단리"를 쓴다 - 실현손익은 cash에는
+    그대로 누적되지만(현금 잔고 자체는 정확해야 하므로) 다음 사이클 매수 사이즈
+    산정에는 반영하지 않는다. 백테스트(backtest.py)·실전현황 수기기록
+    (live_tracker.py)은 건드리지 않았다 - 이 결정은 실매매 SOXL 포지션에만
+    적용하라는 요청이었다."""
     state = PositionState(position.seed, position.splits, position.target_return_pct,
                            compound_mid_cycle=False)
     filled = sorted(
@@ -104,7 +115,7 @@ def replay_position_state(position):
         price = o.filled_price if o.filled_price else o.price
         if o.action == "buy":
             if state.holding_qty == 0:
-                state.start_cycle()
+                state.start_cycle(cash_override=position.seed)
                 cycle_start_date = o.trade_date
             state.apply_buy(price, qty)
         else:
@@ -150,7 +161,7 @@ def build_filled_ledger(position):
         cycle_no = state.cycle_no
         if o.action == "buy":
             if state.holding_qty == 0:
-                state.start_cycle()
+                state.start_cycle(cash_override=position.seed)
             state.apply_buy(price, qty)
         else:
             _, realized_pnl = state.apply_sell(price or 0.0, qty)
