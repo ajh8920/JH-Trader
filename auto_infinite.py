@@ -165,6 +165,28 @@ def build_filled_ledger(position):
     return rows
 
 
+def current_cycle_orders(position):
+    """position.orders(모든 사이클 누적, 상태 무관) 중 "현재 진행 중인 사이클"에
+    속하는 것만 돌려준다(2026-10-29 추가, 사용자 요청: "무매탭의 주문 내역은
+    현재 진행중인 사이클에 대해서만 관리"). 종료된 사이클은 히스토리 탭
+    (list_closed_cycles)이 따로 보여주므로 "주문 내역"에서 또 보일 필요가
+    없고, 사이클이 쌓일수록 목록이 한없이 길어지는 것도 막는다.
+
+    기준은 "직전에 끝난 사이클의 마지막 체결 주문 id보다 큰 id 전부"다(현재
+    사이클 자체의 체결 여부와 무관) - 그래야 새 사이클을 시작하려다 실패한
+    주문(error/rejected, 아직 체결 전이라 build_filled_ledger엔 안 잡힘)도
+    "직전 사이클 마감 이후" 시점이면 바로 보인다. 지금까지 한 번도 사이클이
+    끝난 적 없는 포지션(체결 이력 전무 포함)이면 기준점이 없으므로 전부
+    현재 사이클로 간주해 그대로 돌려준다."""
+    state, _ = replay_position_state(position)
+    ledger = build_filled_ledger(position)
+    prev_ids = [r["orderId"] for r in ledger if r["cycleNo"] != state.cycle_no]
+    cutoff_id = (max(prev_ids) + 1) if prev_ids else None
+    if cutoff_id is None:
+        return list(position.orders)
+    return [o for o in position.orders if o.id >= cutoff_id]
+
+
 def list_closed_cycles(position):
     """이 포지션에서 전량매도로 완결된 사이클만 뽑아 사이클별 요약(매입/매도
     총액·실현손익·수익률·기간)을 돌려준다(2026-10-29 추가, 사용자 요청: 다른

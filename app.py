@@ -2221,11 +2221,16 @@ def delete_auto_infinite_position(position_id):
 @app.route("/api/auto-infinite/positions/<int:position_id>/orders", methods=["GET"])
 @admin_required
 def list_auto_infinite_orders(position_id):
+    """"주문 내역"은 현재 진행 중인 사이클분만 보여준다(2026-10-29, 사용자
+    요청) - 종료된 사이클은 히스토리 탭이 따로 보여주므로 여기선 중복 노출을
+    피한다. 판단 로직은 auto_infinite.current_cycle_orders 참고."""
     from models import AutoInfinitePosition
+    import auto_infinite
     position = AutoInfinitePosition.query.filter_by(id=position_id, user_id=current_user.id).first()
     if not position:
         return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
-    return jsonify([o.to_dict() for o in reversed(position.orders)])
+    orders = auto_infinite.current_cycle_orders(position)
+    return jsonify([o.to_dict() for o in reversed(orders)])
 
 
 @app.route("/api/auto-infinite/orders/<int:order_id>/raw", methods=["GET"])
