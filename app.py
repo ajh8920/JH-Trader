@@ -2299,7 +2299,7 @@ def submit_auto_infinite_order(position_id):
         return jsonify({"error": "LOC/LIMIT 주문은 가격이 필요합니다"}), 400
     dry_run = bool(body.get("dryRun", False))
 
-    # 완전 자동 제출(auto_trading_enabled)이 켜진 포지션은 17시에 스케줄러가
+    # 완전 자동 제출(auto_trading_enabled)이 켜진 포지션은 18시에 스케줄러가
     # 이미 그날 가이드를 제출하므로, 보유 중(1일차 아님)인 동안 수동으로도 같은
     # 주문을 낼 수 있게 두면 중복 제출 위험이 있다(프런트 버튼 비활성화는
     # 눈속임 방지일 뿐이라 서버에서도 막는다). 1일차(보유 0)는 스케줄러가
@@ -2307,7 +2307,7 @@ def submit_auto_infinite_order(position_id):
     if not dry_run and position.auto_trading_enabled:
         state, _ = auto_infinite.replay_position_state(position)
         if state.holding_qty > 0:
-            return jsonify({"error": "완전 자동 제출이 켜진 포지션입니다 - 17시에 자동으로 제출됩니다(수동 제출 비활성화)"}), 409
+            return jsonify({"error": "완전 자동 제출이 켜진 포지션입니다 - 18시에 자동으로 제출됩니다(수동 제출 비활성화)"}), 409
 
     # 같은 가이드 줄을 오늘 이미 보냈으면(체결 여부 무관) 다시 막는다(2026-10-22
     # 추가 - 실사용 중 매도 1건이 중복 제출된 사고 발견). 프런트가 alreadySubmitted로
@@ -2582,7 +2582,7 @@ def refresh_auto_infinite_fills(position_id):
 def kakao_preview_auto_infinite(position_id):
     """지금 등록된 실데이터(실계좌 조회+가이드 계산) 그대로 카카오톡 미리보기를
     보낸다 - 실제 주문은 전혀 내지 않는다(auto_infinite.submit_order를 호출하지
-    않음). 매일 17시 자동 제출 시 올 알림이 어떤 모양인지 미리 확인하는 용도."""
+    않음). 매일 18시 자동 제출 시 올 알림이 어떤 모양인지 미리 확인하는 용도."""
     from models import AutoInfinitePosition
     from meritz_api import MeritzClient, MeritzApiError
     import auto_infinite
@@ -2875,22 +2875,36 @@ def cron_run_daily_batch():
 def cron_run_auto_infinite():
     """cron_run_daily_batch와 완전히 같은 이유로 존재한다(2026-10-22 추가) - 다만
     여기는 실제 돈이 걸린 기능이라 콜드슬립에 더 취약하다: auto_infinite_scheduler
-    스레드는 "17:00까지 sleep"하는 인메모리 타이머인데, 컨테이너가 꺼졌다 16:59~
-    17:xx 사이에 뒤늦게 깨어나면 그 스레드가 "다음 17시"를 내일로 계산해버려서
+    스레드는 "18:00까지 sleep"하는 인메모리 타이머인데, 컨테이너가 꺼졌다 17:59~
+    18:xx 사이에 뒤늦게 깨어나면 그 스레드가 "다음 18시"를 내일로 계산해버려서
     그날 자동매매 제출이 통째로 스킵된다(실제로 모의투자가 이 문제로 와쳐 메일을
     놓친 전례가 있다 - cron_run_daily_batch 도입 배경과 동일).
 
-    외부(GitHub Actions, .github/workflows/auto-infinite-trigger.yml)가 06:00~
-    07:40, 17:00~18:45 KST 사이 여러 번 이 엔드포인트를 직접 호출한다 - 호출
-    자체가 Render를 깨우므로 콜드슬립 여부와 무관하다. 호출마다 "지금이 체결확인/
+    제출 시각 17시→18시 변경(2026-11-02, 사용자 지적: "서머타임이 해제되면서
+    주간거래는 지정가만 가능하다고 합니다") - 메리츠 해외주식 주간거래(한국시간
+    기준 서머타임 해제 후 10:00~17:30)는 지정가(LIMIT) 주문만 받고 LOC/MOC는
+    거부한다. 기존 17시 제출은 서머타임 적용 중엔 주간거래 종료(16:30) 이후라
+    문제가 없었지만, 서머타임이 해제되며 주간거래 종료가 17:30으로 늘어나
+    17시 제출이 그 안에 들어가버렸다 - 실제로 가이드 4건 중 LIMIT인 "매도(목표
+    3/4)"만 브로커에 접수되고 나머지 LOC 3건(매수 2건+쿼터매도)은 전부
+    브로커에 도달하지 못했다(메리츠 API로 그날 주문내역을 직접 조회해 확인).
+    18시면 주간거래 종료(17:30) 이후라 안전하다.
+
+    외부(Supabase pg_cron, 2026-10-23 이후 GitHub Actions 대체)가 06:00~07:40,
+    18:00~19:45 KST 사이 여러 번 이 엔드포인트를 직접 호출한다 - 호출 자체가
+    Render를 깨우므로 콜드슬립 여부와 무관하다. 호출마다 "지금이 체결확인/
     제출/실패확인 중 어느 시간대인지"를 서버가 현재 한국시간으로 직접 판단하므로,
     외부에서 정확한 타이밍을 맞출 필요 없이 그냥 여러 번 불러도 안전하다
     (auto_last_run_date/auto_last_failure_notified_date 가드와
     refresh_fill_status 자체의 멱등성으로 중복 호출이 안전함). 06~08시 체결확인
-    구간은 주말 가드(아래) 밖에 둔다 - 금요일 17시 주문은 토요일 새벽(한국시간)에
+    구간은 주말 가드(아래) 밖에 둔다 - 금요일 18시 주문은 토요일 새벽(한국시간)에
     체결되므로 그 체결확인은 토요일 아침에 돌아야 한다(_refresh_all_auto_infinite_
     fills 참고). 인메모리 스케줄러 스레드는 이중 안전망으로 그대로 둔다(로컬
-    개발 등 외부 크론이 없는 환경 대비)."""
+    개발 등 외부 크론이 없는 환경 대비).
+
+    ※ Supabase pg_cron이 실제로 이 엔드포인트를 몇 시에 호출하도록 설정되어
+    있는지는 이 저장소 밖(Supabase 프로젝트)에 있어 코드 수정만으로는 반영되지
+    않는다 - pg_cron 스케줄도 18:00~19:45 KST로 같이 옮겨야 한다."""
     from zoneinfo import ZoneInfo
 
     secret = os.environ.get("CRON_SECRET")
@@ -2920,7 +2934,7 @@ def cron_run_auto_infinite():
                     return
                 if now.weekday() >= 5:  # 주말은 미국장도 없음
                     return
-                if 17 <= now.hour < 18:
+                if 18 <= now.hour < 19:
                     _run_auto_infinite_submissions(today)
                     _record_heartbeat("auto_infinite_scheduler")
                     try:
@@ -2929,7 +2943,7 @@ def cron_run_auto_infinite():
                     except Exception as e:
                         db.session.rollback()
                         _record_heartbeat("vr_cycle_submission", error=e)
-                elif now.hour >= 18:
+                elif now.hour >= 19:
                     _send_auto_infinite_failure_alerts(today)
             except Exception as e:
                 app.logger.exception("외부 크론 무한매수 자동매매 처리 오류")
@@ -3467,21 +3481,32 @@ def _send_auto_infinite_failure_alerts(today):
 
 def auto_infinite_scheduler():
     """무한매수법 2.2버전 완전자동 포지션의 오늘자 가이드 주문을 매일 한국시간
-    17:00에 실제로 제출하고, 18:00에 실패 여부를 확인해 카카오톡으로 알린다
+    18:00에 실제로 제출하고, 19:00에 실패 여부를 확인해 카카오톡으로 알린다
     (2026-10-22, 사용자 요청: "무한매수는 오후 5시에서 6시 사이에 진행... 실패했을
-    경우 6시 이후에 카톡으로 알림 발송"). 17시인 이유: LOC/MOC 주문은 하루 중
-    아무때나 걸어두면 그날 미국장 마감 때 체결되므로(원문: "매수매도를 매일 미리
-    거는 매매법"), 미국장이 열리기도 전인 이 시각(동부시간 기준 새벽)에 미리
-    걸어두면 된다 - 한국시간 17시는 어느 쪽 DST든 미국 동부시간 자정~새벽 5시
-    사이라 항상 그날 장 시작 전이다. 주말(한국시간 기준 토/일, 미국도 같은
-    달력일이라 이 변환에서 요일이 안 바뀐다)은 건너뛴다.
+    경우 6시 이후에 카톡으로 알림 발송"). 원래 17시였던 이유: LOC/MOC 주문은 하루
+    중 아무때나 걸어두면 그날 미국장 마감 때 체결되므로(원문: "매수매도를 매일
+    미리 거는 매매법"), 미국장이 열리기도 전인 이 시각(동부시간 기준 새벽)에
+    미리 걸어두면 된다 - 한국시간 17시는 어느 쪽 DST든 미국 동부시간 자정~새벽
+    5시 사이라 항상 그날 장 시작 전이다.
+
+    17시→18시로 변경(2026-11-02, 사용자 지적: "서머타임이 해제되면서 주간거래는
+    지정가만 가능하다고 합니다") - 메리츠 해외주식 주간거래(서머타임 해제 후
+    한국시간 10:00~17:30)는 LOC/MOC를 안 받고 지정가(LIMIT)만 받는다. 서머타임
+    적용 중엔 주간거래가 16:30에 끝나 17시 제출이 안전했지만, 서머타임 해제로
+    주간거래 종료가 17:30으로 늘어나며 17시 제출이 그 안에 들어가 버렸다 - 실제로
+    가이드 중 LIMIT 주문("매도 목표 3/4")만 브로커에 접수되고 LOC 주문(매수 2건+
+    쿼터매도)은 전부 거부/미도달됐다(메리츠 API로 실측 확인, 2026-11-02).
+    18시는 주간거래 종료(17:30) 이후라 안전하다. 자세한 근거는
+    cron_run_auto_infinite 주석 참고.
 
     06:30 KST 체결확인 단계(2026-10-22 추가, 사용자 지적: "LOC라서 오전5시에
-    매매되는데 이 기록은 언제 저장됩니까?")는 17시 제출 전에 먼저 돈다 - LOC 체결은
+    매매되는데 이 기록은 언제 저장됩니까?")는 18시 제출 전에 먼저 돈다 - LOC 체결은
     제출 당일이 아니라 그날 밤~다음날 새벽 미국장 마감 때 일어나므로, 이 단계가
-    없으면 다음날 17시 계산이 전날 체결을 모른 채(여전히 "submitted") 사다리를
+    없으면 다음날 18시 계산이 전날 체결을 모른 채(여전히 "submitted") 사다리를
     진행시켜 중복/어긋난 주문을 만들 위험이 있다(_refresh_all_auto_infinite_fills
-    참고). 금요일 주문은 토요일 새벽에 체결되므로 이 단계만 주말 가드 밖에 둔다."""
+    참고). 금요일 주문은 토요일 새벽에 체결되므로 이 단계만 주말 가드 밖에 둔다.
+    (이 인메모리 스레드는 Supabase pg_cron이 못 깨울 때(로컬 개발 등)를 위한
+    이중 안전망이고, 주말 건너뛰기는 그 아래 본문에 그대로 있다.)"""
     from zoneinfo import ZoneInfo
 
     kst = ZoneInfo("Asia/Seoul")
@@ -3505,7 +3530,7 @@ def auto_infinite_scheduler():
                     pass
 
         now = datetime.now(kst)
-        target = now.replace(hour=17, minute=0, second=0, microsecond=0)
+        target = now.replace(hour=18, minute=0, second=0, microsecond=0)
         if now >= target:
             target += timedelta(days=1)
         time.sleep(max(1.0, (target - now).total_seconds()))
@@ -3526,7 +3551,7 @@ def auto_infinite_scheduler():
                         pass
 
         now = datetime.now(kst)
-        notify_target = now.replace(hour=18, minute=0, second=0, microsecond=0)
+        notify_target = now.replace(hour=19, minute=0, second=0, microsecond=0)
         if now < notify_target:
             time.sleep((notify_target - now).total_seconds())
         now = datetime.now(kst)
@@ -3540,7 +3565,7 @@ def auto_infinite_scheduler():
                         db.session.rollback()
                     except Exception:
                         pass
-        time.sleep(90)  # 18:00 부근에서 곧바로 다시 깨어나 중복 처리하지 않도록 여유
+        time.sleep(90)  # 19:00 부근에서 곧바로 다시 깨어나 중복 처리하지 않도록 여유
 
 
 def kr_quant_price_cache_refresher():

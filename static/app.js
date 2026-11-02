@@ -813,7 +813,7 @@ const I18N = {
   day1EntryTitle: { en: 'Day 1 entry', ko: '1일차 매수 직접 입력' },
   limitOrder: { en: 'Limit', ko: '지정가' },
   positionLabelOptional: { en: 'Label (optional)', ko: '이름(선택)' },
-  autoTradingToggle: { en: 'Fully automatic (17:00–18:00 KST daily)', ko: '완전 자동 제출(매일 17:00~18:00)' },
+  autoTradingToggle: { en: 'Fully automatic (18:00–19:00 KST daily)', ko: '완전 자동 제출(매일 18:00~19:00)' },
   autoLastRun: { en: 'Last auto-run', ko: '마지막 자동 실행' },
   autoRunError: { en: 'had errors', ko: '실패 있음' },
   backfillTrades: { en: 'Backfill past trades', ko: '과거 거래 기록 추가' },
@@ -5820,7 +5820,7 @@ async function submitAutoInfiniteOrderFromGuide(positionId, orderJsonStr, btnEl)
 }
 
 async function toggleAutoInfiniteTrading(positionId, enabled) {
-  if (enabled && !confirm('완전 자동 제출을 켭니다 — 매일 17:00~18:00 사이에 사람 확인 없이 실제 메리츠 계좌로 주문이 자동 제출됩니다. 계속할까요?')) {
+  if (enabled && !confirm('완전 자동 제출을 켭니다 — 매일 18:00~19:00 사이에 사람 확인 없이 실제 메리츠 계좌로 주문이 자동 제출됩니다. 계속할까요?')) {
     await loadAutoInfinitePositions();  // 체크박스를 원래 상태로 되돌리기 위해 다시 로드
     return;
   }
