@@ -67,6 +67,20 @@ def threshold_pct(target_return_pct, splits, t_value):
     return target_return_pct * (1 - 2 * t_value / splits) if splits else 0.0
 
 
+def _buy_qty(budget, price):
+    """매수 주문 1건의 수량 = 예산/가격을 반올림(0.5는 올림)한 정수주(2026-11-03
+    변경 - 기존엔 내림이었다). 라오어 카페 회원이 만든 참고 앱과 같은 실제
+    포지션(시드 $10,000, 1회투자금 $250, 평단 $81.70)을 나란히 비교해 확인:
+    예산 125/90.05=1.39주 다리는 두 방식이 똑같이 1주로 일치했지만, 125/81.70=
+    1.53주 다리에서 그 앱은 2주(반올림), 저희는 1주(내림)로 갈렸다 - 원문엔 소수점
+    주식수 처리 방법이 명시돼 있지 않아 "오류"가 아니라 구현 선택의 차이였고,
+    사용자가 그 앱과 맞추기로 결정했다. math.floor(x+0.5)는 파이썬 내장 round()의
+    은행원 반올림(.5를 짝수로)과 달리 .5를 항상 올림한다 - 거래 수량처럼 매번
+    같은 방향으로 끝나는 값에는 짝수/홀수에 따라 결과가 흔들리는 은행원 반올림보다
+    이쪽이 예측 가능하다."""
+    return math.floor(budget / price + 0.5) if price > 0 else 0
+
+
 class PositionState:
     """무한매수법 한 포지션의 상태(평단가·보유수량·T값·사이클·쿼터손절모드)를 담는 값 객체.
 
@@ -291,7 +305,7 @@ def build_guide(state, current_price=None):
                 {
                     "action": "buy", "orderType": "LOC", "label": f"Quarter-Cut Buy ({state.quarter_cut_round}/10)",
                     "pct": round(cut_pct, 2), "price": buy_price,
-                    "qty": (qcr_buy_qty := math.floor(split_amt / buy_price) if buy_price > 0 else 0),
+                    "qty": (qcr_buy_qty := _buy_qty(split_amt, buy_price)),
                 },
                 {
                     "action": "sell", "orderType": "LOC", "label": "Quarter-Cut Exit Sell (1/4)",
@@ -324,17 +338,17 @@ def build_guide(state, current_price=None):
         buy_price_b = round(avg_price * (1 + star / 100) - 0.01, 4)
         orders.append({
             "action": "buy", "orderType": "LOC", "label": "Buy (Avg Price)", "pct": 0.0,
-            "price": buy_price_a, "qty": math.floor(order_amt_half / buy_price_a) if buy_price_a > 0 else 0,
+            "price": buy_price_a, "qty": _buy_qty(order_amt_half, buy_price_a),
         })
         orders.append({
             "action": "buy", "orderType": "LOC", "label": "Buy (Threshold)", "pct": round(star, 2),
-            "price": buy_price_b, "qty": math.floor(order_amt_half / buy_price_b) if buy_price_b > 0 else 0,
+            "price": buy_price_b, "qty": _buy_qty(order_amt_half, buy_price_b),
         })
     else:
         buy_price = round(avg_price * (1 + star / 100) - 0.01, 4)
         orders.append({
             "action": "buy", "orderType": "LOC", "label": "Buy (Threshold)", "pct": round(star, 2),
-            "price": buy_price, "qty": math.floor(order_amt_full / buy_price) if buy_price > 0 else 0,
+            "price": buy_price, "qty": _buy_qty(order_amt_full, buy_price),
         })
 
     buy_qty_so_far = sum(o["qty"] for o in orders if o["action"] == "buy")
