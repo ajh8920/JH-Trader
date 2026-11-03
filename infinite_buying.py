@@ -188,12 +188,14 @@ class PositionState:
         return proceeds, profit
 
     def _recalc_t(self):
-        """T값 = 매수누적액/1회매수액, 소수점 둘째자리에서 올림(원문 명시: "반올림
-        아닙니다", 2026-11-03 확인·수정 - 그동안은 올림 없이 그냥 나눈 값을 썼다).
-        단순 나눗셈보다 항상 같거나 큰 값이 나온다 - 그만큼 ☆%는 살짝 낮게,
-        전반전/후반전·쿼터손절모드 전환은 살짝 빠르게 잡힌다."""
+        """T값 = 매수누적액/1회매수액, 올림 없는 평범한 나눗셈(2026-11-03 재확인 -
+        원문 PDF엔 "소수점 둘째자리에서 올림(반올림 아닙니다)"이라고 적혀 있어 한 번
+        올림으로 바꿨었는데, 같은 실계좌(시드 $10,000, 1회투자금 $250, 매입금액
+        $735.27)를 라오어 카페 회원이 만든 참고 앱과 나란히 비교하니 그 앱은
+        올림 없는 값(2.94)을 쓰고 있었다 - 원문 문구보다 실제 커뮤니티 앱 동작에
+        맞추기로 사용자가 결정해 되돌림."""
         amt = self.split_amount
-        self.t_value = (math.ceil(self.net_deployed / amt * 100) / 100) if (amt > 0 and self.holding_qty > 0) else 0.0
+        self.t_value = (self.net_deployed / amt) if (amt > 0 and self.holding_qty > 0) else 0.0
 
 
 CRASH_DIP_MIN_LEVELS = 6  # 평소에도 항상 미리 걸어두는 기본 단계 수
