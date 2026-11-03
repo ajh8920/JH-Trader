@@ -174,8 +174,12 @@ class PositionState:
         return proceeds, profit
 
     def _recalc_t(self):
+        """T값 = 매수누적액/1회매수액, 소수점 둘째자리에서 올림(원문 명시: "반올림
+        아닙니다", 2026-11-03 확인·수정 - 그동안은 올림 없이 그냥 나눈 값을 썼다).
+        단순 나눗셈보다 항상 같거나 큰 값이 나온다 - 그만큼 ☆%는 살짝 낮게,
+        전반전/후반전·쿼터손절모드 전환은 살짝 빠르게 잡힌다."""
         amt = self.split_amount
-        self.t_value = (self.net_deployed / amt) if (amt > 0 and self.holding_qty > 0) else 0.0
+        self.t_value = (math.ceil(self.net_deployed / amt * 100) / 100) if (amt > 0 and self.holding_qty > 0) else 0.0
 
 
 CRASH_DIP_MIN_LEVELS = 6  # 평소에도 항상 미리 걸어두는 기본 단계 수
