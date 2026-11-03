@@ -2983,14 +2983,19 @@ def admin_debug_recent_issues():
     전체 목록과 대조해야 한다. 단, 이건 "지금" 가격 기준 재계산이라 18시 제출
     당시와 current_price가 다르면 크래시딥 레벨 수 등이 달라질 수 있다 -
     avg_price/T값/분할금액처럼 가격과 무관한 값은 그 날 체결 이력이 안 바뀌었다면
-    동일하다). 메리츠 API 호출이 섞여 있어 기본값(off)으로 두어 불필요한 호출을
-    피한다."""
+    동일하다). guide_previews에는 완전자동(메리츠 실계좌) 포지션뿐 아니라
+    "실전현황"(수기 기록, InfinitePosition) 포지션도 source="manual_live_tracker"로
+    같이 담긴다(2026-11-03 추가, 사용자가 실전현황 화면 캡처를 보여주며 수량이
+    이상하다고 물었을 때 - 이 둘은 완전히 별개의 기록이라 화면에 보이는 수량이
+    실계좌 주문과 다를 수 있고, 그게 버그가 아니라 서로 다른 seed/분할수/매매
+    이력 때문인지 직접 대조해야 확인 가능하다). 메리츠 API 호출이 섞여 있어
+    기본값(off)으로 두어 불필요한 호출을 피한다."""
     secret = os.environ.get("CRON_SECRET")
     if not secret or not hmac.compare_digest(request.headers.get("X-Cron-Secret", ""), secret):
         return jsonify({"error": "인증 실패"}), 403
 
     from zoneinfo import ZoneInfo
-    from models import AutoInfinitePosition, AutoInfiniteOrder, OpsHeartbeat, VrReservedOrder
+    from models import AutoInfinitePosition, AutoInfiniteOrder, InfinitePosition, OpsHeartbeat, VrReservedOrder
 
     try:
         days = max(1, min(30, int(request.args.get("days", 3))))
@@ -3037,6 +3042,22 @@ def admin_debug_recent_issues():
                     guide_previews.append({"positionId": p.id, "ticker": p.ticker, "error": str(e)})
         except MeritzApiError as e:
             guide_previews.append({"error": f"메리츠 연결 실패: {e}"})
+
+        from live_tracker import compute_position_status
+        manual_positions = InfinitePosition.query.order_by(InfinitePosition.id).all()
+        for p in manual_positions:
+            current_price = None
+            data, _ = fh_get("/quote", DEFAULT_FINNHUB_KEY, {"symbol": p.ticker})
+            if data and data.get("c"):
+                current_price = data["c"]
+            status = compute_position_status(p, current_price)
+            guide_previews.append({
+                "source": "manual_live_tracker", "positionId": p.id, "userId": p.user_id,
+                "ticker": p.ticker, "version": p.version, "seed": p.seed, "splits": p.splits,
+                "currentPrice": current_price, "holdingQty": status.get("holdingQty"),
+                "avgPrice": status.get("avgPrice"), "splitAmount": status.get("splitAmount"),
+                "recommendation": status.get("recommendation"),
+            })
 
     return jsonify(sanitize_json({
         "sinceUtc": since.isoformat(),
