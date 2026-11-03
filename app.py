@@ -2975,12 +2975,22 @@ def admin_debug_recent_issues():
     비밀을 쓴다. 읽기 전용이라 CRON_SECRET이 노출돼도 주문/자금 이동은
     불가능하다(RULES.md R10 - 비밀은 .env/Render 환경변수로만).
 
-    ?days=N(기본 3)으로 조회 기간을 넓힐 수 있다."""
+    ?days=N(기본 3)으로 조회 기간을 넓힐 수 있다. ?guide=1을 주면 활성 완전자동
+    포지션들의 "지금 이 순간" 가이드(compute_live_status의 recommendation)도
+    같이 담아 돌려준다(2026-11-03 추가, 사용자 질문: "오늘 매매 중 폭락대비
+    1단계인 88.33은 왜 주문을 넣지 않았느냐" - 가이드 줄 중 어떤 게 왜
+    스킵/거부됐는지는 bad_orders(실제 제출 시도만 기록됨)만으론 못 보고 가이드
+    전체 목록과 대조해야 한다. 단, 이건 "지금" 가격 기준 재계산이라 18시 제출
+    당시와 current_price가 다르면 크래시딥 레벨 수 등이 달라질 수 있다 -
+    avg_price/T값/분할금액처럼 가격과 무관한 값은 그 날 체결 이력이 안 바뀌었다면
+    동일하다). 메리츠 API 호출이 섞여 있어 기본값(off)으로 두어 불필요한 호출을
+    피한다."""
     secret = os.environ.get("CRON_SECRET")
     if not secret or not hmac.compare_digest(request.headers.get("X-Cron-Secret", ""), secret):
         return jsonify({"error": "인증 실패"}), 403
 
-    from models import AutoInfiniteOrder, OpsHeartbeat, VrReservedOrder
+    from zoneinfo import ZoneInfo
+    from models import AutoInfinitePosition, AutoInfiniteOrder, OpsHeartbeat, VrReservedOrder
 
     try:
         days = max(1, min(30, int(request.args.get("days", 3))))
@@ -3001,11 +3011,43 @@ def admin_debug_recent_issues():
         VrReservedOrder.cancelled.is_(True), VrReservedOrder.created_at >= since,
     ).order_by(VrReservedOrder.created_at.desc()).limit(50).all()
 
+    today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d")
+    today_orders = AutoInfiniteOrder.query.filter(
+        AutoInfiniteOrder.trade_date == today,
+    ).order_by(AutoInfiniteOrder.id.asc()).all()
+
+    guide_previews = []
+    if request.args.get("guide") == "1":
+        import auto_infinite
+        from meritz_api import MeritzClient, MeritzApiError
+        try:
+            client = MeritzClient()
+            positions = AutoInfinitePosition.query.filter_by(is_active=True).all()
+            for p in positions:
+                try:
+                    status = auto_infinite.compute_live_status(p, client)
+                    guide_previews.append({
+                        "positionId": p.id, "ticker": p.ticker,
+                        "currentPrice": status["currentPrice"], "holdingQty": status["holdingQty"],
+                        "avgPrice": status["avgPrice"], "cycleSeed": status["cycleSeed"],
+                        "splitAmount": status["splitAmount"], "tValue": status["tValue"],
+                        "recommendation": status["recommendation"],
+                    })
+                except MeritzApiError as e:
+                    guide_previews.append({"positionId": p.id, "ticker": p.ticker, "error": str(e)})
+        except MeritzApiError as e:
+            guide_previews.append({"error": f"메리츠 연결 실패: {e}"})
+
     return jsonify(sanitize_json({
         "sinceUtc": since.isoformat(),
+        "today": today,
         "autoInfiniteBadOrders": [
             {**o.to_dict(), "positionId": o.position_id, "rawResponse": o.raw_response}
             for o in bad_orders
+        ],
+        "autoInfiniteTodayOrders": [
+            {**o.to_dict(), "positionId": o.position_id, "rawResponse": o.raw_response}
+            for o in today_orders
         ],
         "opsHeartbeatErrors": [
             {"component": h.component, "lastError": h.last_error,
@@ -3014,6 +3056,7 @@ def admin_debug_recent_issues():
             for h in heartbeat_errors
         ],
         "vrCancelledOrders": [o.to_dict() for o in vr_cancelled],
+        "guidePreviews": guide_previews,
     }))
 
 
