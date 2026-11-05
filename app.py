@@ -3139,7 +3139,7 @@ for _view in (
     kakao_test_message,
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
     admin_set_trade_alert_email, admin_test_trade_alert_email, cron_run_daily_batch,
-    cron_run_auto_infinite,
+    cron_run_auto_infinite, admin_reset_auto_infinite_daily_guard,
     persona_debate_start,
 ):
     csrf.exempt(_view)
