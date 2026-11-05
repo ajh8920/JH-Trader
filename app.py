@@ -2363,17 +2363,21 @@ def _submit_vr_ladder(dry_run=True):
                 results.append({"action": action, "qty": o["qty"], "price": o["price"],
                                  "ok": True, "result": res})
                 if not dry_run and res.get("oderRsevMstNo"):
+                    # 주문마다 바로 커밋한다(2026-11-06) - 예전엔 사다리 전체를 보낸 뒤
+                    # 마지막에 한 번만 커밋해서, 그 사이 서버가 재시작/오류로 끊기면
+                    # 메리츠엔 이미 접수된 54건의 기록이 통째로 사라졌고, 15분 뒤 다음
+                    # 크론이 "아직 제출 안 됨"으로 보고 같은 사다리를 또 제출했다(10/26
+                    # 실제 발생 - 56.35 매수가 두 벌 체결됨).
                     db.session.add(VrReservedOrder(
                         action=action, qty=o["qty"], price=o["price"],
                         start_date=ladder["startDate"], end_date=ladder["endDate"],
                         oder_rsev_mst_no=str(res["oderRsevMstNo"]),
                         oder_rsev_mst_date=res["oderRsevMstDate"],
                     ))
+                    db.session.commit()
             except MeritzApiError as e:
                 results.append({"action": action, "qty": o["qty"], "price": o["price"],
                                  "ok": False, "error": str(e)})
-    if not dry_run:
-        db.session.commit()
     return {"cycleLabel": ladder["cycleLabel"], "startDate": ladder["startDate"],
             "endDate": ladder["endDate"], "orders": results}
 
@@ -2435,6 +2439,27 @@ def _check_vr_reserved_cancellations():
     db.session.commit()
 
 
+def _claim_vr_ladder_submission(end_date):
+    """사이클(종료일) 하나당 사다리 제출을 딱 한 번만 허용하는 선점 표시를 남긴다
+    (2026-11-06 추가). 무한매수의 auto_last_run_date "선점 커밋"과 같은 원리 -
+    실제 제출 전에 먼저 기록해야 워커 2개/크론 중복 호출/중간 재시작 어느
+    경우에도 같은 사다리가 두 번 나가지 않는다. OpsHeartbeat.component가 unique라
+    삽입이 원자적으로 한 번만 성공한다(vr_deposit_reminder_sent와 같은 방식 -
+    ops 대시보드는 정해진 컴포넌트 목록만 보므로 이 행은 표시되지 않는다).
+    True면 이번 호출이 제출 권한을 얻은 것이다."""
+    from sqlalchemy.exc import IntegrityError
+    from models import OpsHeartbeat
+
+    db.session.add(OpsHeartbeat(component=f"vr_ladder_submitted:{end_date}",
+                                last_success_at=datetime.utcnow()))
+    try:
+        db.session.commit()
+        return True
+    except IntegrityError:
+        db.session.rollback()
+        return False
+
+
 def _check_vr_cycle_submission(today_str):
     """"적립식" 탭의 활성 사이클(Done=N) 시작일이 오늘이면 그 사이클의 사다리를
     자동으로 VR 계좌에 제출한다(2026-10-26 사용자 요청: "활성화된 row의 start
@@ -2454,7 +2479,7 @@ def _check_vr_cycle_submission(today_str):
     if not cycle or cycle["startDate"] != today_compact:
         return
     already = VrReservedOrder.query.filter_by(end_date=cycle["endDate"]).first()
-    if already:
+    if already or not _claim_vr_ladder_submission(cycle["endDate"]):
         return
 
     result = _submit_vr_ladder(dry_run=False)
@@ -2545,7 +2570,15 @@ def vr_status():
 def vr_submit_ladder():
     from meritz_api import MeritzApiError
 
+    from models import VrReservedOrder
+    import vr_sheet_orders
+
     dry_run = bool((request.json or {}).get("dryRun", True))
+    if not dry_run:
+        end_date = vr_sheet_orders.read_order_ladder()["endDate"]
+        if (VrReservedOrder.query.filter_by(end_date=end_date).first()
+                or not _claim_vr_ladder_submission(end_date)):
+            return jsonify({"error": "이번 사이클 사다리는 이미 제출됐습니다 - 중복 제출을 막았습니다"}), 409
     try:
         result = _submit_vr_ladder(dry_run=dry_run)
     except MeritzApiError as e:
