@@ -3080,6 +3080,43 @@ def admin_debug_recent_issues():
     }))
 
 
+@app.route("/api/admin/auto-infinite/reset-daily-guard", methods=["POST"])
+def admin_reset_auto_infinite_daily_guard():
+    """완전자동 포지션의 "오늘 이미 제출함" 가드(auto_last_run_date)를 그날 안에
+    강제로 풀어, 같은 날 다시 제출을 시도할 수 있게 한다(2026-11-05 추가, 사용자
+    요청: "다시 매매할 수 있도록 초기화" - clamp 버그로 잘못 계산된 가격의 주문
+    5건이 이미 제출된 뒤 clamp를 제거하는 수정을 배포했는데, auto_last_run_date가
+    이미 오늘로 찍혀 있어 수정된 로직으로 재제출이 자동으로는 안 됐다).
+
+    DB에 직접 접근할 방법이 없어(RULES.md R17과 같은 이유 - 프로덕션 Postgres
+    외부 URL을 받지 못함) CRON_SECRET 인증 라우트로 대신한다. 기존에 이미 접수된
+    주문(AutoInfiniteOrder 레코드, 메리츠에 실제로 걸려있는 주문)은 건드리지
+    않는다 - 이 엔드포인트는 가드만 풀 뿐이고, 브로커에 이미 걸린 주문을
+    취소하는 기능은 이 코드베이스에 없으므로(일반 주문 취소 API 미구현,
+    meritz_api.py엔 예약주문 취소만 있음) 중복 제출을 피하려면 호출 전에
+    사용자가 메리츠 앱에서 기존 미체결 주문을 먼저 직접 취소해야 한다."""
+    secret = os.environ.get("CRON_SECRET")
+    if not secret or not hmac.compare_digest(request.headers.get("X-Cron-Secret", ""), secret):
+        return jsonify({"error": "인증 실패"}), 403
+
+    from models import AutoInfinitePosition
+    body = request.json or {}
+    try:
+        position_id = int(body.get("positionId"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "positionId가 필요합니다"}), 400
+
+    position = AutoInfinitePosition.query.filter_by(id=position_id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+
+    position.auto_last_run_date = None
+    position.auto_last_run_had_error = False
+    position.auto_last_failure_notified_date = None
+    db.session.commit()
+    return jsonify({"ok": True, "positionId": position.id, "ticker": position.ticker})
+
+
 # JSON API는 CSRF 토큰 대신 로그인 세션 + JSON Content-Type(교차 출처 요청 시
 # 브라우저 프리플라이트로 차단됨) 폼 기반 CSRF 검사에서 제외합니다.
 for _view in (
