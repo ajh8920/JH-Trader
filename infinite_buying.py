@@ -198,24 +198,27 @@ class PositionState:
         self.t_value = (self.net_deployed / amt) if (amt > 0 and self.holding_qty > 0) else 0.0
 
 
-CRASH_DIP_MIN_LEVELS = 6  # 평소에도 항상 미리 걸어두는 기본 단계 수
+CRASH_DIP_MAX_DEVIATION_PCT = 18.0  # 현재가 대비 이 비율 밑으로 떨어지는 단계는 생성하지 않는다
 
 
-def _crash_dip_extra_buys(existing_buy_qty, budget, current_price, floor_price=None,
-                           min_levels=CRASH_DIP_MIN_LEVELS):
+def _crash_dip_extra_buys(existing_buy_qty, budget, current_price, floor_price=None):
     """폭락장 대비 추가 매수 - 라오어 공식 V2.2 방법론에는 없는 사용자 정의 확장
     (2026-10-22 추가, 실사용자 요청). 1회 투자금(budget)을 기준으로, 이미 걸려있는
     매수 주문들의 수량 합(existing_buy_qty) 바로 다음 단계부터 1주씩 LOC 매수를
     추가로 둔다(가격 = budget/k, k=existing+1, existing+2, ...).
 
-    **항상 최소 min_levels단계는 미리 걸어둔다(2026-10-22 설계 변경)** - 처음엔
-    "현재가로 budget을 다 쓰면 더 살 수 있을 때만" 조건부로 걸었는데, 이 가이드가
-    계산되는 시점(한국시간 17시, 미국 프리마켓)의 가격은 전날 종가에 가깝고,
-    실제 폭락은 몇 시간 뒤 정규장 중에 일어난다 - 즉 "폭락이 이미 일어난 뒤에만
-    대비 주문을 거는" 모순이 있었다(실사용자 지적). 그래서 평소에도 기본
-    min_levels단계는 조건 없이 걸어두고(평소엔 체결 조건이 안 맞아 그냥 도망
-    주문으로 남음), 장전 시세가 이미 낮게 나오면(current_price) 그만큼 더
-    깊게 확장한다 - 두 신호를 OR로 합친다.
+    **현재가 대비 CRASH_DIP_MAX_DEVIATION_PCT% 안쪽인 단계까지만 생성한다
+    (2026-11-05 설계 변경)** - 원래는(2026-10-22) 깊이와 무관하게 항상 최소
+    6단계를 걸어뒀다("폭락이 이미 일어난 뒤에만 대비 주문을 거는" 모순을 피하려는
+    의도). 그런데 이 가이드가 계산되는 시점의 시세로 체결 가능 여부를 판단하는 게
+    아니라, 메리츠가 "주문 접수" 자체를 현재가(NBBO) 대비 괴리율로 거부한다는
+    게 실측으로 드러났다(2026-11-05, "LimitPrice {84.07 > 35.86% Limit 30.00%
+    thru nbbo}" - 지정가가 그날 나중에 체결될 수 있는지와 무관하게, 접수 시점에
+    이미 너무 멀면 그 자리에서 거부됨). 같은 날 clamp(현재가 괴리율에 맞춰 가격을
+    당겨 제출하던 안전장치)도 제거했으므로, 깊은 단계를 그대로 제출하면 매번
+    거부되고 그때마다 실패 메일만 쌓인다 - 실현 가능성이 없는 단계는 애초에
+    제출 대상에서 뺀다. 메리츠의 실제 하드 리밋이 20~30%대로 들쭉날쭉 관측돼
+    더 엄격한 쪽(18%, 20%보다 약간의 여유)을 기준으로 삼는다.
 
     floor_price: 이미 있는 매수 주문들 중 가장 낮은 가격 - 그보다 낮은 레벨만
     추가한다(이미 있는 주문과 가격이 겹치거나 역전되는 것을 막는 안전장치).
@@ -225,17 +228,16 @@ def _crash_dip_extra_buys(existing_buy_qty, budget, current_price, floor_price=N
     쌓아두면, 종가가 그 중 여러 개의 지정가 밑으로 떨어지는 날 전부 한꺼번에
     체결된다(전부 그 낮은 종가에) - 평소엔 발동할 일이 없지만 폭락장에만
     조용히 더 많이 담기는 효과를 낸다."""
-    if budget <= 0 or existing_buy_qty < 0:
+    if budget <= 0 or existing_buy_qty < 0 or not current_price or current_price <= 0:
         return []
-    reactive_count = 0
-    if current_price and current_price > 0:
-        reactive_count = max(0, math.floor(budget / current_price) - existing_buy_qty)
-    level_count = min(max(min_levels, reactive_count), 30)  # 극단값 방어(동전주 등)
+    realistic_floor = current_price * (1 - CRASH_DIP_MAX_DEVIATION_PCT / 100)
 
     orders = []
     k = existing_buy_qty + 1
-    while len(orders) < level_count:
+    while len(orders) < 30:
         price_k = round(budget / k, 4)
+        if price_k < realistic_floor:
+            break
         if floor_price is not None and price_k >= floor_price:
             k += 1
             continue

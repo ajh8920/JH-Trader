@@ -3492,6 +3492,30 @@ def _run_auto_infinite_submissions(today):
             except Exception as e:
                 print(f"[무한매수 자동매매] 포지션 {position.id} 알림 발송 오류: {e}", flush=True)
 
+            # 메리츠는 "주문 접수" 응답(rsp_cd 0001)을 줘놓고도 몇 초 뒤 NBBO 괴리율
+            # 심사에서 거부하는 경우가 있다(2026-11-05 실측: 접수 2초 뒤 "LimitPrice
+            # {84.07 > 35.86% Limit 30.00% thru nbbo}"로 거부). place_overseas_order
+            # 호출 자체는 성공했으니 submit_order의 실패 메일 경로를 안 타서, 이걸
+            # 안 잡으면 다음날 06~08시 체결확인 때까지 아무도 모른다. 제출 직후
+            # 한 번 더 조회해 같은 세션에서 잡히는 거부를 바로 메일로 알린다.
+            try:
+                time.sleep(3)
+                _, newly_rejected = auto_infinite.refresh_fill_status(position, client)
+                if newly_rejected and position.alert_email:
+                    import email_utils
+                    import email_templates
+                    reason = "\n".join(
+                        f'{o.label}({o.order_type.upper()} ${o.price:,.2f}): {reas}'
+                        for o, reas in newly_rejected
+                    )
+                    html, body = email_templates.build_auto_infinite_failure_email(
+                        position, f"제출 직후 재검사에서 주문 거부를 발견했습니다 -\n{reason}")
+                    email_utils.send_email(position.alert_email,
+                                            f"[JH-Trader] {position.ticker} 주문 거부 발견", body, html=html)
+            except Exception as e:
+                db.session.rollback()
+                print(f"[무한매수 자동매매] 포지션 {position.id} 제출 직후 거부 확인 오류: {e}", flush=True)
+
 
 def _refresh_all_auto_infinite_fills():
     """LOC/MOC 주문은 제출(17시) 당일이 아니라 미국장 마감 시각(한국시간 새벽
