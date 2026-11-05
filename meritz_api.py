@@ -418,11 +418,27 @@ class MeritzClient:
         end_date: "YYYYMMDD". 제출된 예약주문 목록과 상태를 확인할 때 쓴다.
         각 행의 acml_cntg_qty(누적체결수량)를 rsev_qty(예약수량)와 비교하면
         체결 완료 여부를, cncl_able_yn/rsev_cncl_yn으로 취소 가능/이미 취소
-        여부를 알 수 있다(공식 문서 확인, 2026-10-25)."""
-        body = self._get("/trading/v1/overseas/reserved-orders",
-                          {"iqry_sta_date": start_date, "iqry_fin_date": end_date,
-                           "seln_byov_clcd": "0"})
-        return body.get("data") or []
+        여부를 알 수 있다(공식 문서 확인, 2026-10-25).
+
+        실측 필드 의미(2026-11-06 확인): odqt=주문수량, acml_cntg_qty=누적체결수량,
+        rsev_acpt_srno=예약번호(제출 응답의 oder_rsev_mst_no와 같은 값). rsev_qty와
+        cncl_able_yn은 체결 여부와 무관하게 0.0/"N"으로 내려오는 경우가 많아 체결
+        판정에 쓰면 안 된다.
+
+        한 번에 30건까지만 내려오므로 tr_cont/tr_cont_key를 **쿼리 파라미터로**
+        넘겨 끝까지 이어 받는다(헤더로 보내면 0건이 온다 - 실측). 키는 공백까지
+        원본 그대로 써야 한다(공식 예제 주의사항)."""
+        params = {"iqry_sta_date": start_date, "iqry_fin_date": end_date, "seln_byov_clcd": "0"}
+        rows, key = [], None
+        for _ in range(50):
+            query = dict(params, tr_cont="1", tr_cont_key=key) if key else params
+            body = self._get("/trading/v1/overseas/reserved-orders", query)
+            rows += body.get("data") or []
+            next_key = body.get("tr_cont_key")
+            if body.get("rsp_cd") != "5762" or not next_key or next_key == key:
+                return rows
+            key = next_key
+        raise MeritzApiError("예약주문 연속조회가 50페이지를 넘었습니다 - 중단")
 
     def cancel_overseas_reserved_order(self, oder_rsev_mst_date: str, oder_rsev_mst_no,
                                         dry_run: bool = True):

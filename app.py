@@ -2413,22 +2413,24 @@ def _check_vr_reserved_cancellations():
         except MeritzApiError as e:
             print(f"[VR 취소체크] 예약주문 조회 실패: {e}", flush=True)
             continue
+        # 예약번호로 정확히 짝짓는다(2026-11-06) - 예전엔 가격+rsev_qty로 찾았는데,
+        # rsev_qty는 체결 후 0이 돼 짝이 안 맞았고(실측), 같은 가격의 예약이 두 벌
+        # 있으면 엉뚱한 쪽을 볼 수도 있었다.
+        by_no = {(str(r.get("rsev_acpt_date")), str(r.get("rsev_acpt_srno"))): r for r in rows}
         for entry in entries:
-            match = next((
-                r for r in rows
-                if r.get("seln_byov_clcd") == side_code[entry.action]
-                and abs(float(r.get("ovrs_stck_oder_prc") or 0) - entry.price) < 0.005
-                and int(float(r.get("rsev_qty") or 0)) == entry.qty
-            ), None)
-            if not match:
+            match = by_no.get((entry.oder_rsev_mst_date, entry.oder_rsev_mst_no))
+            if not match or match.get("seln_byov_clcd") != side_code[entry.action]:
                 continue
             if match.get("rsev_cncl_yn") == "Y":  # 이미 취소된 건(수동 취소 포함)
                 entry.cancelled = True
                 continue
             acml = int(float(match.get("acml_cntg_qty") or 0))
-            rsev_qty = int(float(match.get("rsev_qty") or 0))
-            if acml < rsev_qty:
+            if acml < int(float(match.get("odqt") or entry.qty)):
                 continue  # 아직 미체결 - 다음 번 체크에서 다시 본다
+            if match.get("cncl_able_yn") != "Y":
+                # 메리츠가 전량체결된 예약을 스스로 종료해 취소할 대상이 없다 - 추적만 끝낸다.
+                entry.cancelled = True
+                continue
             try:
                 client.cancel_overseas_reserved_order(
                     entry.oder_rsev_mst_date, entry.oder_rsev_mst_no, dry_run=False)
@@ -2474,12 +2476,32 @@ def _check_vr_cycle_submission(today_str):
     import email_utils
     import email_templates
 
+    from datetime import timedelta
+
     cycle = vr_sheet_orders.read_active_cycle()
-    today_compact = today_str.replace("-", "")
-    if not cycle or cycle["startDate"] != today_compact:
+    if not cycle:
+        return
+    # 시작일 "당일"만 보던 조건을 시작일~시작일+3일로 넓혔다(2026-11-06) - 이 함수는
+    # 평일 18시에만 불리므로(cron 주말 가드) 일요일 시작 사이클은 예전 조건으로는
+    # 영영 제출되지 않았다. 월요일 18시 제출이어도 그날 밤 미국장 첫 세션에 들어간다.
+    # 3일 상한은 시트의 Done 갱신이 늦어 지난 사이클이 활성으로 남아 있을 때 엉뚱한
+    # 시점에 제출되는 걸 막기 위함이다.
+    today = datetime.strptime(today_str, "%Y-%m-%d").date()
+    start = datetime.strptime(cycle["startDate"], "%Y%m%d").date()
+    end = datetime.strptime(cycle["endDate"], "%Y%m%d").date()
+    if not (start <= today <= min(end, start + timedelta(days=3))):
         return
     already = VrReservedOrder.query.filter_by(end_date=cycle["endDate"]).first()
-    if already or not _claim_vr_ladder_submission(cycle["endDate"]):
+    if already:
+        return
+    # "적립식" 탭의 활성 사이클과 "주문" 탭 사다리의 종료일이 다르면 주문 탭이 아직
+    # 새 사이클로 안 넘어간 것이다 - 지난 사다리를 새 사이클로 내보내지 않도록 중단한다
+    # (예외로 올려 ops 하트비트 오류로 남긴다).
+    ladder_end = vr_sheet_orders.read_order_ladder()["endDate"]
+    if ladder_end != cycle["endDate"]:
+        raise RuntimeError(f"주문 탭 종료일({ladder_end})이 적립식 활성 사이클 종료일"
+                           f"({cycle['endDate']})과 달라 VR 제출을 중단했습니다")
+    if not _claim_vr_ladder_submission(cycle["endDate"]):
         return
 
     result = _submit_vr_ladder(dry_run=False)
