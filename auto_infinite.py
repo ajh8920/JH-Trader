@@ -444,6 +444,26 @@ def _notify_orders_submitted_batch(position, submitted_orders):
         email_utils.send_email(position.alert_email, title, body, html=html)
 
 
+def cancel_order(order, client, dry_run=False):
+    """AutoInfiniteOrder 한 건을 메리츠에서 실제로 취소하고 status를
+    "cancelled"로 갱신한다(2026-11-05 추가, 사용자 요청: "하나라도 실패할
+    경우 모든 매수를 취소하고 실패 메일을"). 부분체결된 주문은 남은
+    수량(qty - filled_qty)만 취소 요청한다 - 이미 전량 체결됐으면 취소할
+    대상이 없으므로 아무 것도 하지 않는다. 이미 거부/취소/체결 확인된
+    주문(status != "submitted")은 호출부가 먼저 걸러야 한다 - 이 함수는
+    그 상태를 다시 확인하지 않는다."""
+    remaining_qty = order.qty - (order.filled_qty or 0)
+    if remaining_qty <= 0:
+        return
+    oder_date = order.trade_date.replace("-", "")
+    client.cancel_overseas_order(
+        order.order_type, order.broker_order_no, oder_date, remaining_qty, dry_run=dry_run,
+    )
+    if not dry_run:
+        order.status = "cancelled"
+        db.session.commit()
+
+
 def submit_order(position, client, action, order_type, qty, price, label, dry_run=True,
                   notify=True):
     """주문 한 줄(가이드가 만든 것이든, 1일차처럼 사용자가 직접 입력한 것이든)을

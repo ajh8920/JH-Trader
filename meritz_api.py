@@ -300,6 +300,48 @@ class MeritzClient:
         return {**plan, "executed": True, "raw": body,
                 "orderNo": (body.get("data") or {}).get("oder_no")}
 
+    def cancel_overseas_order(self, order_type: str, orgl_oder_no, oder_date: str, qty: int,
+                               dry_run: bool = True):
+        """해외주식 주문 취소(POST /trading/v1/overseas/orders/cancel, 공식
+        openapi.json 확인 2026-11-05) - place_overseas_order()로 제출한 당일
+        일반 주문(예약주문 아님)을 취소한다. 무한매수법 자동매매가 "한 번에
+        제출한 주문 중 하나라도 실패하면 나머지 전부 취소"(2026-11-05 사용자
+        요청)할 때 쓴다.
+
+        order_type: place_overseas_order() 제출 당시와 동일한 키("limit"/
+        "market"/"loc"/"moc") - 취소 바디의 oder_cls_code는 원주문과 반드시
+        같아야 한다(공식 문서). orgl_oder_no: 취소할 원주문번호(place_
+        overseas_order() 반환값의 orderNo, 또는 get_overseas_orders_today()
+        조회 결과의 oder_no). oder_date: 원주문을 제출한 날짜 "YYYYMMDD".
+        qty: 취소할 수량(부분체결된 주문은 호출부가 남은 수량만 넘겨야 함 -
+        이 함수는 체결 여부를 모른다).
+
+        취소 바디에는 가격/주문조건코드(ovrs_stck_oder_prc, oder_cond_cls_code)가
+        없다(공식 문서 확인) - 가격 정정이 아니라 전량/부분 취소만 지원."""
+        if order_type not in OVERSEAS_ORDER_TYPES:
+            raise ValueError(f'order_type은 {list(OVERSEAS_ORDER_TYPES)} 중 하나여야 합니다')
+        if qty <= 0:
+            raise ValueError("qty는 1 이상이어야 합니다")
+
+        plan = {"orglOderNo": str(orgl_oder_no), "qty": qty, "dry_run": dry_run}
+        if dry_run:
+            return {**plan, "executed": False,
+                    "message": "dry_run=True - 실제 취소 미실행(검증 모드)"}
+
+        cancel_body = {
+            "oder_date": oder_date,
+            "orgl_oder_no": int(orgl_oder_no),
+            "oder_cls_code": OVERSEAS_ORDER_TYPES[order_type]["oder_cls_code"],
+            "odqt": qty,
+        }
+        resp = requests.post(f"{_BASE_URL}/trading/v1/overseas/orders/cancel",
+                              headers=self._headers(), data=json.dumps(cancel_body),
+                              timeout=self.timeout)
+        body = resp.json()
+        if resp.status_code != 200:
+            raise MeritzApiError(f"해외주식 주문 취소 실패: {resp.status_code} {body}")
+        return {**plan, "executed": True, "raw": body}
+
     # ── 해외주식 예약주문(VR 전략 연동용, 2026-10-25 추가) ─────────────────────
     # place_overseas_order()는 당일 장중에만 유효한 일반 주문이다 - VR 전략처럼
     # "오늘부터 N일간, 가격이 닿으면 체결"되는 사다리 주문은 별도의 예약주문

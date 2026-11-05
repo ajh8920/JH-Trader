@@ -3425,8 +3425,19 @@ def _run_auto_infinite_submissions(today):
     today로 찍어 커밋(선점)한 뒤에야** 실제 주문을 제출한다 - 순서를 반대로 하면
     (제출부터 하고 나중에 찍으면) 두 워커가 거의 동시에 들어와 같은 포지션에
     주문을 중복 제출할 수 있다(RULES.md의 "워커 간 공유 상태" 문제, 다만 여기선
-    실제 돈이 두 번 나갈 수 있어 더 엄격하게 다룬다)."""
-    from models import AutoInfinitePosition
+    실제 돈이 두 번 나갈 수 있어 더 엄격하게 다룬다).
+
+    전량성공/전량취소 원칙(2026-11-05 추가, 사용자 요청: "모든 매매가 성공적으로
+    입력되었을때만 메일을 보내세요. 하나라도 실패할 경우 모든 매수를 취소하고
+    실패 메일을 보내십쇼. 사유와 함께") - 가이드 한 사이클의 주문(평단매수/
+    쿼터매도/목표매도/폭락대비 등)은 서로 묶여 있는 하나의 계획이라, 일부만
+    들어간 상태로 다음날 가이드가 그걸 사실로 믿고 사다리를 이어가면 전체가
+    어긋난다. 그래서 (1) 제출 중 하나라도 동기 실패(MeritzApiError)하면 그
+    즉시 나머지는 더 제출하지 않고, (2) 제출 직후 재검사(refresh_fill_status)에서
+    비동기 거부가 하나라도 발견되면, 두 경우 모두 이번에 실제로 접수된(아직
+    "submitted"인, 즉 아직 체결 전인) 나머지 주문을 전부 취소하고 사유를 담은
+    실패 메일 한 통만 보낸다. 전부 성공했을 때만 기존의 성공 알림을 보낸다."""
+    from models import AutoInfinitePosition, AutoInfiniteOrder
     from meritz_api import MeritzClient, MeritzApiError
     import auto_infinite
 
@@ -3452,7 +3463,9 @@ def _run_auto_infinite_submissions(today):
         db.session.commit()
 
         had_error = False
-        submitted_orders = []  # 루프가 끝난 뒤 한 번에 모아 알리기 위해 쌓아둔다(2026-10-23)
+        failure_reasons = []
+        submitted_orders = []  # 성공 알림용 - 전부 성공해야만 실제로 보낸다(2026-11-05)
+        submitted_order_ids = []  # 실패 시 취소 대상을 찾기 위한 이번 배치의 주문 id
         try:
             status = auto_infinite.compute_live_status(position, client)
             rec = status["recommendation"]
@@ -3461,60 +3474,93 @@ def _run_auto_infinite_submissions(today):
                     qty = order.get("qty")
                     price = order.get("price")
                     order_type = (order.get("orderType") or "").lower()
+                    label = order.get("label", "")
                     if not qty or qty <= 0:
                         continue
                     if order_type in ("loc", "limit") and (not price or price <= 0):
                         continue
                     try:
-                        auto_infinite.submit_order(
+                        result = auto_infinite.submit_order(
                             position, client, order["action"], order_type, qty, price,
-                            f"자동매매({order.get('label', '')})", dry_run=False,
-                            notify=False,
+                            f"자동매매({label})", dry_run=False, notify=False,
                         )
                         submitted_orders.append({
                             "action": order["action"], "orderType": order_type,
-                            "qty": qty, "price": price, "label": order.get("label", ""),
+                            "qty": qty, "price": price, "label": label,
                         })
+                        submitted_order_ids.append(result["order"]["id"])
                     except MeritzApiError as e:
                         had_error = True
+                        failure_reasons.append(
+                            f'{label}({order["action"]} {order_type.upper()} x{qty}주) 제출 실패: {e}')
                         print(f"[무한매수 자동매매] 포지션 {position.id} 주문 실패: {e}", flush=True)
+                        break  # 하나라도 실패하면 더 내보내지 않는다 - 전부 취소할 것이므로
         except Exception as e:
             had_error = True
+            failure_reasons.append(f"처리 오류: {e}")
             print(f"[무한매수 자동매매] 포지션 {position.id} 처리 오류: {e}", flush=True)
 
         position = AutoInfinitePosition.query.filter_by(id=position_id).first()
         position.auto_last_run_had_error = had_error
         db.session.commit()
 
-        if submitted_orders:
+        # 메리츠는 "주문 접수" 응답(rsp_cd 0001)을 줘놓고도 몇 초 뒤 NBBO 괴리율 심사에서
+        # 거부하는 경우가 있다(2026-11-05 실측: 접수 2초 뒤 "LimitPrice {84.07 > 35.86%
+        # Limit 30.00% thru nbbo}"로 거부). place_overseas_order 호출 자체는 성공했으니
+        # submit_order의 실패 메일 경로를 안 타서, 이걸 안 잡으면 다음날 06~08시
+        # 체결확인 때까지 아무도 모른다. 제출 직후 한 번 더 조회해 같은 세션에서
+        # 잡히는 거부를 찾아 failure_reasons에 합친다(전부 성공했는지의 최종 판정에
+        # 반영해야 하므로, 성공 알림을 보내기 전에 반드시 먼저 거친다).
+        if submitted_order_ids:
+            try:
+                time.sleep(3)
+                _, newly_rejected = auto_infinite.refresh_fill_status(position, client)
+                for o, reas in newly_rejected:
+                    failure_reasons.append(f'{o.label}({o.order_type.upper()} ${o.price:,.2f}): 거부 - {reas}')
+                if newly_rejected:
+                    had_error = True
+                    position.auto_last_run_had_error = True
+                    db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                failure_reasons.append(f"제출 직후 거부 확인 오류: {e}")
+                print(f"[무한매수 자동매매] 포지션 {position.id} 제출 직후 거부 확인 오류: {e}", flush=True)
+
+        if had_error:
+            # 이번 배치에서 실제로 접수되어 아직 체결 전("submitted")인 나머지 주문을
+            # 전부 취소한다 - 이미 체결/거부/취소된 건은 건드리지 않는다(cancel_order가
+            # 부분체결 잔량만 취소하므로 전량체결된 건은 자동으로 스킵된다).
+            cancel_results = []
+            if submitted_order_ids:
+                orders_to_cancel = AutoInfiniteOrder.query.filter(
+                    AutoInfiniteOrder.id.in_(submitted_order_ids),
+                    AutoInfiniteOrder.status == "submitted",
+                ).all()
+                for o in orders_to_cancel:
+                    try:
+                        auto_infinite.cancel_order(o, client, dry_run=False)
+                        cancel_results.append(f"{o.label}: 취소 완료")
+                    except Exception as e:
+                        cancel_results.append(f"{o.label}: 취소 실패({e}) - 메리츠 앱에서 직접 확인 필요")
+                        print(f"[무한매수 자동매매] 포지션 {position.id} 취소 실패: {e}", flush=True)
+
+            if position.alert_email:
+                import email_utils
+                import email_templates
+                reason = ("이번 자동매매 제출 중 일부가 실패/거부되어, 접수된 나머지 주문을 "
+                           "모두 취소했습니다.\n\n[실패 사유]\n" + "\n".join(failure_reasons))
+                if cancel_results:
+                    reason += "\n\n[취소 처리 결과]\n" + "\n".join(cancel_results)
+                html, body = email_templates.build_auto_infinite_failure_email(position, reason)
+                email_utils.send_email(position.alert_email,
+                                        f"[JH-Trader] {position.ticker} 자동매매 실패 - 전량 취소", body, html=html)
+            position.auto_last_failure_notified_date = today  # 19시 중복 알림 방지
+            db.session.commit()
+        elif submitted_orders:
             try:
                 auto_infinite._notify_orders_submitted_batch(position, submitted_orders)
             except Exception as e:
                 print(f"[무한매수 자동매매] 포지션 {position.id} 알림 발송 오류: {e}", flush=True)
-
-            # 메리츠는 "주문 접수" 응답(rsp_cd 0001)을 줘놓고도 몇 초 뒤 NBBO 괴리율
-            # 심사에서 거부하는 경우가 있다(2026-11-05 실측: 접수 2초 뒤 "LimitPrice
-            # {84.07 > 35.86% Limit 30.00% thru nbbo}"로 거부). place_overseas_order
-            # 호출 자체는 성공했으니 submit_order의 실패 메일 경로를 안 타서, 이걸
-            # 안 잡으면 다음날 06~08시 체결확인 때까지 아무도 모른다. 제출 직후
-            # 한 번 더 조회해 같은 세션에서 잡히는 거부를 바로 메일로 알린다.
-            try:
-                time.sleep(3)
-                _, newly_rejected = auto_infinite.refresh_fill_status(position, client)
-                if newly_rejected and position.alert_email:
-                    import email_utils
-                    import email_templates
-                    reason = "\n".join(
-                        f'{o.label}({o.order_type.upper()} ${o.price:,.2f}): {reas}'
-                        for o, reas in newly_rejected
-                    )
-                    html, body = email_templates.build_auto_infinite_failure_email(
-                        position, f"제출 직후 재검사에서 주문 거부를 발견했습니다 -\n{reason}")
-                    email_utils.send_email(position.alert_email,
-                                            f"[JH-Trader] {position.ticker} 주문 거부 발견", body, html=html)
-            except Exception as e:
-                db.session.rollback()
-                print(f"[무한매수 자동매매] 포지션 {position.id} 제출 직후 거부 확인 오류: {e}", flush=True)
 
 
 def _refresh_all_auto_infinite_fills():
