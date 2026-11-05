@@ -444,73 +444,24 @@ def _notify_orders_submitted_batch(position, submitted_orders):
         email_utils.send_email(position.alert_email, title, body, html=html)
 
 
-# 현재가 대비 지정가 괴리율 상한(2026-10-22 추가) - 지인 실사용 팁: "무매 앱에
-# 나온 금액이 T값 기준으로 계산되는데, T값이 높아지면(쿼터손절모드·폭락대비
-# 사다리 등) 그 가격이 현재가에서 너무 멀어져 증권사가 'LOC 주문을 현재가
-# 대비 일정% 이상 벗어난 가격으로는 못 걸게' 거부한다 - 그래서 걸 수 있는
-# 최대치로 대신 주문을 건다"는 실전 대응을 그대로 반영했다.
-#
-# 2026-10-27 실측치로 교체 - 처음엔 공개 문서로 정확한 괴리율을 확인하지
-# 못해 보수적으로 25%를 썼는데, 그 25%가 메리츠의 실제 한도보다 느슨해서
-# "Buy (Threshold)" 주문이 10/23·10/26 두 번 거부당했다(메리츠 거부사유
-# 원문: "LimitPrice {101.65 > 23.32% Limit 20.00% thru nbbo}" - 즉 NBBO
-# 대비 20.00%가 메리츠의 실제 하드 리밋). 20%에 딱 맞추면 우리가 주문을
-# 계산한 시점과 메리츠가 밤새 NBBO로 재검사하는 시점 사이에 가격이 조금만
-# 움직여도 다시 걸릴 수 있어, 18%로 여유를 둔다.
-MAX_PRICE_DEVIATION_PCT = 18.0
-
-
-def _clamp_price_to_broker_band(client, position, action, order_type, price, current_price=None):
-    """지정가/LOC 주문 가격이 현재가 대비 MAX_PRICE_DEVIATION_PCT를 넘게
-    벗어나 있으면, 증권사가 거부할 가능성이 높으므로 걸 수 있는 최대치(현재가
-    기준 한도)로 당겨서 반환한다. (조정됨 여부, 조정된 가격)을 돌려준다 -
-    시세 조회 자체가 실패하면 조정하지 않고 원래 가격을 그대로 쓴다(주문
-    제출 자체를 막지 않기 위함 - 실패하면 기존처럼 MeritzApiError로 남는다).
-
-    current_price를 호출부가 이미 알고 있으면(예: _run_auto_infinite_submissions가
-    가이드 전체를 계산할 때 한 번 조회해둔 값) 그대로 넘겨 받아 재조회하지
-    않는다 - 가이드 10건을 매번 각각 시세 조회하면 불필요하게 API 호출이 늘어난다."""
-    if order_type not in ("loc", "limit") or not price or price <= 0:
-        return False, price
-    if current_price is None:
-        try:
-            current_price = client.get_overseas_price(position.ticker, position.exchange)
-        except MeritzApiError:
-            return False, price
-    if not current_price or current_price <= 0:
-        return False, price
-
-    # 2026-10-27 수정 - 원래는 "매수는 너무 쌀 때만, 매도는 너무 비쌀 때만"
-    # 한쪽만 막았는데, 실제 거부 사례(메리츠 원문: "LimitPrice {101.65 > 23.32%
-    # Limit 20.00% thru nbbo}")를 보면 메리츠의 호가 제한은 매수/매도 구분 없이
-    # NBBO 기준 양방향으로 걸린다 - "임계값 매수"(Buy Threshold)처럼 현재가보다
-    # 훨씬 높은 가격으로 거는 매수 주문(돌파 매수)이 바로 이 상한에 걸려
-    # 거부됐다. 그래서 매수/매도 둘 다 상/하한을 같이 확인한다.
-    floor_price = round(current_price * (1 - MAX_PRICE_DEVIATION_PCT / 100), 4)
-    ceiling_price = round(current_price * (1 + MAX_PRICE_DEVIATION_PCT / 100), 4)
-    if price < floor_price:
-        return True, floor_price
-    if price > ceiling_price:
-        return True, ceiling_price
-    return False, price
-
-
 def submit_order(position, client, action, order_type, qty, price, label, dry_run=True,
-                  current_price=None, skip_if_out_of_band=False, notify=True):
+                  notify=True):
     """주문 한 줄(가이드가 만든 것이든, 1일차처럼 사용자가 직접 입력한 것이든)을
-    실제로 메리츠에 제출한다(dry_run=True면 API 호출 없이 미리보기만). 성공/실패
-    모두 AutoInfiniteOrder에 기록한다(실패도 감사 로그로 남겨야 "왜 매수가 안
-    됐는지" 나중에 추적 가능). cycle_no는 표시용으로 제출 시점 재생 결과에서
-    가져온다. current_price는 _clamp_price_to_broker_band로 그대로 전달한다.
+    계산된 가격 그대로 메리츠에 제출한다(dry_run=True면 API 호출 없이 미리보기만).
+    성공/실패 모두 AutoInfiniteOrder에 기록한다(실패도 감사 로그로 남겨야 "왜
+    매수가 안 됐는지" 나중에 추적 가능). cycle_no는 표시용으로 제출 시점 재생
+    결과에서 가져온다.
 
-    skip_if_out_of_band=True(폭락장 대비 추가매수 사다리 전용, 2026-10-22 추가) -
-    사다리는 한 번에 여러 레벨(최대 30개)을 동시에 제출하는데, 밴드 밖인 레벨을
-    전부 허용 한도가로 clamp하면 서로 다른 레벨들이 같은 가격 하나로 뭉쳐 중복
-    주문이 된다(실측: 현재가 $92 기준 25% 밴드 $69.10 아래 레벨 5개가 전부
-    $69.10 하나로 뭉침). 그래서 사다리 레벨은 clamp 대신 그날은 아예 건너뛴다 -
-    LOC는 하루짜리 주문이라 다음날 그날의 새 현재가로 다시 계산되므로, 밴드
-    안으로 들어오면 자연스럽게 다시 걸린다. 메인 주문(평단/목표%, 사다리가
-    아닌 단일 주문)은 원래대로 clamp를 쓴다(중복 위험이 없음).
+    2026-10-22~11-05까지는 현재가 대비 괴리율이 크면(쿼터손절모드·폭락대비
+    사다리 등으로 가격이 멀어짐) 메리츠가 거부하기 전에 미리 허용 한도가로
+    당겨서(clamp) 제출했었다. 그런데 clamp된 실제 제출가가 알림 이메일에는
+    반영되지 않는 버그가 있었고(이메일은 clamp 전 원래 계산값을 그대로 보여줌 -
+    _run_auto_infinite_submissions가 price 지역변수를 재사용하지 않아서),
+    실제 메리츠 앱의 미체결 주문과 이메일 내용이 서로 다르게 보이는 문제로
+    이어졌다(2026-11-05 사용자 지적). 사용자가 clamp 자체를 없애고 계산된
+    값 그대로 제출하되, 거부되면(메리츠 괴리율 하드리밋 20% 등) 그 즉시
+    실패 메일을 보내는 쪽을 택했다 - 이제 제출가=이메일가=계산값이 항상
+    같으므로 이 불일치가 구조적으로 생기지 않는다.
 
     notify=False(2026-10-23 추가, 사용자 요청: "매매 주문 메일링은 모든 매매내역을
     취합하여 한번만 보내도록") - 스케줄러가 가이드 10건 가까이 한 번에 제출할 때
@@ -518,19 +469,13 @@ def submit_order(position, client, action, order_type, qty, price, label, dry_ru
     (_run_auto_infinite_submissions)는 notify=False로 호출하고, 루프가 끝난 뒤
     _notify_orders_submitted_batch()로 한 번만 모아 보낸다. 사용자가 가이드에서
     직접 한 줄씩 수동 제출할 때(기본값 notify=True)는 그 자리에서 바로 알림이
-    오는 게 맞아 기존 동작을 유지한다."""
+    오는 게 맞아 기존 동작을 유지한다. 실패 메일은 notify 설정과 무관하게 항상
+    즉시 나간다(2026-11-05 추가, 사용자 요청: "주문에 실패할 경우 실패메일을
+    즉각적으로") - 성공 알림은 스팸 방지로 모아 보내지만, 실패는 그날 다시
+    시도할 기회가 있을 때 바로 알아야 의미가 있다."""
     today = date.today().isoformat()
     state, _ = replay_position_state(position)
     cycle_no = state.cycle_no
-
-    clamped, adj_price = _clamp_price_to_broker_band(
-        client, position, action, order_type, price, current_price=current_price)
-    if clamped and skip_if_out_of_band:
-        return {"dryRun": dry_run, "skipped": True,
-                "reason": f"현재가 대비 {MAX_PRICE_DEVIATION_PCT}% 밴드 밖(${price:,.2f}) - 오늘은 건너뜀"}
-    if clamped:
-        label = f"{label} (현재가 제한으로 ${price:,.2f}→${adj_price:,.2f} 보정)"
-        price = adj_price
 
     try:
         result = client.place_overseas_order(
@@ -545,6 +490,14 @@ def submit_order(position, client, action, order_type, qty, price, label, dry_ru
         )
         db.session.add(order)
         db.session.commit()
+        if position.alert_email:
+            import email_utils
+            import email_templates
+            action_ko = "매도" if action == "sell" else "매수"
+            price_text = f"${price:,.2f}" if price else "시장가"
+            reason = f'{label}({action_ko} {order_type.upper()} {price_text} x{qty}주) 제출 실패: {e}'
+            html, body = email_templates.build_auto_infinite_failure_email(position, reason)
+            email_utils.send_email(position.alert_email, f"[JH-Trader] {position.ticker} 주문 실패", body, html=html)
         raise
 
     if dry_run:
