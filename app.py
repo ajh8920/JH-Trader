@@ -3076,6 +3076,12 @@ def admin_debug_recent_issues():
             for h in heartbeat_errors
         ],
         "vrCancelledOrders": [o.to_dict() for o in vr_cancelled],
+        # 메리츠 예약주문 조회 API는 30건까지만 내려주고 연속조회도 안 돼서(2026-11-06
+        # 실측), 중복 제출 여부는 서버가 남긴 제출 기록 쪽에서 대조해야 한다.
+        "vrReservedOrders": [
+            {**o.to_dict(), "mstNo": o.oder_rsev_mst_no, "mstDate": o.oder_rsev_mst_date}
+            for o in VrReservedOrder.query.order_by(VrReservedOrder.id.asc()).limit(300).all()
+        ],
         "guidePreviews": guide_previews,
     }))
 
