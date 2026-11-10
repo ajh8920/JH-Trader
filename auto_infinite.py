@@ -735,6 +735,8 @@ def sync_from_broker_history(position, client, dry_run=True):
 
     # dry_run이어도 실제로 바꿔본 뒤 재생 결과(적용 후 보유수량·평단가)를 계산하고
     # 마지막에 롤백한다 - 그래야 "적용하면 실계좌와 맞는지"를 미리 정확히 본다.
+    # 재생은 (trade_date, id)로 정렬하므로 새 주문에 id가 붙도록 먼저 flush한다.
+    db.session.flush()
     state, _ = replay_position_state(position)
     ledger = build_filled_ledger(position)
     broker_qty, broker_avg = _broker_holding_for_ticker(client, position.ticker, position.exchange)
