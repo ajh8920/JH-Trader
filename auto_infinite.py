@@ -672,7 +672,22 @@ def sync_from_broker_history(position, client, dry_run=True):
     sole_position = AutoInfinitePosition.query.filter_by(
         ticker=position.ticker, exchange=position.exchange, is_active=True).count() == 1
 
-    updates, imports = [], []
+    # 주문번호 없이 손으로 넣은 체결(백필 등)이 기준일 이후에도 있다 - 같은 날짜·
+    # 구분·수량·체결가의 기록이 이미 있으면 그 체결로 보고 다시 넣지 않는다
+    # (실측 11/10: 이걸 안 하면 30주 계좌가 36주로 이중 기록됨).
+    unnumbered = [o for o in position.orders
+                  if o.status == "filled" and not o.broker_order_no and o.trade_date >= start]
+
+    def _take_unnumbered(trade_date, action, qty, price):
+        for o in unnumbered:
+            o_price = o.filled_price or o.price or 0
+            if (o.trade_date == trade_date and o.action == action
+                    and (o.filled_qty or o.qty) == qty and abs(o_price - price) < 0.05):
+                unnumbered.remove(o)
+                return o
+        return None
+
+    updates, imports, matched_manual = [], [], []
     for key, entry in sorted(index.items()):
         qty = entry["filled_qty"]
         if not qty:
@@ -690,6 +705,12 @@ def sync_from_broker_history(position, client, dry_run=True):
         row = entry["row"]
         trade_date = f"{key[0][:4]}-{key[0][4:6]}-{key[0][6:]}"
         action = "sell" if row.get("seln_byov_clcd") == "1" else "buy"
+        manual = _take_unnumbered(trade_date, action, qty, price)
+        if manual:
+            matched_manual.append({"orderId": manual.id, "date": trade_date, "brokerOrderNo": key[1]})
+            if not dry_run:
+                manual.broker_order_no = key[1]  # 다음 동기화부터 번호로 바로 매칭
+            continue
         imports.append({"date": trade_date, "action": action, "qty": qty, "price": price,
                         "brokerOrderNo": key[1]})
         if not dry_run and sole_position:
@@ -710,7 +731,9 @@ def sync_from_broker_history(position, client, dry_run=True):
     state, _ = replay_position_state(position)
     broker_qty, broker_avg = _broker_holding_for_ticker(client, position.ticker, position.exchange)
     return {"dryRun": dry_run, "since": start, "solePosition": sole_position,
-            "updatedOrders": updates, "importedFills": imports if sole_position else [],
+            "updatedOrders": updates, "matchedManualOrders": matched_manual,
+            "unmatchedManualOrders": [o.to_dict() for o in unnumbered],
+            "importedFills": imports if sole_position else [],
             "skippedImports": [] if sole_position else imports,
             "pendingUpdated": pending_updated,
             "ledgerQty": state.holding_qty, "ledgerAvgPrice": round(state.avg_price, 4),
