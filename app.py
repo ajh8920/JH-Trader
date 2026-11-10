@@ -2622,11 +2622,15 @@ def refresh_auto_infinite_fills(position_id):
         return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
     try:
         client = MeritzClient()
-        updated, _newly_rejected = auto_infinite.refresh_fill_status(position, client)
+        # 2026-11-10부터 기간 체결내역으로 장부 전체를 실계좌와 맞춘다(메리츠 앱
+        # 직접 주문 체결분 포함) - auto_infinite.sync_from_broker_history 참고
+        sync = auto_infinite.sync_from_broker_history(position, client, dry_run=False)
+        updated = len(sync.get("updatedOrders", [])) + len(sync.get("importedFills", [])) \
+            + sync.get("pendingUpdated", 0)
         status = auto_infinite.compute_live_status(position, client)
     except MeritzApiError as e:
         return jsonify({"error": f"체결 확인 실패: {e}"}), 502
-    return jsonify(sanitize_json({"updated": updated, "status": status,
+    return jsonify(sanitize_json({"updated": updated, "sync": sync, "status": status,
                                    "orders": [o.to_dict() for o in reversed(position.orders)]}))
 
 
@@ -3178,6 +3182,37 @@ def admin_reset_auto_infinite_daily_guard():
     return jsonify({"ok": True, "positionId": position.id, "ticker": position.ticker})
 
 
+@app.route("/api/admin/auto-infinite/sync-broker-history", methods=["POST"])
+@limiter.limit("30 per hour")
+def admin_sync_auto_infinite_broker_history():
+    """무한매수 장부를 메리츠 기간 주문체결내역과 맞춘다(2026-11-10 추가, 사용자
+    요청: "메리츠 api를 이용하여 무한매수 현황을 최신화"). admin_reset_auto_infinite_
+    daily_guard와 같은 이유로 CRON_SECRET 인증 - 로그인 없이 Claude가 직접 호출한다.
+    body: {positionId, dryRun(기본 true)}. 주문은 전혀 내지 않고 DB 장부만 바꾼다."""
+    secret = os.environ.get("CRON_SECRET")
+    if not secret or not hmac.compare_digest(request.headers.get("X-Cron-Secret", ""), secret):
+        return jsonify({"error": "인증 실패"}), 403
+
+    from models import AutoInfinitePosition
+    from meritz_api import MeritzClient, MeritzApiError
+    import auto_infinite
+
+    body = request.json or {}
+    try:
+        position_id = int(body.get("positionId"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "positionId가 필요합니다"}), 400
+    position = AutoInfinitePosition.query.filter_by(id=position_id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+    try:
+        result = auto_infinite.sync_from_broker_history(
+            position, MeritzClient(), dry_run=body.get("dryRun", True) is not False)
+    except MeritzApiError as e:
+        return jsonify({"error": f"메리츠 조회 실패: {e}"}), 502
+    return jsonify(sanitize_json(result))
+
+
 # JSON API는 CSRF 토큰 대신 로그인 세션 + JSON Content-Type(교차 출처 요청 시
 # 브라우저 프리플라이트로 차단됨) 폼 기반 CSRF 검사에서 제외합니다.
 for _view in (
@@ -3201,6 +3236,7 @@ for _view in (
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
     admin_set_trade_alert_email, admin_test_trade_alert_email, cron_run_daily_batch,
     cron_run_auto_infinite, admin_reset_auto_infinite_daily_guard,
+    admin_sync_auto_infinite_broker_history,
     persona_debate_start,
 ):
     csrf.exempt(_view)

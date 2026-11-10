@@ -245,6 +245,30 @@ class MeritzClient:
                           {"cntg_cls_code": cntg_cls_code, "seln_byov_clcd": "0"})
         return body.get("data") or []
 
+    def get_overseas_orders_history(self, start_date: str, end_date: str, cntg_cls_code="0"):
+        """기간 해외주식 주문체결내역 조회(/trading/v1/overseas/orders/history,
+        2026-11-10 추가). start_date/end_date: "YYYYMMDD". orders/today는 당일분만
+        내려와서, 06~08시 체결확인이 하루라도 실패하면(실측: 11/10 07시 DB SSL
+        오류) 그날 체결이 영영 반영되지 않았다 - 기간 조회로 놓친 날까지 다시 본다.
+
+        필드명이 orders/today와 다르다(공식 문서): 주문수량 oder_dqty, 체결수량
+        cntg_dqty, 체결가 cntg_crnc_prc, 정정취소구분 oder_rctf_cncl_cls_code
+        ("0"원주문/"1"정정/"2"취소), 거부사유 ovrs_stck_rfus_reas. 주문번호는 날짜별로
+        다시 시작하므로 (oder_date, oder_no)로 식별해야 한다. 연속조회는 예약주문
+        조회와 같이 tr_cont/tr_cont_key를 쿼리 파라미터로 넘긴다."""
+        params = {"oder_sta_date": start_date, "oder_fin_date": end_date,
+                  "seln_byov_clcd": "0", "cntg_cls_code": cntg_cls_code}
+        rows, key = [], None
+        for _ in range(50):
+            query = dict(params, tr_cont="1", tr_cont_key=key) if key else params
+            body = self._get("/trading/v1/overseas/orders/history", query)
+            rows += body.get("data") or []
+            next_key = body.get("tr_cont_key")
+            if body.get("rsp_cd") != "5762" or not next_key or next_key == key:
+                return rows
+            key = next_key
+        raise MeritzApiError("주문체결내역 연속조회가 50페이지를 넘었습니다 - 중단")
+
     def place_overseas_order(self, symbol: str, exchange: str, qty: int, side: str,
                               order_type: str, price: float | None = None,
                               dry_run: bool = True):

@@ -24,7 +24,7 @@ LOC"가 정확히 무엇 기준인지 불명확하고, 애초에 시작 여부·
 짝을 이룬다).
 """
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from infinite_buying import PositionState, build_guide
 from meritz_api import MeritzApiError, OVERSEAS_EXCHANGES
@@ -560,40 +560,158 @@ def refresh_fill_status(position, client):
     pending = [o for o in position.orders if o.status == "submitted" and o.broker_order_no]
     if not pending:
         return 0, []
-    rows = client.get_overseas_orders_today()
-    by_order_no = {str(row.get("oder_no")): row for row in rows}
-    cancelled_qty_by_orgl = {}
-    for row in rows:
-        orgl = row.get("orgl_oder_no")
-        cncl_cnfr_qty = int(float(row.get("cncl_cnfr_qty") or 0))
-        if orgl and str(orgl) != "0" and cncl_cnfr_qty > 0:
-            cancelled_qty_by_orgl[str(orgl)] = cancelled_qty_by_orgl.get(str(orgl), 0) + cncl_cnfr_qty
+    # 2026-11-10부터 당일 조회(orders/today) 대신 기간 조회를 쓴다 - 체결확인이
+    # 하루 실패하면 그날 체결이 영영 "submitted"로 남던 문제(실측: 11/09 주문
+    # 체결분 누락) 때문. 30일보다 오래된 미체결 대기 건은 이미 만료된 당일
+    # 주문이라 조회 범위를 거기까지 넓히지 않는다.
+    start = max(min(o.trade_date for o in pending), (date.today() - timedelta(days=30)).isoformat())
+    index = _broker_history_index(client, position.ticker, start)
 
     updated = 0
     newly_rejected = []
     for o in pending:
-        row = by_order_no.get(o.broker_order_no)
-        if not row:
+        key = (o.trade_date.replace("-", ""), o.broker_order_no)
+        entry = index.get(key)
+        if not entry:
             continue
-        cntg_qty = int(float(row.get("cntg_qty") or 0))
-        ncnt_qty = int(float(row.get("ncnt_qty") or 0))
-        rfus_reas = row.get("ovrs_stck_rfus_reas") or ""
-        cancelled_qty = cancelled_qty_by_orgl.get(o.broker_order_no, 0)
-        if rfus_reas:
+        filled_qty, filled_price = entry["filled_qty"], entry["filled_price"]
+        if entry["rejected"] and not filled_qty:
             o.status = "rejected"
-            newly_rejected.append((o, rfus_reas))
-        elif cntg_qty > 0 and ncnt_qty == 0:
+            newly_rejected.append((o, entry["rejected"]))
+        elif filled_qty >= o.qty or (filled_qty and key[0] < date.today().strftime("%Y%m%d")):
+            # 전량 체결이거나, 지난 날짜의 부분체결(남은 수량은 당일 주문이라 이미 소멸)
             o.status = "filled"
-            o.filled_qty = cntg_qty
-            o.filled_price = float(row.get("cntg_crnc_prc") or 0) or o.price
-        elif cancelled_qty > 0 and cntg_qty == 0:
+            o.filled_qty = filled_qty
+            o.filled_price = filled_price or o.price
+        elif entry["cancelled_qty"] and not filled_qty:
             # 전량 취소(사람이 메리츠 앱에서 직접 취소한 경우 포함) - replay에서
-            # 완전히 빠지도록 filled이 아닌 별도 상태로 남긴다.
+            # 완전히 빠지도록 filled이 아닌 별도 상태로 남긴다. 메리츠는 취소를 원
+            # 주문 행이 아니라 별도 "취소" 행(orgl_oder_no=원 주문번호)으로 내려준다.
             o.status = "cancelled"
-        elif cntg_qty > 0:
-            o.filled_qty = cntg_qty
-            o.filled_price = float(row.get("cntg_crnc_prc") or 0) or o.price
-        o.raw_response = json.dumps(row, ensure_ascii=False)
+        elif filled_qty:
+            o.filled_qty = filled_qty
+            o.filled_price = filled_price or o.price
+        o.raw_response = json.dumps(entry["row"], ensure_ascii=False)
         updated += 1
     db.session.commit()
     return updated, newly_rejected
+
+
+# 메리츠 호가유형코드(aspr_type_code) -> AutoInfiniteOrder.order_type
+_ASPR_TYPE_TO_ORDER_TYPE = {"1": "market", "2": "limit", "5": "loc", "7": "moc"}
+
+
+def _broker_history_index(client, ticker, start_date):
+    """start_date(YYYY-MM-DD)~내일 기간 주문체결내역에서 이 티커만 골라, 원
+    주문 단위로 체결/취소/거부를 모은다. 키: (주문일자 YYYYMMDD, 원 주문번호).
+
+    사람이 메리츠 앱에서 주문을 "정정"하면 체결은 정정 행(oder_rctf_cncl_cls_code
+    ="1", orgl_oder_no=원 주문번호)에 찍힌다(실측: 11/04 1831516 행) - 이 체결을
+    원 주문 몫으로 돌려야 앱이 낸 주문이 체결됐다고 인식한다."""
+    end = (date.today() + timedelta(days=1)).strftime("%Y%m%d")
+    rows = client.get_overseas_orders_history(start_date.replace("-", ""), end)
+    rows = [r for r in rows if str(r.get("iscd") or "").split(".")[0] == ticker]
+
+    def _no(value):
+        return str(int(float(value))) if value not in (None, "") else "0"
+
+    parent = {}
+    for r in rows:
+        if r.get("oder_rctf_cncl_cls_code") in ("1", "2") and _no(r.get("orgl_oder_no")) != "0":
+            parent[(r["oder_date"], _no(r["oder_no"]))] = (r["oder_date"], _no(r["orgl_oder_no"]))
+
+    def _root(key):
+        seen = set()
+        while key in parent and key not in seen:
+            seen.add(key)
+            key = parent[key]
+        return key
+
+    index = {}
+    for r in rows:
+        key = _root((r["oder_date"], _no(r["oder_no"])))
+        entry = index.setdefault(key, {"filled_qty": 0, "filled_amount": 0.0, "cancelled_qty": 0,
+                                        "rejected": "", "row": r})
+        code = r.get("oder_rctf_cncl_cls_code")
+        if code == "2":
+            entry["cancelled_qty"] += int(float(r.get("oder_dqty") or 0))
+            continue
+        if code == "0":
+            entry["row"] = r
+            if r.get("ovrs_stck_rfus_reas") or r.get("ovrs_stck_oder_stat_cls_code") in ("1", "2"):
+                entry["rejected"] = r.get("ovrs_stck_rfus_reas") or "거부(사유 미기재)"
+        qty = int(float(r.get("cntg_dqty") or 0))
+        if qty:
+            entry["filled_qty"] += qty
+            entry["filled_amount"] += qty * float(r.get("cntg_crnc_prc") or 0)
+    for entry in index.values():
+        entry["filled_price"] = (entry["filled_amount"] / entry["filled_qty"]) if entry["filled_qty"] else None
+    return index
+
+
+def sync_from_broker_history(position, client, dry_run=True):
+    """메리츠 기간 주문체결내역으로 이 포지션의 장부를 실계좌와 맞춘다(2026-11-10
+    추가, 사용자 요청: "메리츠 api를 이용하여 무한매수 현황을 최신화").
+
+    1) 앱이 낸 주문 중 아직 체결이 반영되지 않은 건을 실제 체결 결과로 갱신하고,
+    2) 앱이 모르는 체결(사람이 메리츠 앱에서 직접 낸 주문)을 "filled" 주문으로
+       새로 기록한다 - 실측 11/10 기준 앱 장부 19주 vs 실계좌 30주로, 차이 대부분이
+       이 직접 주문 체결분이었다.
+
+    2)는 이 티커를 운용하는 활성 포지션이 이 포지션 하나일 때만 한다(여럿이면
+    어느 포지션 몫인지 알 수 없음). 조회 시작일은 앱이 처음 메리츠에 주문을 낸
+    날이다 - 그 이전 체결은 이미 "실계좌 과거 체결(백필)"로 들어가 있어(브로커
+    주문번호 없음) 다시 넣으면 이중 기록이 된다. dry_run=True면 DB를 바꾸지 않고
+    바뀔 내용만 돌려준다."""
+    dated = [o for o in position.orders if o.broker_order_no]
+    if not dated:
+        return {"error": "메리츠에 제출한 주문이 하나도 없어 동기화 기준일을 정할 수 없습니다"}
+    start = min(o.trade_date for o in dated)
+    index = _broker_history_index(client, position.ticker, start)
+    by_key = {(o.trade_date.replace("-", ""), o.broker_order_no): o for o in dated}
+    sole_position = AutoInfinitePosition.query.filter_by(
+        ticker=position.ticker, exchange=position.exchange, is_active=True).count() == 1
+
+    updates, imports = [], []
+    for key, entry in sorted(index.items()):
+        qty = entry["filled_qty"]
+        if not qty:
+            continue
+        o = by_key.get(key)
+        price = round(entry["filled_price"], 4)
+        if o:
+            if o.status == "filled" and o.filled_qty == qty:
+                continue
+            updates.append({"orderId": o.id, "date": o.trade_date, "label": o.label,
+                            "from": o.status, "filledQty": qty, "filledPrice": price})
+            if not dry_run:
+                o.status, o.filled_qty, o.filled_price = "filled", qty, price
+            continue
+        row = entry["row"]
+        trade_date = f"{key[0][:4]}-{key[0][4:6]}-{key[0][6:]}"
+        action = "sell" if row.get("seln_byov_clcd") == "1" else "buy"
+        imports.append({"date": trade_date, "action": action, "qty": qty, "price": price,
+                        "brokerOrderNo": key[1]})
+        if not dry_run and sole_position:
+            db.session.add(AutoInfiniteOrder(
+                position_id=position.id, trade_date=trade_date, action=action,
+                order_type=_ASPR_TYPE_TO_ORDER_TYPE.get(row.get("aspr_type_code"), "limit"),
+                label="메리츠 직접 주문(동기화)", qty=qty,
+                price=float(row.get("ovrs_stck_oder_prc") or 0) or price,
+                status="filled", filled_qty=qty, filled_price=price, broker_order_no=key[1],
+                raw_response=json.dumps(row, ensure_ascii=False),
+            ))
+    if not dry_run:
+        db.session.commit()
+    pending_updated = 0
+    if not dry_run:
+        pending_updated, _ = refresh_fill_status(position, client)  # 남은 취소/거부 반영
+
+    state, _ = replay_position_state(position)
+    broker_qty, broker_avg = _broker_holding_for_ticker(client, position.ticker, position.exchange)
+    return {"dryRun": dry_run, "since": start, "solePosition": sole_position,
+            "updatedOrders": updates, "importedFills": imports if sole_position else [],
+            "skippedImports": [] if sole_position else imports,
+            "pendingUpdated": pending_updated,
+            "ledgerQty": state.holding_qty, "ledgerAvgPrice": round(state.avg_price, 4),
+            "brokerQty": broker_qty, "brokerAvgPrice": broker_avg}
