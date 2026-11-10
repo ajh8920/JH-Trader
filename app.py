@@ -3182,6 +3182,64 @@ def admin_reset_auto_infinite_daily_guard():
     return jsonify({"ok": True, "positionId": position.id, "ticker": position.ticker})
 
 
+@app.route("/api/admin/auto-infinite/cancel-today-and-resubmit", methods=["POST"])
+@limiter.limit("5 per hour")
+def admin_cancel_today_and_resubmit_auto_infinite():
+    """오늘 접수된 무한매수 주문을 메리츠에서 전부 취소하고, 오늘 가드를 풀어 현재
+    로직으로 다시 제출한다(2026-11-10 추가, 사용자 요청: "오늘 주문한 매매를 모두
+    취소하고 새로운 매매로 다시 주문하세요" - 매수 수량 배분 로직 수정 직후).
+    취소가 하나라도 실패하면 재제출하지 않는다(기존 주문과 새 주문이 겹쳐 중복
+    매수되는 걸 막기 위함). 재제출은 _run_auto_infinite_submissions를 그대로 써서
+    전량성공/전량취소 원칙과 메일 알림이 평소와 똑같이 적용된다."""
+    secret = os.environ.get("CRON_SECRET")
+    if not secret or not hmac.compare_digest(request.headers.get("X-Cron-Secret", ""), secret):
+        return jsonify({"error": "인증 실패"}), 403
+
+    from zoneinfo import ZoneInfo
+    from models import AutoInfinitePosition, AutoInfiniteOrder
+    from meritz_api import MeritzClient, MeritzApiError
+    import auto_infinite
+
+    body = request.json or {}
+    try:
+        position_id = int(body.get("positionId"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "positionId가 필요합니다"}), 400
+    position = AutoInfinitePosition.query.filter_by(id=position_id).first()
+    if not position:
+        return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
+
+    today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d")
+    client = MeritzClient()
+    cancelled, errors = [], []
+    for o in AutoInfiniteOrder.query.filter_by(position_id=position.id, trade_date=today,
+                                               status="submitted").all():
+        try:
+            auto_infinite.cancel_order(o, client)
+            cancelled.append(o.id)
+        except MeritzApiError as e:
+            errors.append({"orderId": o.id, "error": str(e)})
+    if errors:
+        return jsonify({"cancelled": cancelled, "errors": errors,
+                        "resubmitted": False, "reason": "취소 실패가 있어 재제출하지 않았습니다"}), 502
+
+    position.auto_last_run_date = None
+    position.auto_last_run_had_error = False
+    position.auto_last_failure_notified_date = None
+    db.session.commit()
+
+    def _run():
+        with app.app_context():
+            try:
+                _run_auto_infinite_submissions(today)
+            except Exception:
+                db.session.rollback()
+                app.logger.exception("무한매수 재제출 오류")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"cancelled": cancelled, "resubmitted": True}), 202
+
+
 @app.route("/api/admin/auto-infinite/sync-broker-history", methods=["POST"])
 @limiter.limit("30 per hour")
 def admin_sync_auto_infinite_broker_history():
@@ -3236,7 +3294,7 @@ for _view in (
     list_users, update_user_role, delete_user, force_trend_screen_refresh,
     admin_set_trade_alert_email, admin_test_trade_alert_email, cron_run_daily_batch,
     cron_run_auto_infinite, admin_reset_auto_infinite_daily_guard,
-    admin_sync_auto_infinite_broker_history,
+    admin_sync_auto_infinite_broker_history, admin_cancel_today_and_resubmit_auto_infinite,
     persona_debate_start,
 ):
     csrf.exempt(_view)
