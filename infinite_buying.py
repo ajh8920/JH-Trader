@@ -327,7 +327,11 @@ def build_guide(state, current_price=None):
             ),
         }
 
-    star = threshold_pct(target, splits, t_value)
+    # ☆%는 화면에 보이는 소수점 둘째 자리로 반올림한 값으로 가격을 계산한다
+    # (2026-11-10, 사용자 지적: "그래도 0.01 차이가 납니다") - 참고 앱은 표시값
+    # 7.55%로 계산해 매도 $66.49/매수 $66.48이었고, 저희는 미반올림 7.548%로
+    # 계산해 $66.48/$66.47로 0.01씩 어긋났다.
+    star = round(threshold_pct(target, splits, t_value), 2)
     half_point = splits / 2
     order_amt_half = min(state.split_amount / 2, state.cash)
     order_amt_full = min(state.split_amount, state.cash)
