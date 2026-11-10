@@ -678,14 +678,20 @@ def sync_from_broker_history(position, client, dry_run=True):
     unnumbered = [o for o in position.orders
                   if o.status == "filled" and not o.broker_order_no and o.trade_date >= start]
 
-    def _take_unnumbered(trade_date, action, qty, price):
-        for o in unnumbered:
-            o_price = o.filled_price or o.price or 0
-            if (o.trade_date == trade_date and o.action == action
-                    and (o.filled_qty or o.qty) == qty and abs(o_price - price) < 0.05):
-                unnumbered.remove(o)
-                return o
-        return None
+    # 손으로 넣을 때 주문일 대신 체결일(한국시간 다음날 새벽)을 쓰거나, 체결가 대신
+    # 주문가를 적은 경우가 실제로 있어(실측: 10/22 주문 $83.33→체결 $82.11을
+    # $83.33으로, 10/27 체결을 10/26로) 날짜 ±1일, 가격은 체결가·주문가 둘 다 비교한다.
+    def _take_unnumbered(trade_date, action, qty, prices):
+        d = date.fromisoformat(trade_date)
+        near = {(d + timedelta(days=k)).isoformat() for k in (-1, 0, 1)}
+        candidates = [o for o in unnumbered
+                      if o.trade_date in near and o.action == action and (o.filled_qty or o.qty) == qty
+                      and any(abs((o.filled_price or o.price or 0) - p) < 0.05 for p in prices if p)]
+        if not candidates:
+            return None
+        best = min(candidates, key=lambda o: abs(date.fromisoformat(o.trade_date) - d))
+        unnumbered.remove(best)
+        return best
 
     updates, imports, matched_manual = [], [], []
     for key, entry in sorted(index.items()):
@@ -694,42 +700,50 @@ def sync_from_broker_history(position, client, dry_run=True):
             continue
         o = by_key.get(key)
         price = round(entry["filled_price"], 4)
-        if o:
-            if o.status == "filled" and o.filled_qty == qty:
-                continue
-            updates.append({"orderId": o.id, "date": o.trade_date, "label": o.label,
-                            "from": o.status, "filledQty": qty, "filledPrice": price})
-            if not dry_run:
-                o.status, o.filled_qty, o.filled_price = "filled", qty, price
-            continue
         row = entry["row"]
         trade_date = f"{key[0][:4]}-{key[0][4:6]}-{key[0][6:]}"
         action = "sell" if row.get("seln_byov_clcd") == "1" else "buy"
-        manual = _take_unnumbered(trade_date, action, qty, price)
+        order_price = float(row.get("ovrs_stck_oder_prc") or 0)
+        if o:
+            if o.status == "filled" and o.filled_qty == qty:
+                continue
+            # 앱 주문이 "submitted"로 멈춰 있는 동안 사람이 같은 체결을 손으로 넣어둔
+            # 경우(실측: 11/04 주문 81 ↔ 백필 90) - 손 기록을 중복으로 빼야 이중 계산이 안 된다.
+            dup = _take_unnumbered(trade_date, action, qty, (price, order_price, o.price))
+            updates.append({"orderId": o.id, "date": o.trade_date, "label": o.label,
+                            "from": o.status, "filledQty": qty, "filledPrice": price,
+                            "duplicateManualOrderId": dup.id if dup else None})
+            o.status, o.filled_qty, o.filled_price = "filled", qty, price
+            if dup:
+                dup.status = "duplicate"
+            continue
+        manual = _take_unnumbered(trade_date, action, qty, (price, order_price))
         if manual:
             matched_manual.append({"orderId": manual.id, "date": trade_date, "brokerOrderNo": key[1]})
-            if not dry_run:
-                manual.broker_order_no = key[1]  # 다음 동기화부터 번호로 바로 매칭
+            manual.broker_order_no = key[1]  # 다음 동기화부터 번호로 바로 매칭
             continue
         imports.append({"date": trade_date, "action": action, "qty": qty, "price": price,
                         "brokerOrderNo": key[1]})
-        if not dry_run and sole_position:
-            db.session.add(AutoInfiniteOrder(
-                position_id=position.id, trade_date=trade_date, action=action,
+        if sole_position:
+            position.orders.append(AutoInfiniteOrder(
+                trade_date=trade_date, action=action,
                 order_type=_ASPR_TYPE_TO_ORDER_TYPE.get(row.get("aspr_type_code"), "limit"),
-                label="메리츠 직접 주문(동기화)", qty=qty,
-                price=float(row.get("ovrs_stck_oder_prc") or 0) or price,
+                label="메리츠 직접 주문(동기화)", qty=qty, price=order_price or price,
                 status="filled", filled_qty=qty, filled_price=price, broker_order_no=key[1],
                 raw_response=json.dumps(row, ensure_ascii=False),
             ))
-    if not dry_run:
-        db.session.commit()
-    pending_updated = 0
-    if not dry_run:
-        pending_updated, _ = refresh_fill_status(position, client)  # 남은 취소/거부 반영
 
+    # dry_run이어도 실제로 바꿔본 뒤 재생 결과(적용 후 보유수량·평단가)를 계산하고
+    # 마지막에 롤백한다 - 그래야 "적용하면 실계좌와 맞는지"를 미리 정확히 본다.
     state, _ = replay_position_state(position)
+    ledger = build_filled_ledger(position)
     broker_qty, broker_avg = _broker_holding_for_ticker(client, position.ticker, position.exchange)
+    pending_updated = 0
+    if dry_run:
+        db.session.rollback()
+    else:
+        db.session.commit()
+        pending_updated, _ = refresh_fill_status(position, client)  # 남은 취소/거부 반영
     return {"dryRun": dry_run, "since": start, "solePosition": sole_position,
             "updatedOrders": updates, "matchedManualOrders": matched_manual,
             "unmatchedManualOrders": [o.to_dict() for o in unnumbered],
@@ -737,4 +751,4 @@ def sync_from_broker_history(position, client, dry_run=True):
             "skippedImports": [] if sole_position else imports,
             "pendingUpdated": pending_updated,
             "ledgerQty": state.holding_qty, "ledgerAvgPrice": round(state.avg_price, 4),
-            "brokerQty": broker_qty, "brokerAvgPrice": broker_avg}
+            "brokerQty": broker_qty, "brokerAvgPrice": broker_avg, "ledger": ledger}
