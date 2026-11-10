@@ -693,12 +693,21 @@ def sync_from_broker_history(position, client, dry_run=True):
         unnumbered.remove(best)
         return best
 
+    def _numbered_near(key):
+        # 수기 기록에 주문번호를 붙여둔 뒤에도 날짜는 손으로 넣은 값(체결일 등)
+        # 그대로라 정확한 키로는 안 찾아진다 - 같은 번호·±1일이면 같은 주문으로 본다.
+        d = datetime.strptime(key[0], "%Y%m%d").date()
+        for o in dated:
+            if o.broker_order_no == key[1] and abs(date.fromisoformat(o.trade_date) - d).days <= 1:
+                return o
+        return None
+
     updates, imports, matched_manual = [], [], []
     for key, entry in sorted(index.items()):
         qty = entry["filled_qty"]
         if not qty:
             continue
-        o = by_key.get(key)
+        o = by_key.get(key) or _numbered_near(key)
         price = round(entry["filled_price"], 4)
         row = entry["row"]
         trade_date = f"{key[0][:4]}-{key[0][4:6]}-{key[0][6:]}"
