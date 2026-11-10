@@ -340,13 +340,20 @@ def build_guide(state, current_price=None):
         # 버그였다(2026-10-21, 실계좌 화면과 대조해 발견).
         buy_price_a = round(avg_price, 4)
         buy_price_b = round(avg_price * (1 + star / 100) - 0.01, 4)
+        # 수량 배분(2026-11-10 변경, 사용자 지적: "실제 주문이 무매 어플과 다릅니다") -
+        # 참고 앱은 ☆% 다리를 내림(1회투자금/2 ÷ ☆%가)으로 정하고, 평단 다리는
+        # "1회투자금 전체로 평단가에 살 수 있는 주수(내림) − ☆% 다리"로 나머지를
+        # 채운다. 실측 대조: 평단 $61.82/☆ $66.48 → 3주+1주(저희 반올림 방식은
+        # 2주+2주), 11/03 평단 $81.70/☆ $90.05 → 2주+1주 - 두 사례 모두 일치.
+        qty_b = math.floor(order_amt_half / buy_price_b) if buy_price_b > 0 else 0
+        qty_a = max((math.floor(order_amt_full / buy_price_a) if buy_price_a > 0 else 0) - qty_b, 0)
         orders.append({
             "action": "buy", "orderType": "LOC", "label": "Buy (Avg Price)", "pct": 0.0,
-            "price": buy_price_a, "qty": _buy_qty(order_amt_half, buy_price_a),
+            "price": buy_price_a, "qty": qty_a,
         })
         orders.append({
             "action": "buy", "orderType": "LOC", "label": "Buy (Threshold)", "pct": round(star, 2),
-            "price": buy_price_b, "qty": _buy_qty(order_amt_half, buy_price_b),
+            "price": buy_price_b, "qty": qty_b,
         })
     else:
         buy_price = round(avg_price * (1 + star / 100) - 0.01, 4)
