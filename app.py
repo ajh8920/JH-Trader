@@ -3205,6 +3205,17 @@ def admin_cancel_today_and_resubmit_auto_infinite():
         position_id = int(body.get("positionId"))
     except (TypeError, ValueError):
         return jsonify({"error": "positionId가 필요합니다"}), 400
+    # 선택: 시드(총 시작 금액) 변경 후 재제출(2026-11-12 추가, 사용자 요청: "총 시작
+    # 금액이 8천달러이므로 이 사진과 같게 나와야 합니다") - 1회 매수금 = 시드/분할수.
+    new_seed = None
+    if body.get("seed") is not None:
+        try:
+            new_seed = float(body["seed"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "seed는 숫자여야 합니다"}), 400
+        if new_seed <= 0:
+            return jsonify({"error": "seed는 0보다 커야 합니다"}), 400
+
     position = AutoInfinitePosition.query.filter_by(id=position_id).first()
     if not position:
         return jsonify({"error": "포지션을 찾을 수 없습니다"}), 404
@@ -3223,6 +3234,8 @@ def admin_cancel_today_and_resubmit_auto_infinite():
         return jsonify({"cancelled": cancelled, "errors": errors,
                         "resubmitted": False, "reason": "취소 실패가 있어 재제출하지 않았습니다"}), 502
 
+    if new_seed is not None:
+        position.seed = new_seed
     position.auto_last_run_date = None
     position.auto_last_run_had_error = False
     position.auto_last_failure_notified_date = None
@@ -3237,7 +3250,7 @@ def admin_cancel_today_and_resubmit_auto_infinite():
                 app.logger.exception("무한매수 재제출 오류")
 
     threading.Thread(target=_run, daemon=True).start()
-    return jsonify({"cancelled": cancelled, "resubmitted": True}), 202
+    return jsonify({"cancelled": cancelled, "resubmitted": True, "seed": position.seed}), 202
 
 
 @app.route("/api/admin/auto-infinite/sync-broker-history", methods=["POST"])
